@@ -1,0 +1,97 @@
+/**
+ * AppShell — Server Component central do Peteen.
+ *
+ * Responsabilidades:
+ *  1. Auth guard: redireciona para /login se não autenticado.
+ *  2. Lê a sessão do usuário (getAuthContext) e serializa para Client Components.
+ *  3. Compõe o layout: TopBar (AppHeader) + Sidebar (AppSidebar) + BottomNav (AppBottomNav) + children.
+ *  4. Detecta a persona ativa e passa ao Sidebar para exibição contextual.
+ *
+ * Por que Server Component?
+ *  - Acesso direto ao Supabase e Prisma sem expor tokens ao cliente.
+ *  - Redirect server-side evita flash de conteúdo não autorizado.
+ *  - Dados do usuário são serializados como props simples para os Client Components filhos.
+ *
+ * Fluxo de persona:
+ *  - O `variant` vem do layout de cada route group ((tutor), (professional), (admin)).
+ *  - O AppShell valida que o usuário está autenticado, mas não restringe por role aqui.
+ *  - Restrição por role é feita nas Server Actions individuais (requireRole).
+ *  - Futuramente: adicionar verificação de role no AppShell para evitar acesso cross-persona.
+ */
+
+import type { ReactNode } from "react";
+import { redirect } from "next/navigation";
+
+import { getAuthContext } from "@/modules/identity/application/get-session";
+import { BottomNav } from "@/components/layout/bottom-nav";
+import { Sidebar } from "@/components/layout/sidebar";
+import { TopBar } from "@/components/layout/top-bar";
+import { cn } from "@/lib/utils";
+import type { AppShellVariant, ShellSessionUser } from "@/types";
+
+type AppShellProps = {
+  variant: AppShellVariant;
+  children: ReactNode;
+  className?: string;
+  showTopBar?: boolean;
+};
+
+export async function AppShell({
+  variant,
+  children,
+  className,
+  showTopBar = true,
+}: AppShellProps) {
+  const hasNav = variant !== "marketing";
+
+  // ── Auth guard ────────────────────────────────────────────────────────────
+  // Rotas de marketing não exigem autenticação.
+  // Todas as outras rotas exigem sessão válida.
+  let sessionUser: ShellSessionUser | null = null;
+
+  if (hasNav) {
+    const ctx = await getAuthContext();
+
+    if (!ctx.authenticated) {
+      redirect("/login");
+    }
+
+    // Usuário autenticado mas sem persona → onboarding ainda não concluído
+    if (!ctx.user.primaryRole) {
+      redirect("/onboarding");
+    }
+
+    // Serializa para Client Components — sem Date, sem funções, sem referências circulares.
+    sessionUser = {
+      id: ctx.user.id,
+      email: ctx.user.email,
+      primaryRole: ctx.user.primaryRole,
+      roles: ctx.user.roles,
+    };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="flex min-h-dvh flex-col">
+      {showTopBar ? <TopBar user={sessionUser} /> : null}
+
+      <div className="flex flex-1 overflow-hidden">
+        {hasNav ? <Sidebar variant={variant} user={sessionUser} /> : null}
+
+        <main
+          className={cn(
+            "flex-1 overflow-y-auto",
+            // Mobile: padding-bottom para o BottomNav fixo não cobrir conteúdo
+            hasNav && "pb-[calc(var(--bottom-nav-height)+1rem)] lg:pb-0",
+            className
+          )}
+        >
+          {children}
+        </main>
+      </div>
+
+      {/* BottomNav só aparece em rotas autenticadas e em mobile (lg:hidden via CSS) */}
+      {hasNav ? <BottomNav variant={variant} /> : null}
+    </div>
+  );
+}

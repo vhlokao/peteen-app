@@ -1,0 +1,1020 @@
+// TitiodePet — Prisma Schema
+// Infraestrutura de confiança recorrente para serviços pet
+//
+// Princípios de modelagem:
+//   1. User ↔ Persona separados — um User pode ter múltiplas personas
+//   2. TrustEvent é append-only — nenhum dado reputacional é deletado
+//   3. Contexto em tudo — reviews e eventos carregam serviceType + petContext
+//   4. Geo desde o início — todo perfil tem localização para ranking local
+//   5. AuditLog transversal — toda ação sensível é rastreada
+//   6. Soft deletes — deletedAt em entidades críticas para auditoria
+//   7. authId como UUID — alinhado ao tipo do Supabase auth.users.id
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────
+// IDENTITY — núcleo de identidade
+// ─────────────────────────────────────────────
+
+model User {
+  id String @id @default(cuid())
+
+  // authId espelha auth.users.id do Supabase
+  // Tipo UUID (@db.Uuid) garante consistência com o Auth e melhor performance em índices
+  // IMUTÁVEL — nunca deve ser alterado após criação
+  authId String @unique @db.Uuid
+
+  email String @unique
+
+  // Multi-persona: qual persona é exibida por padrão após login
+  // Definido pelo usuário no onboarding ou em configurações
+  activePrimaryRole PersonaRole?
+
+  // Controle de fluxo de onboarding
+  // null = usuário novo, nunca completou o onboarding
+  // preenchido = já passou pelo wizard e tem ao menos uma persona ativa
+  onboardingCompletedAt DateTime?
+
+  // Rastreabilidade para antifraude e análise de retenção
+  lastSeenAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Personas — relacionamentos opcionais 1:1
+  // A existência do registro é o próprio indicador de role ativa
+  tutorProfile        TutorProfile?
+  professionalProfile ProfessionalProfile?
+  partnerProfile      PartnerProfile?
+  adminProfile        AdminProfile?
+
+  // Trust Graph — eventos em que este user é ator ou alvo
+  trustEventsAsActor  TrustEvent[] @relation("TrustEventActor")
+  trustEventsAsTarget TrustEvent[] @relation("TrustEventTarget")
+
+  // Sinais de antifraude onde este user é alvo
+  fraudSignals FraudSignal[]
+
+  // Auditoria
+  auditLogs AuditLog[]
+
+  // Moderação / Disputas
+  openedDisputes  Dispute[]       @relation("DisputeOpener")
+  adminAuditLogs  AdminAuditLog[] @relation("AdminAuditLogs")
+
+  @@index([authId])
+  @@index([email])
+  @@index([activePrimaryRole])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────
+// PERSONAS
+// ─────────────────────────────────────────────
+
+model TutorProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName String
+  avatarUrl   String?
+  bio         String?
+  phone       String?
+
+  // Geo — necessário para descoberta e ranking local
+  neighborhood   String?
+  city             String
+  state            String
+  lat              Float?
+  lng              Float?
+  // Etapa 6.0 — Growth Engine (referências territoriais)
+  neighborhoodId   String?
+  neighborhoodRef  Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  regionId         String?
+  regionRef        Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
+
+  // Relações de domínio
+  pets          Pet[]
+  requests      ServiceRequest[]
+  reviews       Review[]
+  crmEntries    CrmClient[] // este tutor aparece no CRM de profissionais
+  relationships TutorProfessionalRelationship[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([city])
+  @@index([neighborhood])
+  @@index([neighborhoodId])
+  @@index([regionId])
+  @@map("tutor_profiles")
+}
+
+model ProfessionalProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName String
+  avatarUrl   String?
+  bio         String?
+  phone       String?
+
+  // Geo
+  neighborhood     String?
+  city             String
+  state            String
+  lat              Float?
+  lng              Float?
+  serviceRadiusKm  Float?  @default(10)
+  // Etapa 6.0 — Growth Engine
+  neighborhoodId   String?
+  neighborhoodRef  Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  regionId         String?
+  regionRef        Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
+
+  // Contexto de serviço — core do ranking contextual
+  serviceTypes    ServiceType[]
+  specializations String[] // ex: ["cão idoso", "filhote", "ansiedade"]
+
+  // Trust — calculado pelo Trust Engine a partir de TrustEvents + recorrência
+  // Campo desnormalizado para leitura rápida no ranking
+  // Atualizado via updateProfessionalTrust() após review, conclusão ou evento relevante
+  trustScore     Float      @default(0)
+  trustLevel     TrustLevel @default(INITIAL)
+  trustUpdatedAt DateTime?
+
+  // Verificação — não pode ser comprada, só concedida pelo sistema
+  // verifiedProfile = isVerified (campo existente, mantido para retrocompatibilidade)
+  // Os demais selos estão na arquitetura mas não são ativáveis via UI ainda
+  isVerified       Boolean   @default(false)
+  verifiedAt       DateTime?
+  verifiedIdentity Boolean   @default(false)
+  verifiedPhone    Boolean   @default(false)
+  verifiedPartner  Boolean   @default(false)
+
+  // Monetização — paga por ferramenta operacional, NUNCA por visibilidade
+  planType      PlanType @default(FREE)
+  planExpiresAt DateTime?
+
+  // Relações de domínio
+  services      Service[]
+  requests      ServiceRequest[]
+  crmClients    CrmClient[]
+  relationships TutorProfessionalRelationship[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  // Etapa 5.8 — Trust Graph: conexões de confiança apontando para este profissional
+  trustConnections TrustConnection[]
+
+  @@index([city])
+  @@index([neighborhood])
+  @@index([neighborhoodId])
+  @@index([regionId])
+  @@index([trustScore])
+  @@index([trustLevel])
+  @@map("professional_profiles")
+}
+
+model PartnerProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName String
+  type        PartnerType
+  avatarUrl   String?
+  bio         String?
+  phone       String?
+
+  // Geo
+  neighborhood     String?
+  city             String
+  state            String
+  lat              Float?
+  lng              Float?
+  // Etapa 6.0 — Growth Engine
+  neighborhoodId   String?
+  neighborhoodRef  Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  regionId         String?
+  regionRef        Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
+
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([city])
+  @@index([type])
+  @@index([neighborhoodId])
+  @@index([regionId])
+  @@map("partner_profiles")
+}
+
+// ─────────────────────────────────────────────
+// GROWTH ENGINE — Etapa 6.0 (território local)
+// ─────────────────────────────────────────────
+
+model Region {
+  id        String   @id @default(cuid())
+  city      String
+  state     String
+  name      String
+  slug      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  neighborhoods        Neighborhood[]
+  tutorProfiles        TutorProfile[]
+  professionalProfiles ProfessionalProfile[]
+  partnerProfiles      PartnerProfile[]
+  partners             Partner[]
+
+  @@unique([city, state, slug])
+  @@index([city, state])
+  @@map("regions")
+}
+
+model Neighborhood {
+  id        String   @id @default(cuid())
+  city      String
+  state     String
+  name      String
+  slug      String
+  regionId  String?
+  region    Region?  @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tutorProfiles        TutorProfile[]
+  professionalProfiles ProfessionalProfile[]
+  partnerProfiles      PartnerProfile[]
+  partners             Partner[]
+
+  @@unique([city, state, slug])
+  @@index([city, state])
+  @@index([regionId])
+  @@map("neighborhoods")
+}
+
+// ─────────────────────────────────────────────
+// PARTNERS — Etapa 5.9 (entidade de negócio, distinta de PartnerProfile)
+// ─────────────────────────────────────────────
+//
+// Partner = estabelecimento/instituição da rede (Pet Shop, Clínica, ONG…).
+// Não presta serviço principal — constrói confiança via Trust Graph.
+// PartnerProfile = persona de usuário (futuro login de parceiro).
+
+model Partner {
+  id           String          @id @default(cuid())
+  businessName String
+  slug         String          @unique
+  category     PartnerCategory
+  city         String
+  state        String
+  neighborhood String?
+  neighborhoodId String?
+  neighborhoodRef Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  regionId       String?
+  regionRef      Region?         @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  description  String?
+  phone        String?
+  website      String?
+  instagram    String?
+  logoUrl      String?
+  isVerified   Boolean         @default(false)
+  isActive     Boolean         @default(true)
+  // Etapa 6.1 — Onboarding & Activation
+  onboardingStatus      PartnerOnboardingStatus      @default(NOT_STARTED)
+  onboardingCompletedAt DateTime?
+  verificationStatus    PartnerVerificationStatus    @default(NONE)
+  yearsInBusiness       Int?
+  hasCnpj               Boolean                      @default(false)
+  verificationRequestedAt DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  trustConnections TrustConnection[]
+
+  @@index([city])
+  @@index([category])
+  @@index([isActive])
+  @@index([neighborhoodId])
+  @@index([regionId])
+  @@index([onboardingStatus])
+  @@index([verificationStatus])
+  @@map("partners")
+}
+
+model AdminProfile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  role AdminRole @default(MODERATOR)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admin_profiles")
+}
+
+// ─────────────────────────────────────────────
+// PETS — contexto para reputação contextual
+// ─────────────────────────────────────────────
+
+model Pet {
+  id      String       @id @default(cuid())
+  tutorId String
+  tutor   TutorProfile @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  name        String
+  species     Species
+  breed       String?
+  gender      PetGender?
+  birthDate   DateTime?
+  weight      Float? // kg
+  size        PetSize?
+  avatarUrl   String?
+  description String?
+
+  // Legado — preferir description (Etapa 6.3)
+  notes           String?
+  isNeutered      Boolean?
+  hasSpecialNeeds Boolean @default(false)
+
+  // Arquivamento operacional (sem hard delete)
+  isActive Boolean @default(true)
+
+  // Etapa 6.4+ — vacinas, medicamentos, histórico médico, documentos
+  // extensionData Json? @default("{}")
+
+  requests ServiceRequest[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@index([tutorId])
+  @@index([tutorId, isActive])
+  @@map("pets")
+}
+
+// ─────────────────────────────────────────────
+// SERVIÇOS E SOLICITAÇÕES
+// ─────────────────────────────────────────────
+
+model Service {
+  id             String              @id @default(cuid())
+  professionalId String
+  professional   ProfessionalProfile @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?
+  serviceType ServiceType
+  priceMin    Float?
+  priceMax    Float?
+  isActive    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([professionalId])
+  @@index([serviceType])
+  @@map("services")
+}
+
+model ServiceRequest {
+  id             String              @id @default(cuid())
+  tutorId        String
+  tutor          TutorProfile        @relation(fields: [tutorId], references: [id])
+  professionalId String
+  professional   ProfessionalProfile @relation(fields: [professionalId], references: [id])
+  petId          String?
+  pet            Pet?                @relation(fields: [petId], references: [id])
+
+  serviceType ServiceType
+  status      RequestStatus @default(PENDING)
+
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  notes String?
+
+  // ── Recorrência ─────────────────────────────────────────────────────────
+  // isRecurring + parentRequestId: rastreamento de cadeia histórica (Fase 3)
+  // seriesId + recurrenceRule: agendamento automático (Fase 4+)
+  // Todos os campos de recorrência são nullable — sem impacto em requests únicos
+  isRecurring      Boolean   @default(false)
+  parentRequestId  String?   // aponta para o request anterior da mesma série
+  seriesId         String?   // agrupa todos os requests da série para query eficiente
+  recurrenceRule   String?   // RRULE: ex "FREQ=WEEKLY;BYDAY=SA" (RFC 5545)
+  recurrenceEndsAt DateTime? // quando a série de recorrência expira
+  nextScheduledAt  DateTime? // data prevista do próximo atendimento na série
+
+  review   Review?
+  disputes Dispute[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tutorId])
+  @@index([professionalId])
+  @@index([status])
+  @@index([petId])
+  @@index([isRecurring])
+  @@index([seriesId])
+  @@map("service_requests")
+}
+
+// ─────────────────────────────────────────────
+// TRUST — núcleo reputacional
+// ─────────────────────────────────────────────
+
+// Reviews com contexto — reputação não é genérica
+model Review {
+  id      String       @id @default(cuid())
+  tutorId String
+  tutor   TutorProfile @relation(fields: [tutorId], references: [id])
+
+  requestId String         @unique
+  request   ServiceRequest @relation(fields: [requestId], references: [id])
+
+  rating  Int // 1-5
+  comment String?
+
+  // Contexto reputacional — sem isso a review é genérica
+  serviceType ServiceType
+  petContext  Json // snapshot: species, breed, specialNeeds at review time
+
+  // Visibilidade e moderação
+  isVisible Boolean @default(true)
+
+  // Antifraude
+  isFlagged  Boolean   @default(false)
+  flagReason String?
+  flaggedAt  DateTime?
+  resolvedAt DateTime?
+
+  // Moderação administrativa — ação explícita do admin
+  // Distinto de isVisible: registra quem ocultou, quando e por quê
+  hiddenByAdmin Boolean   @default(false)
+  hiddenAt      DateTime?
+  hiddenReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tutorId])
+  @@index([requestId])
+  @@index([serviceType])
+  @@index([isFlagged])
+  @@index([hiddenByAdmin])
+  @@map("reviews")
+}
+
+// TrustEvent — APPEND ONLY. Nunca deletar. Nunca editar.
+// É a fonte da verdade para cálculo de Trust Score e Trust Graph.
+model TrustEvent {
+  id String @id @default(cuid())
+
+  // Quem gerou o evento
+  actorId String
+  actor   User   @relation("TrustEventActor", fields: [actorId], references: [id])
+
+  // Sobre quem é o evento (profissional que recebe o impacto reputacional)
+  targetId String
+  target   User   @relation("TrustEventTarget", fields: [targetId], references: [id])
+
+  type   TrustEventType
+  weight Float // positivo ou negativo; magnitude do impacto
+
+  // Contexto detalhado do evento (serviceType, petSpecies, etc.)
+  context Json?
+
+  // Referências opcionais para rastreabilidade
+  relatedRequestId String?
+  relatedReviewId  String?
+
+  // Antifraude: eventos flagados não entram no cálculo
+  isFlagged  Boolean @default(false)
+  flagReason String?
+
+  // Imutável — apenas createdAt, sem updatedAt
+  createdAt DateTime @default(now())
+
+  @@index([targetId])
+  @@index([actorId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([targetId, createdAt])
+  @@map("trust_events")
+}
+
+// ─────────────────────────────────────────────
+// CRM — ferramenta operacional do profissional
+// ─────────────────────────────────────────────
+
+model CrmClient {
+  id             String              @id @default(cuid())
+  professionalId String
+  professional   ProfessionalProfile @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  // FK real para TutorProfile — garante integridade referencial
+  tutorId String
+  tutor   TutorProfile @relation(fields: [tutorId], references: [id])
+
+  displayName String
+  notes       String?
+  tags        String[]
+
+  // Métricas de recorrência para o CRM
+  totalServices  Int      @default(0)
+  lastServiceAt  DateTime?
+  nextServiceAt  DateTime?
+  isActiveClient Boolean  @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([professionalId, tutorId])
+  @@index([professionalId])
+  @@index([isActiveClient])
+  @@map("crm_clients")
+}
+
+// ─────────────────────────────────────────────
+// AUDITORIA — rastreabilidade transversal
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  action   String // ex: "review.create", "trust_event.flag", "profile.update"
+  entity   String // ex: "Review", "TrustEvent", "ProfessionalProfile"
+  entityId String
+
+  before Json? // estado anterior (para mudanças de estado)
+  after  Json? // estado posterior
+
+  // Metadados de segurança
+  ipAddress String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────
+// ANTIFRAUDE — sinais e flags
+// ─────────────────────────────────────────────
+
+model FraudSignal {
+  id String @id @default(cuid())
+
+  // FK real para User — garante que o alvo existe no sistema
+  targetUserId String
+  targetUser   User   @relation(fields: [targetUserId], references: [id])
+
+  signalType FraudSignalType
+  severity   FraudSeverity   @default(LOW)
+
+  description String?
+  evidence    Json? // dados que suportam o sinal
+
+  // Ciclo de vida
+  status     FraudSignalStatus @default(OPEN)
+  resolvedAt DateTime?
+  resolvedBy String? // User.id do admin que resolveu
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([targetUserId])
+  @@index([status])
+  @@index([signalType])
+  @@index([severity])
+  @@map("fraud_signals")
+}
+
+// ─────────────────────────────────────────────
+// RELACIONAMENTO — núcleo de recorrência do Peteen
+// ─────────────────────────────────────────────
+
+// TutorProfessionalRelationship — estado contínuo do vínculo entre tutor e profissional.
+//
+// Princípios:
+//   - Único por par (tutorId, professionalId) — um relacionamento por dupla
+//   - Contadores atômicos — cada campo é incrementado de forma independente
+//   - Score e level são derivados dos contadores — nunca editados diretamente
+//   - Cresce com cada atendimento concluído — NUNCA decresce por deletar dados
+//   - Alimenta Trust Engine e Ranking Engine
+model TutorProfessionalRelationship {
+  id String @id @default(cuid())
+
+  tutorId        String
+  tutor          TutorProfile        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+
+  professionalId String
+  professional   ProfessionalProfile @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  // Contadores atômicos — incrementados por eventos de domínio
+  totalRequests     Int @default(0)  // requests criados (inclusive cancelados)
+  completedServices Int @default(0)  // atendimentos COMPLETED — driver principal do nível
+  reviewsGiven      Int @default(0)  // reviews criadas pelo tutor para este profissional
+  cancelledByTutor  Int @default(0)  // cancelamentos feitos pelo tutor
+  cancelledByPro    Int @default(0)  // cancelamentos feitos pelo profissional
+  disputedServices  Int @default(0)  // disputas abertas neste relacionamento
+
+  // Timeline do vínculo
+  firstServiceAt DateTime? // data do primeiro atendimento concluído
+  lastServiceAt  DateTime? // data do último atendimento concluído
+
+  // Score e nível do relacionamento — derivados e persistidos para leitura rápida
+  relationshipScore Float             @default(0)
+  relationshipLevel RelationshipLevel @default(NEW)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tutorId, professionalId])
+  @@index([professionalId])
+  @@index([professionalId, relationshipLevel])
+  @@map("tutor_professional_relationships")
+}
+
+// ─────────────────────────────────────────────
+// MODERAÇÃO — flags, disputas e auditoria admin
+// ─────────────────────────────────────────────
+
+// OperationalFlag — sinal operacional gerado pelo sistema, usuário ou admin.
+// Distinto de FraudSignal (antifraude técnico): flags são operacionais e mais amplas.
+// NUNCA deletar. NUNCA editar. Apenas resolver ou dispensar.
+model OperationalFlag {
+  id         String          @id @default(cuid())
+  targetType FlagTargetType
+  targetId   String
+  reason     String
+  severity   FlagSeverity    @default(LOW)
+  source     FlagSource      @default(SYSTEM)
+  status     FlagStatus      @default(OPEN)
+  createdAt  DateTime        @default(now())
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  @@index([targetType, targetId])
+  @@index([status])
+  @@index([severity])
+  @@map("operational_flags")
+}
+
+// Dispute — disputa aberta por um tutor em uma ServiceRequest.
+// Complementa o estado DISPUTED da ServiceRequest.
+// Registra a motivação, descrição e resolução da disputa.
+model Dispute {
+  id          String         @id @default(cuid())
+  requestId   String
+  request     ServiceRequest @relation(fields: [requestId], references: [id])
+  openedBy    String
+  opener      User           @relation("DisputeOpener", fields: [openedBy], references: [id])
+  reason      String
+  description String?
+  status      DisputeStatus  @default(OPEN)
+  createdAt   DateTime       @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
+
+  @@index([requestId])
+  @@index([status])
+  @@map("disputes")
+}
+
+// AdminAuditLog — trilha de auditoria de ações administrativas.
+// Distinto do AuditLog geral: registra apenas ações sensíveis do backoffice.
+// Imutável — apenas createdAt, sem updatedAt.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  admin      User     @relation("AdminAuditLogs", fields: [adminId], references: [id])
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+// PersonaRole — alinhado ao domínio de identidade
+// Também usado como tipo do campo User.activePrimaryRole
+enum PersonaRole {
+  TUTOR
+  PROFESSIONAL
+  PARTNER
+  ADMIN
+}
+
+enum ServiceType {
+  DOG_WALK
+  PET_SITTING
+  BOARDING
+  GROOMING
+  TRAINING
+  VET_ACCOMPANY
+  DAY_CARE
+  HOME_CARE
+  OTHER
+}
+
+enum Species {
+  DOG
+  CAT
+  BIRD
+  RODENT
+  OTHER
+}
+
+enum PetGender {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+enum PetSize {
+  SMALL
+  MEDIUM
+  LARGE
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED_BY_TUTOR
+  CANCELLED_BY_PROFESSIONAL
+  DISPUTED
+  EXPIRED
+}
+
+enum TrustEventType {
+  REVIEW_POSITIVE
+  REVIEW_NEGATIVE
+  REVIEW_NEUTRAL
+  RECURRENCE_COMPLETED
+  CANCELLATION_BY_PRO
+  CANCELLATION_BY_TUTOR
+  RECOMMENDATION
+  IDENTITY_VERIFIED
+  FRAUD_FLAG
+  FRAUD_FLAG_RESOLVED
+}
+
+enum TrustLevel {
+  INITIAL
+  BUILDING
+  ESTABLISHED
+  TRUSTED
+  ELITE
+}
+
+enum PlanType {
+  FREE
+  PROFESSIONAL
+  PROFESSIONAL_PLUS
+}
+
+enum PartnerType {
+  VET
+  PET_SHOP
+  CLINIC
+  PET_HOTEL
+  DAY_CARE
+  OTHER
+}
+
+enum AdminRole {
+  MODERATOR
+  SENIOR_MODERATOR
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum FraudSignalType {
+  FAKE_REVIEW
+  ARTIFICIAL_RECURRENCE
+  DUPLICATE_ACCOUNT
+  SUSPICIOUS_NETWORK
+  RANKING_MANIPULATION
+  UNUSUAL_REVIEW_VELOCITY
+}
+
+enum FraudSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum FraudSignalStatus {
+  OPEN
+  INVESTIGATING
+  CONFIRMED
+  FALSE_POSITIVE
+  RESOLVED
+}
+
+// Níveis de relacionamento — determinados por completedServices
+// NEW:       1  atendimento concluído
+// KNOWN:     2  atendimentos
+// RECURRING: 3-4 atendimentos
+// TRUSTED:   5-9 atendimentos
+// PARTNER:   10+ atendimentos
+enum RelationshipLevel {
+  NEW
+  KNOWN
+  RECURRING
+  TRUSTED
+  PARTNER
+}
+
+// ─── Moderação / Antifraude Operacional ───────────────────────────────────────
+
+enum FlagTargetType {
+  USER
+  PROFESSIONAL
+  REVIEW
+  REQUEST
+}
+
+enum FlagSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// USER_REPORT: flag gerada por relato de usuário
+// SYSTEM: flag gerada automaticamente por rate limiting ou regras
+// ADMIN: flag criada manualmente por um admin
+enum FlagSource {
+  SYSTEM
+  USER_REPORT
+  ADMIN
+}
+
+enum FlagStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  REJECTED
+}
+
+// ─────────────────────────────────────────────
+// TRUST GRAPH — Etapa 5.8
+// ─────────────────────────────────────────────
+
+// TrustConnection — registro de que um ator (parceiro, tutor ou profissional)
+// recomenda ativamente um profissional da plataforma.
+//
+// Princípio: "Confio porque alguém confiável recomenda esta pessoa."
+// Arquitetura de confiança transitiva, sem IA, sem ML.
+model TrustConnection {
+  id   String @id @default(cuid())
+
+  // Origem da confiança
+  sourceType TrustSourceType
+  sourceId   String
+  sourceName String          // fallback legado / denormalizado
+
+  // Etapa 5.9 — vínculo com entidade Partner real (quando origem = PARTNER)
+  sourcePartnerId String?
+  sourcePartner   Partner? @relation(fields: [sourcePartnerId], references: [id], onDelete: SetNull)
+
+  // Destino da confiança — sempre um ProfessionalProfile
+  targetType    TrustTargetType     @default(PROFESSIONAL)
+  targetId      String
+  targetProfile ProfessionalProfile @relation(fields: [targetId], references: [id], onDelete: Cascade)
+
+  // Tipo e peso da conexão
+  connectionType TrustConnectionType
+  weight         Int
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Constraint: mesma origem não pode recomendar o mesmo destino com mesmo tipo duas vezes
+  @@unique([sourceId, targetId, connectionType])
+  @@index([targetId])
+  @@index([isActive])
+  @@map("trust_connections")
+}
+
+enum TrustConnectionType {
+  PARTNER_RECOMMENDS_PROFESSIONAL
+  TUTOR_RECOMMENDS_PROFESSIONAL
+  PROFESSIONAL_RECOMMENDS_PROFESSIONAL
+}
+
+enum TrustSourceType {
+  PARTNER
+  TUTOR
+  PROFESSIONAL
+}
+
+enum TrustTargetType {
+  PROFESSIONAL
+}
+
+enum PartnerCategory {
+  PET_SHOP
+  VETERINARY_CLINIC
+  PET_HOTEL
+  DAYCARE
+  TRAINING_CENTER
+  NGO
+  OTHER
+}
+
+enum PartnerOnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum PartnerVerificationStatus {
+  NONE
+  PENDING_VERIFICATION
+  VERIFIED
+  SUSPENDED
+}
+
+// ─────────────────────────────────────────────
+// VERIFICATION ENGINE — Etapa 6.2
+// ─────────────────────────────────────────────
+
+enum VerificationEntityType {
+  PROFESSIONAL
+  PARTNER
+}
+
+enum VerificationRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model VerificationRequest {
+  id                String                    @id @default(cuid())
+  entityType        VerificationEntityType
+  entityId          String
+  status            VerificationRequestStatus   @default(PENDING)
+  requestedAt       DateTime                  @default(now())
+  reviewedAt        DateTime?
+  reviewedByAdminId String?
+  rejectionReason   String?
+  notes             String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([requestedAt])
+  @@map("verification_requests")
+}

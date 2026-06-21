@@ -8,6 +8,7 @@ import {
   BarChart3,
   Flag,
   Inbox,
+  Star,
 } from "lucide-react";
 
 import type { AppShellVariant } from "@/types";
@@ -33,7 +34,9 @@ export const shellNavConfig: Record<AppShellVariant, ShellNavItem[]> = {
   professional: [
     { label: "Início", shortLabel: "Início", href: "/professional", icon: LayoutDashboard },
     { label: "Solicitações", shortLabel: "Fila", href: "/requests", icon: Inbox },
-    { label: "CRM — Clientes", shortLabel: "Clientes", href: "/professional/crm", icon: Users },
+    { label: "Clientes", shortLabel: "Clientes", href: "/professional/clients", icon: Users },
+    { label: "Pets", shortLabel: "Pets", href: "/professional/pets", icon: PawPrint },
+    { label: "Reviews", shortLabel: "Reviews", href: "/professional/reviews", icon: Star },
     { label: "Métricas", shortLabel: "Métricas", href: "/professional/metricas", icon: BarChart3 },
   ],
   admin: [

@@ -48,6 +48,7 @@ import {
   deactivateServiceRecord,
   reactivateServiceRecord,
 } from "../infrastructure/repository"
+import { recordProfessionalProfileAudit } from "../infrastructure/audit"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROFESSIONAL PROFILE
@@ -174,8 +175,12 @@ export async function updateProfessionalProfileAction(
     }
 
     const updated = await updateProfessionalProfileRecord(profileId, parsed.data)
+    await recordProfessionalProfileAudit(session.id, updated, profile)
 
     revalidatePath("/(professional)")
+    revalidatePath("/professional")
+    revalidatePath("/professional/metricas")
+    revalidatePath("/admin/audit")
     revalidatePath("/(discovery)/professionals")
 
     return { success: true, data: updated }

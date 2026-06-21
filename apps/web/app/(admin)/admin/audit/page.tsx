@@ -16,6 +16,7 @@ const ACTION_COLORS: Record<string, string> = {
   "verification.suspended": "bg-amber-100 text-amber-700",
   "verification.reactivated": "bg-sky-100 text-sky-700",
   "tutor.profile_updated": "bg-teal-100 text-teal-700",
+  "professional.profile_updated": "bg-indigo-100 text-indigo-700",
   "pet.created": "bg-emerald-100 text-emerald-700",
   "pet.updated": "bg-sky-100 text-sky-700",
   "pet.archived": "bg-neutral-200 text-neutral-700",
@@ -64,6 +65,7 @@ export default async function AdminAuditPage({ searchParams }: Props) {
           <option value="PROFESSIONAL">Profissional</option>
           <option value="PARTNER">Parceiro</option>
           <option value="TutorProfile">Perfil de tutor</option>
+          <option value="ProfessionalProfile">Perfil profissional</option>
           <option value="Pet">Pet</option>
         </select>
 

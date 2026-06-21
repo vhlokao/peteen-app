@@ -630,7 +630,12 @@ export async function getAdminAuditLogs(
       ...userLogs.map((l) => ({ entityType: l.entity, entityId: l.entityId })),
     ]
 
-    const proIds = collectEntityIds(allEntries, "PROFESSIONAL")
+    const proIds = [
+      ...new Set([
+        ...collectEntityIds(allEntries, "PROFESSIONAL"),
+        ...collectEntityIds(allEntries, "PROFESSIONALPROFILE"),
+      ]),
+    ]
     const partnerIds = collectEntityIds(allEntries, "PARTNER")
     const tutorProfileIds = collectEntityIds(allEntries, "TUTORPROFILE")
     const petIds = collectEntityIds(allEntries, "PET")
@@ -689,7 +694,8 @@ export async function getAdminAuditLogs(
 
     function resolveEntityLabel(entityType: string, entityId: string): string | null {
       const type = entityType.toUpperCase()
-      if (type === "PROFESSIONAL") return proLabel.get(entityId) ?? null
+      if (type === "PROFESSIONAL" || type === "PROFESSIONALPROFILE")
+        return proLabel.get(entityId) ?? null
       if (type === "PARTNER") return partnerLabel.get(entityId) ?? null
       if (type === "TUTORPROFILE") return tutorProfileLabel.get(entityId) ?? null
       if (type === "PET") return petLabel.get(entityId) ?? null

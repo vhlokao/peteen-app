@@ -21,7 +21,9 @@ type Props = {
 }
 
 export function BadgeList({ badges, verifications }: Props) {
-  const activeVerifications = verifications.filter((v) => v.active)
+  const activeVerifications = verifications.filter(
+    (v) => v.active && !v.internalOnly
+  )
   const hasContent = badges.length > 0 || activeVerifications.length > 0
 
   if (!hasContent) return null

@@ -42,6 +42,8 @@ export type VerificationData = {
   emoji:       string
   active:      boolean
   activatable: boolean  // true = pode ser ativado via Backoffice hoje
+  /** Oculto na UI pública até existir fluxo documental dedicado */
+  internalOnly?: boolean
 }
 
 // ── Input para o resolver (dados brutos, sem dependência de DB) ───────────────

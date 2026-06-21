@@ -72,6 +72,7 @@ export const VERIFICATION_METADATA: Record<
     description: "Identidade verificada via documento oficial.",
     emoji:       "🪪",
     activatable: false,
+    internalOnly: true,
   },
   VERIFIED_PHONE: {
     label:       "Telefone Verificado",

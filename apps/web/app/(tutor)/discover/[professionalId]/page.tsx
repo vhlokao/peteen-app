@@ -323,7 +323,7 @@ export default async function ProfessionalProfilePage({ params }: ProfilePagePro
       {(() => {
         const showSection =
           badgesResult.badges.length > 0 ||
-          badgesResult.verifications.some((v) => v.active)
+          badgesResult.verifications.some((v) => v.active && !v.internalOnly)
 
         if (!showSection) return null
 

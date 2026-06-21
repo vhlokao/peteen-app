@@ -9,6 +9,7 @@ import {
   Flag,
   Inbox,
   Star,
+  UserCircle,
 } from "lucide-react";
 
 import type { AppShellVariant } from "@/types";
@@ -38,6 +39,7 @@ export const shellNavConfig: Record<AppShellVariant, ShellNavItem[]> = {
     { label: "Pets", shortLabel: "Pets", href: "/professional/pets", icon: PawPrint },
     { label: "Reviews", shortLabel: "Reviews", href: "/professional/reviews", icon: Star },
     { label: "Métricas", shortLabel: "Métricas", href: "/professional/metricas", icon: BarChart3 },
+    { label: "Perfil", shortLabel: "Perfil", href: "/professional/profile", icon: UserCircle },
   ],
   admin: [
     { label: "Painel", shortLabel: "Painel", href: "/admin", icon: LayoutDashboard },

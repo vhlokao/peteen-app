@@ -8,6 +8,7 @@ import { getProfessionalPortalData } from "@/modules/professional-crm/infrastruc
 import { ProfessionalStatsGrid } from "@/modules/professional-crm/components/professional-stats-grid"
 import { ProfessionalRecentActivity } from "@/modules/professional-crm/components/professional-recent-activity"
 import { ProfessionalNextActions } from "@/modules/professional-crm/components/professional-next-actions"
+import { ProfessionalTrustSummary } from "@/modules/reputation-badges/components/professional-trust-summary"
 
 export const metadata: Metadata = {
   title: "Portal do profissional",
@@ -28,6 +29,13 @@ export default async function ProfessionalDashboardPage() {
           </Link>
         }
       />
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Reputação
+        </h2>
+        <ProfessionalTrustSummary professionalId={profile.id} />
+      </section>
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">

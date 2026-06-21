@@ -90,6 +90,17 @@ export const CreateProfessionalProfileSchema = z.object({
     .toUpperCase(),
   lat: z.number().min(-90).max(90).optional(),
   lng: z.number().min(-180).max(180).optional(),
+  avatarUrl: z
+    .string()
+    .url("Informe uma URL válida")
+    .max(500, "URL muito longa")
+    .optional()
+    .or(z.literal("")),
+  serviceRadiusKm: z
+    .number()
+    .min(1, "Raio mínimo de 1 km")
+    .max(200, "Raio máximo de 200 km")
+    .optional(),
   serviceTypes: z
     .array(z.enum(SERVICE_TYPES))
     .min(1, "Selecione ao menos um tipo de serviço")
@@ -211,6 +222,7 @@ export type ProfessionalProfileData = {
   state: string
   lat: number | null
   lng: number | null
+  serviceRadiusKm: number | null
   serviceTypes: ServiceType[]
   specializations: string[]
 

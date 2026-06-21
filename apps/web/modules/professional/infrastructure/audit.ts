@@ -13,11 +13,13 @@ function profileAuditPayload(
   return {
     id: profile.id,
     displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl,
     city: profile.city,
     state: profile.state,
     neighborhood: profile.neighborhood,
     phone: profile.phone,
     bio: profile.bio,
+    serviceRadiusKm: profile.serviceRadiusKm,
     serviceTypes: profile.serviceTypes,
     specializations: profile.specializations,
   }

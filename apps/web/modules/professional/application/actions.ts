@@ -179,8 +179,11 @@ export async function updateProfessionalProfileAction(
 
     revalidatePath("/(professional)")
     revalidatePath("/professional")
+    revalidatePath("/professional/profile")
     revalidatePath("/professional/metricas")
     revalidatePath("/admin/audit")
+    revalidatePath("/discover")
+    revalidatePath(`/discover/${profileId}`)
     revalidatePath("/(discovery)/professionals")
 
     return { success: true, data: updated }

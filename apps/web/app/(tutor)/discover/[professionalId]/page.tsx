@@ -35,6 +35,8 @@ import { ReviewCard } from "@/components/shared/cards/ReviewCard"
 import { EmptyState } from "@/components/shared/feedback/EmptyState"
 import { RequestServiceSheet } from "@/modules/service-request/components/RequestServiceSheet"
 import { BadgeList } from "@/components/shared/badges/BadgeList"
+import { ProfessionalReputationBadges } from "@/modules/reputation-badges/components/professional-reputation-badges"
+import { ProfessionalTrustSummary } from "@/modules/reputation-badges/components/professional-trust-summary"
 
 type ProfilePageProps = {
   params: Promise<{ professionalId: string }>
@@ -144,6 +146,8 @@ export default async function ProfessionalProfilePage({ params }: ProfilePagePro
     .join("")
     .toUpperCase()
 
+  const myRelationshipCompleted = myRelationship?.completedServices
+
   return (
     <div className="page-container max-w-2xl">
       {/* Voltar */}
@@ -186,6 +190,11 @@ export default async function ProfessionalProfilePage({ params }: ProfilePagePro
                 {profile.city}, {profile.state}
               </span>
             </div>
+            <ProfessionalReputationBadges
+              professionalId={professionalId}
+              className="mt-2"
+              viewerRelationshipCompletedServices={myRelationshipCompleted}
+            />
           </div>
 
           {/* Reputação: estrelas + Trust Score */}
@@ -302,7 +311,15 @@ export default async function ProfessionalProfilePage({ params }: ProfilePagePro
         </div>
       </section>
 
-      {/* ── Badges e verificações ────────────────────────────────────────── */}
+      <section className="mb-6">
+        <ProfessionalTrustSummary
+          professionalId={professionalId}
+          viewerRelationshipCompletedServices={myRelationshipCompleted}
+          hideBadges
+        />
+      </section>
+
+      {/* ── Badges e verificações (legado) ───────────────────────────────── */}
       {(() => {
         const showSection =
           badgesResult.badges.length > 0 ||

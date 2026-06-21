@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { CalendarDays, RotateCcw } from "lucide-react"
+import { CalendarDays, History, RotateCcw } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { buttonVariants } from "@/components/ui/button"
@@ -62,15 +62,23 @@ export function HiredProfessionalsBlock({
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link
+                    href={`/tutor/professionals/${pro.professionalId}`}
+                    className={buttonVariants({ size: "sm", className: "gap-1" })}
+                  >
+                    <History className="size-3.5" />
+                    Ver histórico
+                  </Link>
+                  <Link
                     href={`/discover/${pro.professionalId}`}
                     className={buttonVariants({ size: "sm", variant: "outline" })}
                   >
-                    Ver perfil
+                    Ver perfil público
                   </Link>
                   <Link
                     href={`/discover/${pro.professionalId}`}
                     className={buttonVariants({
                       size: "sm",
+                      variant: "outline",
                       className: "gap-1",
                     })}
                   >

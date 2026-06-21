@@ -51,6 +51,8 @@ export async function createProfessionalProfileRecord(
       state: input.state,
       lat: input.lat ?? null,
       lng: input.lng ?? null,
+      avatarUrl: input.avatarUrl?.trim() || null,
+      serviceRadiusKm: input.serviceRadiusKm ?? undefined,
       serviceTypes: input.serviceTypes,
       specializations: input.specializations ?? [],
       // trustScore e trustLevel iniciados nos defaults do schema (0, INITIAL)
@@ -93,6 +95,12 @@ export async function updateProfessionalProfileRecord(
       ...(input.state !== undefined && { state: input.state }),
       ...(input.lat !== undefined && { lat: input.lat ?? null }),
       ...(input.lng !== undefined && { lng: input.lng ?? null }),
+      ...(input.avatarUrl !== undefined && {
+        avatarUrl: input.avatarUrl?.trim() || null,
+      }),
+      ...(input.serviceRadiusKm !== undefined && {
+        serviceRadiusKm: input.serviceRadiusKm ?? null,
+      }),
       ...(input.serviceTypes !== undefined && { serviceTypes: input.serviceTypes }),
       ...(input.specializations !== undefined && { specializations: input.specializations }),
       // trustScore, trustLevel, isVerified: NUNCA atualizados aqui
@@ -220,6 +228,7 @@ export async function findPublicProfessionals(
       state: r.state,
       lat: r.lat,
       lng: r.lng,
+      serviceRadiusKm: r.serviceRadiusKm,
       serviceTypes: r.serviceTypes as ServiceType[],
       specializations: r.specializations,
       trustScore: r.trustScore,
@@ -278,6 +287,7 @@ export async function findPublicProfessionalById(
     state: result.state,
     lat: result.lat,
     lng: result.lng,
+    serviceRadiusKm: result.serviceRadiusKm,
     serviceTypes: result.serviceTypes as ServiceType[],
     specializations: result.specializations,
     trustScore: result.trustScore,
@@ -396,6 +406,7 @@ function mapToDomain(record: {
   state: string
   lat: number | null
   lng: number | null
+  serviceRadiusKm: number | null
   serviceTypes: string[]
   specializations: string[]
   trustScore: number

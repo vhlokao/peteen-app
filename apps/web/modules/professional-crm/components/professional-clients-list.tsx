@@ -53,10 +53,10 @@ export function ProfessionalClientsList({
               </p>
             )}
             <Link
-              href="/requests"
+              href={`/professional/clients/${client.tutorId}`}
               className="inline-block text-xs font-medium text-primary hover:underline"
             >
-              Ver histórico de solicitações →
+              Ver histórico →
             </Link>
           </CardContent>
         </Card>

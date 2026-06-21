@@ -9,12 +9,8 @@ import { getAuthContext } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { getMyRelationshipsForProfessionals } from "@/modules/relationship/infrastructure/repository"
 import { isProfessionalVerificationActive } from "@/modules/verification/domain/verification-state"
-import {
-  getCompletedServicesMap,
-  computeBadgesFromDiscoveryData,
-} from "@/modules/badges/application/get-professional-badges"
-import { getActiveConnectionsBatch } from "@/modules/trust-graph/infrastructure/repository"
-import type { ActiveConnection } from "@/modules/trust-graph/domain/types"
+import { getProfessionalReputationBadgesBatch } from "@/modules/reputation-badges/application/get-reputation"
+import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
 import { getPartnerEndorsementsBatch } from "@/modules/partners/application/get-partner-endorsements"
 import { getRecommendations } from "@/modules/recommendation/application/get-recommendations"
 import { getLocalDiscoveryContextAction } from "@/modules/growth-engine/application/actions"
@@ -95,20 +91,19 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
 
   // ── 3a. Relacionamentos pessoais do tutor + completedServices (badges) + endorsements ─
   // Uma query por tipo de dado — nenhuma N+1.
-  const [myRelMap, completedServicesMap, endorsementsMap, partnerEndorsementsMap] = await Promise.all([
+  const [myRelMap, partnerEndorsementsMap] = await Promise.all([
     tutorProfile && professionals.length > 0
       ? getMyRelationshipsForProfessionals(tutorProfile.id, professionalIds)
       : Promise.resolve(new Map<string, number>()),
     professionals.length > 0
-      ? getCompletedServicesMap(professionalIds)
-      : Promise.resolve(new Map<string, number>()),
-    professionals.length > 0
-      ? getActiveConnectionsBatch(professionalIds)
-      : Promise.resolve(new Map<string, ActiveConnection[]>()),
-    professionals.length > 0
       ? getPartnerEndorsementsBatch(professionalIds)
       : Promise.resolve(new Map()),
   ])
+
+  const reputationBadgesMap =
+    professionals.length > 0
+      ? await getProfessionalReputationBadgesBatch(professionalIds, myRelMap)
+      : new Map<string, ReputationBadge[]>()
 
   // ── 3b. Recomendações + contexto local Growth Engine ───────────────────────
   const [recommendationBlocks, localContext] = await Promise.all([
@@ -242,20 +237,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
         // FASE 5: substituir por RankingEngine.query()
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {professionals.map((pro) => {
-            const completedServices   = completedServicesMap.get(pro.id) ?? 0
-            const proConnections      = endorsementsMap.get(pro.id) ?? []
-            const partnerEndorsements = proConnections.filter(
-              (c) => c.connectionType === "PARTNER_RECOMMENDS_PROFESSIONAL"
-            ).length
-            const cardBadges = computeBadgesFromDiscoveryData({
-              trustScore:          pro.trustScore,
-              reviewCount:         pro.reviewCount,
-              averageRating:       pro.averageRating,
-              isVerified:          pro.isVerified,
-              verifiedIdentity:    pro.verifiedIdentity,
-              completedServices,
-              partnerEndorsements,
-            })
+            const reputationBadges = reputationBadgesMap.get(pro.id) ?? []
             const verificationActive = isProfessionalVerificationActive(pro)
             const partnerEndorsementsList = partnerEndorsementsMap.get(pro.id) ?? []
             return (
@@ -275,7 +257,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
                 averageRating={pro.averageRating}
                 myCompletedServices={myRelMap.get(pro.id)}
                 recurringClientsCount={pro.relationshipStats.recurringClients}
-                badges={cardBadges}
+                reputationBadges={reputationBadges}
                 partnerEndorsements={partnerEndorsementsList}
               />
             )

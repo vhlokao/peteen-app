@@ -13,6 +13,8 @@ import {
 } from "@/modules/professional/domain/types"
 import { BadgePill } from "@/components/shared/badges/BadgePill"
 import type { BadgeData } from "@/modules/badges/domain/types"
+import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
+import { ReputationBadgeList } from "@/modules/reputation-badges/components/reputation-badge-list"
 import type { PartnerEndorsement } from "@/modules/partners/domain/types"
 
 type ProfessionalCardService = {
@@ -38,10 +40,11 @@ type ProfessionalCardProps = {
   /** Quantos tutores distintos têm relacionamento recorrente (3+ sessões) com este profissional. */
   recurringClientsCount?: number
   /**
-   * Top 2 badges do profissional, já filtrados por prioridade.
-   * Calculado na discover page via computeBadgesFromDiscoveryData().
+   * Top badges do profissional (legado badges module).
    */
   badges?: BadgeData[]
+  /** Badges reputacionais Etapa 6.7 */
+  reputationBadges?: ReputationBadge[]
   /** Parceiros que recomendam este profissional (Etapa 5.9) */
   partnerEndorsements?: PartnerEndorsement[]
 }
@@ -69,6 +72,7 @@ export function ProfessionalCard({
   myCompletedServices,
   recurringClientsCount,
   badges = [],
+  reputationBadges = [],
   partnerEndorsements = [],
 }: ProfessionalCardProps) {
   const initials = displayName
@@ -168,20 +172,26 @@ export function ProfessionalCard({
           </div>
         ) : null}
 
-        {/* Badges automáticos + selo de verificação */}
-        {(badges.length > 0 || isVerified) && (
+        {/* Badges reputacionais */}
+        {(reputationBadges.length > 0 || badges.length > 0 || isVerified) && (
           <div className="flex flex-wrap gap-1.5">
-            {isVerified && (
-              <span
-                className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[0.65rem] font-medium text-primary"
-                title="Perfil revisado e aprovado pela equipe Peteen"
-              >
-                ✓ Perfil Verificado
-              </span>
+            {reputationBadges.length > 0 ? (
+              <ReputationBadgeList badges={reputationBadges} />
+            ) : (
+              <>
+                {isVerified && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[0.65rem] font-medium text-primary"
+                    title="Perfil revisado e aprovado pela equipe Peteen"
+                  >
+                    ✓ Perfil Verificado
+                  </span>
+                )}
+                {badges.map((badge) => (
+                  <BadgePill key={badge.type} badge={badge} size="xs" />
+                ))}
+              </>
             )}
-            {badges.map((badge) => (
-              <BadgePill key={badge.type} badge={badge} size="xs" />
-            ))}
           </div>
         )}
 

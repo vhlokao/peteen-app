@@ -4,11 +4,10 @@ import Link from "next/link"
 
 import { notFound } from "next/navigation"
 
-import { ArrowLeft, MapPin, Phone, Globe, ShieldCheck, Users, Link2, Sparkles } from "lucide-react"
-
-
+import { MapPin, Phone, Globe, ShieldCheck, Users, Link2, Sparkles } from "lucide-react"
 
 import { getPartnerPublicProfileAction } from "@/modules/partners/application/actions"
+import { PublicPageBackLink } from "@/modules/partner-portal/components/public-page-back-link"
 
 import { PARTNER_CATEGORY_LABELS, PARTNER_VERIFICATION_STATUS_LABELS } from "@/modules/partners/domain/constants"
 import { isPartnerVerificationActive } from "@/modules/verification/domain/verification-state"
@@ -22,9 +21,8 @@ import { PageHeader } from "@/components/layout/page-header"
 
 
 type Props = {
-
   params: Promise<{ slug: string }>
-
+  searchParams: Promise<{ from?: string; returnTo?: string }>
 }
 
 
@@ -43,9 +41,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 
 
-export default async function PartnerPublicPage({ params }: Props) {
+export default async function PartnerPublicPage({ params, searchParams }: Props) {
 
   const { slug } = await params
+  const query = await searchParams
 
   const partner = await getPartnerPublicProfileAction(slug)
 
@@ -81,19 +80,11 @@ export default async function PartnerPublicPage({ params }: Props) {
 
     <div className="page-container max-w-2xl">
 
-      <Link
-
-        href="/discover"
-
-        className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-
-      >
-
-        <ArrowLeft className="size-4" />
-
-        Voltar
-
-      </Link>
+      <PublicPageBackLink
+        searchParams={query}
+        fallbackHref="/discover"
+        fallbackLabel="Voltar"
+      />
 
 
 

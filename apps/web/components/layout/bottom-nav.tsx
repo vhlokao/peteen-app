@@ -12,7 +12,7 @@ type BottomNavProps = {
 };
 
 function isActive(pathname: string, href: string) {
-  if (href === "/tutor" || href === "/professional" || href === "/admin") {
+  if (href === "/tutor" || href === "/professional" || href === "/partner" || href === "/admin") {
     return pathname === href;
   }
   return pathname.startsWith(href);

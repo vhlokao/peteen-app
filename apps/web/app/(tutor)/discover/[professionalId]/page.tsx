@@ -1,9 +1,10 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { ShieldCheck, Star, MapPin, ArrowLeft, Users, Repeat2, Heart } from "lucide-react"
+import { ShieldCheck, Star, MapPin, Users, Repeat2, Heart } from "lucide-react"
 import Link from "next/link"
 
 import { getProfessionalPublicProfileAction } from "@/modules/professional/application/actions"
+import { PublicPageBackLink } from "@/modules/partner-portal/components/public-page-back-link"
 import { getProfessionalBadges } from "@/modules/badges/application/get-professional-badges"
 import type { BadgeResolverResult } from "@/modules/badges/domain/types"
 import { isProfessionalVerificationActive } from "@/modules/verification/domain/verification-state"
@@ -40,6 +41,7 @@ import { ProfessionalTrustSummary } from "@/modules/reputation-badges/components
 
 type ProfilePageProps = {
   params: Promise<{ professionalId: string }>
+  searchParams: Promise<{ from?: string; returnTo?: string }>
 }
 
 function TrustStatCard({
@@ -100,8 +102,12 @@ const TRUST_LEVEL_COLORS: Record<TrustLevel, string> = {
  * Trust Graph (Fase 4): cada ReviewCard é um "nó de evidência".
  * Ranking Engine (Fase 4): trustScore/trustLevel serão calculados em tempo real.
  */
-export default async function ProfessionalProfilePage({ params }: ProfilePageProps) {
+export default async function ProfessionalProfilePage({
+  params,
+  searchParams,
+}: ProfilePageProps) {
   const { professionalId } = await params
+  const query = await searchParams
 
   // Busca paralela para minimizar latência
   // Nota: getProfessionalBadges é isolado em Promise.allSettled para não derrubar a página
@@ -150,14 +156,11 @@ export default async function ProfessionalProfilePage({ params }: ProfilePagePro
 
   return (
     <div className="page-container max-w-2xl">
-      {/* Voltar */}
-      <Link
-        href="/discover"
-        className="mb-6 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Voltar à busca
-      </Link>
+      <PublicPageBackLink
+        searchParams={query}
+        fallbackHref="/discover"
+        fallbackLabel="Voltar à busca"
+      />
 
       {/* Header do perfil */}
       <div className="mb-6 flex flex-col gap-5 rounded-2xl border border-border bg-card p-5 sm:flex-row sm:items-start">

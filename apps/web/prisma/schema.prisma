@@ -214,6 +214,10 @@ model PartnerProfile {
   isVerified Boolean   @default(false)
   verifiedAt DateTime?
 
+  // Etapa 6.8 — vínculo com entidade Partner (estabelecimento) para ownership do portal
+  linkedPartnerId String?  @unique
+  linkedPartner   Partner? @relation(fields: [linkedPartnerId], references: [id], onDelete: SetNull)
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
@@ -222,6 +226,7 @@ model PartnerProfile {
   @@index([type])
   @@index([neighborhoodId])
   @@index([regionId])
+  @@index([linkedPartnerId])
   @@map("partner_profiles")
 }
 
@@ -308,7 +313,8 @@ model Partner {
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
-  trustConnections TrustConnection[]
+  trustConnections     TrustConnection[]
+  linkedPartnerProfile PartnerProfile?
 
   @@index([city])
   @@index([category])

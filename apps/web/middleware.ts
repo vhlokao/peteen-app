@@ -26,8 +26,6 @@ const PROTECTED_PREFIXES = [
   "/tutor",
   "/professional",
   "/admin",
-  // Persona parceiro (futuro) — trailing slash evita colidir com /partners (público)
-  "/partner/",
   // Rotas da Fase 4.3+ (criadas nas próximas etapas)
   "/discover",
   "/requests",
@@ -36,6 +34,11 @@ const PROTECTED_PREFIXES = [
   "/onboarding",
   "/dashboard",
 ];
+
+/** Portal parceiro — prefixo exato evita colidir com /partners (público) */
+function isPartnerPortalRoute(pathname: string): boolean {
+  return pathname === "/partner" || pathname.startsWith("/partner/");
+}
 
 /** Rotas completamente públicas — nunca redirecionar para login */
 const PUBLIC_PATHS = new Set(["/", "/login", "/sobre", "/como-funciona", "/termos", "/privacidade"]);
@@ -82,9 +85,9 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── Verificar se a rota precisa de autenticação ───────────────────────
-  const isProtectedRoute = PROTECTED_PREFIXES.some((prefix) =>
-    pathname.startsWith(prefix)
-  );
+  const isProtectedRoute =
+    isPartnerPortalRoute(pathname) ||
+    PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 
   // Usuário não autenticado tentando acessar rota protegida
   if (isProtectedRoute && !user) {

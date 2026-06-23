@@ -27,7 +27,7 @@ type SidebarProps = {
 };
 
 function isNavItemActive(pathname: string, href: string): boolean {
-  const rootPaths = ["/tutor", "/professional", "/admin"];
+  const rootPaths = ["/tutor", "/professional", "/partner", "/admin"];
   if (rootPaths.includes(href)) {
     return pathname === href;
   }

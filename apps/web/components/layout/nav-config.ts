@@ -10,6 +10,7 @@ import {
   Inbox,
   Star,
   UserCircle,
+  ThumbsUp,
 } from "lucide-react";
 
 import type { AppShellVariant } from "@/types";
@@ -31,6 +32,12 @@ export const shellNavConfig: Record<AppShellVariant, ShellNavItem[]> = {
     { label: "Solicitações", shortLabel: "Pedidos", href: "/tutor/requests", icon: Inbox },
     { label: "Pets", shortLabel: "Pets", href: "/me/pets", icon: PawPrint },
     { label: "Perfil", shortLabel: "Perfil", href: "/tutor/perfil", icon: Users },
+  ],
+  partner: [
+    { label: "Início", shortLabel: "Início", href: "/partner", icon: LayoutDashboard },
+    { label: "Recomendações", shortLabel: "Indicações", href: "/partner/recommendations", icon: ThumbsUp },
+    { label: "Métricas", shortLabel: "Métricas", href: "/partner/metrics", icon: BarChart3 },
+    { label: "Perfil", shortLabel: "Perfil", href: "/partner/profile", icon: UserCircle },
   ],
   professional: [
     { label: "Início", shortLabel: "Início", href: "/professional", icon: LayoutDashboard },

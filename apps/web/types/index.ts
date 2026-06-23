@@ -6,7 +6,7 @@ export type NavItem = {
   icon?: string;
 };
 
-export type AppShellVariant = "tutor" | "professional" | "admin" | "marketing";
+export type AppShellVariant = "tutor" | "professional" | "partner" | "admin" | "marketing";
 
 export type TrustSignalLevel = "low" | "medium" | "high" | "verified";
 

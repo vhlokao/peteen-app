@@ -8,6 +8,7 @@ export const PARTNER_PORTAL_RETURN_PATHS = [
   "/partner/recommendations",
   "/partner/metrics",
   "/partner/profile",
+  "/partner/activity",
 ] as const
 
 export type PartnerPortalReturnPath = (typeof PARTNER_PORTAL_RETURN_PATHS)[number]

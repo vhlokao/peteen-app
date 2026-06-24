@@ -9,7 +9,7 @@ import { HideRestoreReviewButton } from "@/components/admin/HideRestoreReviewBut
 import { SERVICE_TYPE_LABELS } from "@/modules/professional/domain/types"
 import type { ServiceType } from "@/modules/professional/domain/types"
 
-export const metadata: Metadata = { title: "Admin — Reviews" }
+export const metadata: Metadata = { title: "Admin — Avaliações" }
 
 function StarRating({ value }: { value: number }) {
   return (
@@ -33,7 +33,7 @@ export default async function AdminReviewsPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Reviews"
+        title="Avaliações"
         description={[
           `${reviews.length} reviews`,
           flaggedCount > 0 ? `${flaggedCount} flagged` : null,

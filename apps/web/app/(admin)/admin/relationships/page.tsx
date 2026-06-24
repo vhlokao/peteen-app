@@ -52,7 +52,7 @@ const COLUMNS = [
   },
   {
     key: "reviews",
-    header: "Reviews",
+    header: "Avaliações",
     render: (row: AdminRelationshipRow) => (
       <span className="tabular-nums text-xs">{row.reviewsGiven}</span>
     ),

@@ -12,7 +12,7 @@ import { RecalculateAllTrustButton } from "@/components/admin/RecalculateAllTrus
 import { RecalculateSingleTrustButton } from "@/components/admin/RecalculateSingleTrustButton"
 import type { AdminTrustRow } from "@/modules/backoffice/domain/types"
 
-export const metadata: Metadata = { title: "Admin — Trust Engine" }
+export const metadata: Metadata = { title: "Admin — Índice de Confiança" }
 
 const COLUMNS = [
   {
@@ -31,7 +31,7 @@ const COLUMNS = [
   },
   {
     key: "score",
-    header: "Trust Score",
+    header: "Índice de Confiança",
     render: (row: AdminTrustRow) => (
       <span className="tabular-nums font-bold">{row.trustScore.toFixed(1)}</span>
     ),
@@ -45,7 +45,7 @@ const COLUMNS = [
   },
   {
     key: "reviews",
-    header: "Reviews",
+    header: "Avaliações",
     render: (row: AdminTrustRow) => (
       <span className="tabular-nums text-xs">{row.reviewCount}</span>
     ),
@@ -77,7 +77,7 @@ const COLUMNS = [
         <Link
           href={`/admin/trust-debug/${row.id}`}
           className="text-muted-foreground hover:text-foreground"
-          title="Abrir debug"
+          title="Ver detalhes do índice de confiança"
         >
           <Bug className="size-3.5" />
         </Link>
@@ -94,15 +94,15 @@ export default async function AdminTrustPage() {
   return (
     <div>
       <AdminPageHeader
-        title="Trust Engine"
-        description="Trust Score e nível de todos os profissionais."
+        title="Índice de Confiança"
+        description="Índice de Confiança e nível de todos os profissionais."
         count={rows.length}
         actions={<RecalculateAllTrustButton />}
       />
 
       {staleCount > 0 && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/10 dark:text-amber-400">
-          <strong>{staleCount}</strong> profissional(is) nunca tiveram Trust Score calculado.
+          <strong>{staleCount}</strong> profissional(is) nunca tiveram o Índice de Confiança calculado.
           Use o botão &ldquo;Recalcular todos&rdquo; para atualizar.
         </div>
       )}

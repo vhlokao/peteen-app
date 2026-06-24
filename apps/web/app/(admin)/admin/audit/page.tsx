@@ -20,6 +20,10 @@ const ACTION_COLORS: Record<string, string> = {
   "pet.created": "bg-emerald-100 text-emerald-700",
   "pet.updated": "bg-sky-100 text-sky-700",
   "pet.archived": "bg-neutral-200 text-neutral-700",
+  "professional.service_created": "bg-emerald-100 text-emerald-700",
+  "professional.service_updated": "bg-sky-100 text-sky-700",
+  "professional.service_activated": "bg-green-100 text-green-700",
+  "professional.service_deactivated": "bg-amber-100 text-amber-700",
 }
 
 type Props = {
@@ -61,12 +65,13 @@ export default async function AdminAuditPage({ searchParams }: Props) {
           <option value="">Todos os tipos</option>
           <option value="OperationalFlag">Flag</option>
           <option value="Dispute">Disputa</option>
-          <option value="Review">Review</option>
+          <option value="Review">Avaliação</option>
           <option value="PROFESSIONAL">Profissional</option>
           <option value="PARTNER">Parceiro</option>
           <option value="TutorProfile">Perfil de tutor</option>
           <option value="ProfessionalProfile">Perfil profissional</option>
           <option value="Pet">Pet</option>
+          <option value="Service">Serviço</option>
         </select>
 
         <button

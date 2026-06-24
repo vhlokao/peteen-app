@@ -23,13 +23,13 @@ export async function ProfessionalTrustSummary({
 
   const stats = [
     {
-      label: "Trust Score",
+      label: "Índice de Confiança",
       value: summary.trustScore.toFixed(1),
       icon: Star,
       iconClass: "fill-amber-400 text-amber-400",
     },
     {
-      label: "Total Reviews",
+      label: "Total de Avaliações",
       value: String(summary.totalReviews),
       sub:
         summary.averageRating !== null

@@ -313,7 +313,7 @@ export function PartnerOnboardingWizard() {
                   />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium">{pro.displayName}</p>
-                    <p className="text-xs text-muted-foreground">{pro.city} · Trust {pro.trustScore.toFixed(0)}</p>
+                    <p className="text-xs text-muted-foreground">{pro.city} · Confiança {pro.trustScore.toFixed(0)}</p>
                   </div>
                 </label>
               ))}
@@ -349,7 +349,7 @@ export function PartnerOnboardingWizard() {
 
           <div className="grid gap-3 rounded-2xl border border-border bg-card p-4 text-left">
             <MetricRow label="Profissionais recomendados" value={result.recommendationCount} />
-            <MetricRow label="Trust connections criadas" value={result.connectionsCreated} />
+            <MetricRow label="Conexões de confiança criadas" value={result.connectionsCreated} />
             <MetricRow
               label="Nível de ativação"
               value={`${result.activationScore}% (${activationScoreLabel(result.activationScore)})`}

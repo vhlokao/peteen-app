@@ -29,7 +29,7 @@ export function PartnerRecentActivity({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Atividade recente</CardTitle>
+        <CardTitle className="text-base">Atividades Recentes</CardTitle>
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (

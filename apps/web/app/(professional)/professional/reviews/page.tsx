@@ -6,7 +6,7 @@ import { getProfessionalReviewsData } from "@/modules/professional-crm/infrastru
 import { ProfessionalReviewsPanel } from "@/modules/professional-crm/components/professional-reviews-panel"
 
 export const metadata: Metadata = {
-  title: "Reviews",
+  title: "Avaliações",
 }
 
 export default async function ProfessionalReviewsPage() {
@@ -16,7 +16,7 @@ export default async function ProfessionalReviewsPage() {
   return (
     <div className="page-container space-y-6">
       <PageHeader
-        title="Reviews"
+        title="Avaliações"
         description="Avaliações recebidas dos tutores — somente leitura."
       />
       <ProfessionalReviewsPanel data={reviews} />

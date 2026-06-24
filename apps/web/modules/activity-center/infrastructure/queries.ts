@@ -687,12 +687,12 @@ function adminActionMeta(action: string): AdminActionMeta {
     },
     "review.hide": {
       type: "review_hidden",
-      title: "Review ocultada",
+      title: "Avaliação ocultada",
       href: "/admin/reviews",
     },
     "review.restore": {
       type: "review_restored",
-      title: "Review restaurada",
+      title: "Avaliação restaurada",
       href: "/admin/reviews",
     },
     "partner.activate": {

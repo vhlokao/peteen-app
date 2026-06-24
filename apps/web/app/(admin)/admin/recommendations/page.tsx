@@ -12,7 +12,7 @@ import type { Metadata } from "next"
 import { getAdminRecommendationsAction } from "@/modules/backoffice/application/actions"
 
 export const metadata: Metadata = {
-  title: "Motor de Recomendações — Admin",
+  title: "Recomendações — Admin",
 }
 
 const SCORE_BADGE = (score: number) => {
@@ -28,7 +28,7 @@ export default async function AdminRecommendationsPage() {
     <div className="max-w-5xl">
       {/* Cabeçalho */}
       <div className="mb-6">
-        <h1 className="text-xl font-semibold text-foreground">Motor de Recomendações</h1>
+        <h1 className="text-xl font-semibold text-foreground">Recomendações</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Score calculado sem contexto de tutor — métricas internas de cada profissional.
           Quanto maior o score, mais ele tende a aparecer nos blocos de Discovery.
@@ -42,7 +42,7 @@ export default async function AdminRecommendationsPage() {
         <span>·</span>
         <span>Serviço +15</span>
         <span>·</span>
-        <span>Trust Score +25</span>
+        <span>Índice de Confiança +25</span>
         <span>·</span>
         <span>Badges +10</span>
         <span>·</span>

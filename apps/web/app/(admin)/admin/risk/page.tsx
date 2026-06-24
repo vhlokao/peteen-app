@@ -25,7 +25,7 @@ export default async function AdminRiskPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Risk Score"
+        title="Índice de Risco"
         description="Pontuação de risco calculada em tempo real para cada profissional. Apenas monitoramento — nenhum bloqueio automático."
       />
 

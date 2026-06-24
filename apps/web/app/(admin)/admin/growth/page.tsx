@@ -14,7 +14,7 @@ import { renderStarRating } from "@/modules/growth-engine/domain/scoring"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
 import { CreateTerritoryForms } from "@/components/admin/CreateTerritoryForms"
 
-export const metadata: Metadata = { title: "Admin — Growth Engine" }
+export const metadata: Metadata = { title: "Admin — Expansão local" }
 export const dynamic = "force-dynamic"
 
 type SearchParams = Promise<{ city?: string }>
@@ -54,7 +54,7 @@ export default async function AdminGrowthPage({
   return (
     <div>
       <AdminPageHeader
-        title="Growth Engine"
+        title="Expansão local"
         description="Inteligência territorial — bairro → região → cidade. Onde concentrar aquisição e expansão."
       />
 
@@ -88,7 +88,7 @@ export default async function AdminGrowthPage({
       <section className="mb-8">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
           <TrendingUp className="size-4" />
-          Regiões — ordenadas por Health Score
+          Regiões — ordenadas por índice de saúde
         </h2>
 
         {regionRows.length === 0 ? (
@@ -102,7 +102,7 @@ export default async function AdminGrowthPage({
                 <tr>
                   {[
                     "Cidade", "Região", "Profissionais", "Tutores", "Solicitações",
-                    "Recorrência %", "Trust Médio", "Health Score", "Classificação",
+                    "Recorrência %", "Confiança média", "Índice de saúde", "Classificação",
                   ].map((h) => (
                     <th
                       key={h}

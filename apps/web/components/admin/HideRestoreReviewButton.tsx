@@ -17,7 +17,7 @@ export function HideRestoreReviewButton({ reviewId, hiddenByAdmin }: Props) {
   const [message, setMessage] = useState<string | null>(null)
 
   const handleHide = () => {
-    const reason = window.prompt("Motivo para ocultar esta review:")
+    const reason = window.prompt("Motivo para ocultar esta avaliação:")
     if (!reason) return
 
     startTransition(async () => {

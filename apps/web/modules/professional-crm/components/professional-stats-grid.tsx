@@ -54,13 +54,13 @@ const STAT_CARDS: StatCard[] = [
   },
   {
     key: "reviewsReceived",
-    label: "Reviews recebidas",
+    label: "Avaliações recebidas",
     icon: Star,
     href: "/professional/reviews",
   },
   {
     key: "trustScore",
-    label: "Trust Score atual",
+    label: "Índice de Confiança atual",
     icon: Shield,
     href: "/professional/metricas",
     format: (v) => Math.round(v).toString(),

@@ -20,7 +20,7 @@ import { RelationshipReviewsList } from "@/modules/relationship-history/componen
 import { RelationshipTimeline } from "@/modules/relationship-history/components/relationship-timeline"
 
 export const metadata: Metadata = {
-  title: "Histórico com profissional",
+  title: "Histórico de Relacionamento",
 }
 
 type PageProps = {
@@ -62,8 +62,8 @@ export default async function TutorProfessionalHistoryPage({
       </div>
 
       <PageHeader
-        title="Histórico com profissional"
-        description="Atendimentos, pets, reviews e solicitações com este profissional."
+        title="Histórico de Relacionamento"
+        description="Atendimentos, pets, avaliações e solicitações com este profissional."
       />
 
       <Card>
@@ -87,7 +87,7 @@ export default async function TutorProfessionalHistoryPage({
             <div className="flex flex-wrap gap-2">
               <Badge variant="secondary" className="gap-1">
                 <Star className="size-3 fill-amber-400 text-amber-400" />
-                Trust Score {professional.trustScore.toFixed(1)}
+                Índice de Confiança {professional.trustScore.toFixed(1)}
               </Badge>
               <Badge className={verificationStyle} variant="secondary">
                 <ShieldCheck className="mr-1 size-3" />
@@ -142,7 +142,7 @@ export default async function TutorProfessionalHistoryPage({
         <RelationshipPetsList pets={history.pets} />
         <RelationshipReviewsList
           reviews={history.reviews}
-          emptyMessage="Nenhuma review enviada ainda."
+          emptyMessage="Nenhuma avaliação enviada ainda."
         />
       </div>
 

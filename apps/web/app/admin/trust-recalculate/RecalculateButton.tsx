@@ -36,7 +36,7 @@ export function RecalculateButton() {
       >
         {isPending
           ? <><Loader2 className="mr-2 size-4 animate-spin" />Recalculando…</>
-          : <><RefreshCw className="mr-2 size-4" />Recalcular todos os Trust Scores</>
+          : <><RefreshCw className="mr-2 size-4" />Recalcular todos os índices de confiança</>
         }
       </Button>
 

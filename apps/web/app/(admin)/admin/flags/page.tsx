@@ -86,7 +86,7 @@ export default async function AdminFlagsPage({ searchParams }: Props) {
           <option value="">Todos os tipos</option>
           <option value="USER">Usuário</option>
           <option value="PROFESSIONAL">Profissional</option>
-          <option value="REVIEW">Review</option>
+          <option value="REVIEW">Avaliação</option>
           <option value="REQUEST">Solicitação</option>
         </select>
 

@@ -264,7 +264,7 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
 
             icon={<Link2 className="size-4 text-primary" />}
 
-            label="Trust connections ativas"
+            label="Conexões de confiança ativas"
 
             value={operationalMetrics.activeConnections}
 
@@ -322,7 +322,7 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
 
                   <p className="font-medium text-foreground">{pro.displayName}</p>
 
-                  <p className="text-xs text-muted-foreground">{pro.city} · Trust {pro.trustScore.toFixed(0)}</p>
+                  <p className="text-xs text-muted-foreground">{pro.city} · Confiança {pro.trustScore.toFixed(0)}</p>
 
                 </div>
 

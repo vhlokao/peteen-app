@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { requireProfessionalContext } from "@/modules/professional-crm/application/require-professional"
 import { ProfessionalProfileEditForm } from "@/modules/professional/components/professional-profile-edit-form"
 import { ProfessionalTrustSummary } from "@/modules/reputation-badges/components/professional-trust-summary"
+import { ProfessionalServicesProfileBlock } from "@/modules/professional-services/components/professional-services-profile-block"
 
 export const metadata: Metadata = {
   title: "Meu perfil profissional",
@@ -34,6 +35,8 @@ export default async function ProfessionalProfilePage() {
       />
 
       <ProfessionalTrustSummary professionalId={profile.id} />
+
+      <ProfessionalServicesProfileBlock professionalId={profile.id} />
 
       <Card>
         <CardHeader>

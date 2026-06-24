@@ -48,7 +48,7 @@ const STAT_CARDS: StatCard[] = [
   },
   {
     key: "trustConnectionsGenerated",
-    label: "Trust Connections geradas",
+    label: "Conexões de Confiança geradas",
     icon: Network,
     href: "/partner/metrics",
   },

@@ -31,12 +31,12 @@ export function ProfessionalMetricsGrid({
 
   const items: MetricItem[] = [
     {
-      label: "Trust Score",
+      label: "Índice de Confiança",
       value: Math.round(stats.trustScore),
       icon: Shield,
     },
     {
-      label: "Nível de confiança",
+      label: "Nível de Confiança",
       value: data.trustLevelLabel,
       icon: Shield,
     },
@@ -59,7 +59,7 @@ export function ProfessionalMetricsGrid({
       href: "/professional/clients",
     },
     {
-      label: "Reviews recebidas",
+      label: "Avaliações recebidas",
       value: stats.reviewsReceived,
       icon: Star,
       href: "/professional/reviews",
@@ -84,7 +84,7 @@ export function ProfessionalMetricsGrid({
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <Icon className="size-4 text-muted-foreground" />
-                {label === "Trust Score" ? (
+                {label === "Índice de Confiança" ? (
                   <Badge variant="trust" className="text-lg font-semibold tabular-nums">
                     {value}
                   </Badge>

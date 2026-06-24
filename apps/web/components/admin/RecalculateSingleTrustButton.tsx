@@ -17,7 +17,7 @@ export function RecalculateSingleTrustButton({ professionalId }: Props) {
       const result = await recalculateSingleTrustAction(professionalId)
       if (result.success) {
         setDone(true)
-        toast.success("Trust Score recalculado")
+        toast.success("Índice de Confiança recalculado")
       } else {
         toast.error(`Erro: ${result.error}`)
       }
@@ -29,7 +29,7 @@ export function RecalculateSingleTrustButton({ professionalId }: Props) {
       type="button"
       onClick={handleClick}
       disabled={isPending}
-      title="Recalcular Trust Score"
+      title="Recalcular Índice de Confiança"
       className="text-muted-foreground transition-colors hover:text-primary disabled:opacity-40"
     >
       <RefreshCw

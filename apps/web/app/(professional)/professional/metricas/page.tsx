@@ -23,7 +23,7 @@ export default async function ProfessionalMetricsPage() {
     <div className="page-container space-y-8">
       <PageHeader
         title="Métricas"
-        description="Recorrência, retenção e sinais reputacionais — Trust Score em destaque."
+        description="Recorrência, retenção e sinais reputacionais — Índice de Confiança em destaque."
       />
 
       <section>

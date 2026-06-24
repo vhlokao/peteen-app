@@ -46,7 +46,7 @@ export function ProfessionalReviewsPanel({
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total de reviews
+              Total de avaliações
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -77,7 +77,7 @@ export function ProfessionalReviewsPanel({
         <CardContent>
           {data.reviews.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nenhuma review ainda. Peça feedback após concluir atendimentos.
+              Nenhuma avaliação ainda. Peça feedback após concluir atendimentos.
             </p>
           ) : (
             <ul className="divide-y divide-border">

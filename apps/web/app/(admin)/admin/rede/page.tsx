@@ -6,7 +6,7 @@ export default function AdminNetworkPage() {
     <div className="page-container">
       <PageHeader
         title="Rede de confiança"
-        description="Trust graph, densidade local e qualidade da rede."
+        description="Rede de confiança, densidade local e qualidade da rede."
       />
       <Card>
         <CardHeader>

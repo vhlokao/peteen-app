@@ -10,7 +10,7 @@ export function RecalculateAllTrustButton() {
   const [isPending, startTransition] = useTransition()
 
   function handleClick() {
-    if (!confirm("Recalcular Trust Score de TODOS os profissionais? Pode demorar alguns segundos.")) return
+    if (!confirm("Recalcular o Índice de Confiança de TODOS os profissionais? Pode demorar alguns segundos.")) return
 
     startTransition(async () => {
       const result = await recalculateAllTrustAction()

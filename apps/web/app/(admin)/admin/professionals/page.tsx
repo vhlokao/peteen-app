@@ -55,7 +55,7 @@ const COLUMNS = [
   },
   {
     key: "trust",
-    header: "Trust",
+    header: "Confiança",
     render: (row: AdminProfessionalRow) => (
       <div className="flex items-center gap-1.5">
         <span className="tabular-nums font-semibold">{row.trustScore.toFixed(0)}</span>
@@ -65,7 +65,7 @@ const COLUMNS = [
   },
   {
     key: "reviews",
-    header: "Reviews",
+    header: "Avaliações",
     render: (row: AdminProfessionalRow) => (
       <div className="text-xs">
         <span className="tabular-nums">{row.reviewCount}</span>
@@ -93,7 +93,7 @@ const COLUMNS = [
   },
   {
     key: "updatedAt",
-    header: "Trust atualizado",
+    header: "Confiança atualizada",
     render: (row: AdminProfessionalRow) =>
       row.trustUpdatedAt ? (
         <span className="text-xs text-muted-foreground">
@@ -119,7 +119,7 @@ const COLUMNS = [
         <Link
           href={`/admin/trust-debug/${row.id}`}
           className="text-muted-foreground hover:text-foreground"
-          title="Trust debug"
+          title="Detalhes do índice de confiança"
         >
           <Bug className="size-3.5" />
         </Link>
@@ -136,7 +136,7 @@ export default async function AdminProfessionalsPage() {
     <div>
       <AdminPageHeader
         title="Profissionais"
-        description="Todos os profissionais cadastrados, ordenados por Trust Score."
+        description="Todos os profissionais cadastrados, ordenados por Índice de Confiança."
         count={professionals.length}
       />
       <AdminDataTable

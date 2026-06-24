@@ -29,6 +29,7 @@ import {
   type ServiceType,
   type TrustLevel,
 } from "@/modules/professional/domain/types"
+import { formatPublicServicePrice } from "@/modules/professional/domain/format-service-price"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -222,7 +223,7 @@ export default async function ProfessionalProfilePage({
             {/* Trust Score */}
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 rounded-lg bg-muted px-2.5 py-1">
-                <span className="text-xs font-medium text-muted-foreground">Trust</span>
+                <span className="text-xs font-medium text-muted-foreground">Confiança</span>
                 <span className="text-sm font-bold text-foreground tabular-nums">
                   {trust.score.toFixed(0)}
                 </span>
@@ -476,7 +477,9 @@ export default async function ProfessionalProfilePage({
           </p>
         ) : (
           <div className="flex flex-col gap-3">
-            {profile.services.map((service) => (
+            {profile.services.map((service) => {
+              const priceLabel = formatPublicServicePrice(service)
+              return (
               <div
                 key={service.id}
                 className="flex items-start justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
@@ -487,19 +490,15 @@ export default async function ProfessionalProfilePage({
                     {SERVICE_TYPE_LABELS[service.serviceType as ServiceType]}
                   </p>
                 </div>
-                {(service.priceMin != null || service.priceMax != null) && (
+                {priceLabel && (
                   <div className="shrink-0 text-right">
                     <p className="text-sm font-semibold text-foreground">
-                      {service.priceMin != null && service.priceMax != null
-                        ? `R$ ${service.priceMin}–${service.priceMax}`
-                        : service.priceMin != null
-                          ? `A partir de R$ ${service.priceMin}`
-                          : `Até R$ ${service.priceMax}`}
+                      {priceLabel}
                     </p>
                   </div>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         )}
       </section>

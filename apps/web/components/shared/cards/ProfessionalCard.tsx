@@ -138,7 +138,7 @@ export function ProfessionalCard({
 
           {/* Trust Score + nível */}
           <div className="flex items-center gap-1.5">
-            <span className="text-[0.65rem] text-muted-foreground">Trust</span>
+            <span className="text-[0.65rem] text-muted-foreground">Confiança</span>
             <span className="text-xs font-bold text-foreground tabular-nums">
               {trustScore.toFixed(0)}
             </span>

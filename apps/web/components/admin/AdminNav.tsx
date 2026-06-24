@@ -40,20 +40,20 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/tutors",        label: "Tutores",          icon: ShieldCheck,      exact: false },
       { href: "/admin/professionals", label: "Profissionais",    icon: Briefcase,        exact: false },
       { href: "/admin/requests",      label: "Solicitações",     icon: ClipboardList,    exact: false },
-      { href: "/admin/reviews",       label: "Reviews",          icon: Star,             exact: false },
+      { href: "/admin/reviews",       label: "Avaliações",       icon: Star,             exact: false },
     ],
   },
   {
-    title: "Trust & Recorrência",
+    title: "Confiança e Recorrência",
     items: [
-      { href: "/admin/trust",         label: "Trust Engine",     icon: TrendingUp,       exact: false },
+      { href: "/admin/trust",         label: "Índice de Confiança", icon: TrendingUp,    exact: false },
       { href: "/admin/relationships", label: "Relacionamentos",  icon: Repeat2,          exact: false },
     ],
   },
   {
     title: "Expansão",
     items: [
-      { href: "/admin/growth", label: "Growth Engine", icon: MapPin, exact: true },
+      { href: "/admin/growth", label: "Expansão local", icon: MapPin, exact: true },
     ],
   },
   {
@@ -63,7 +63,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/badges",           label: "Status dos Profissionais", icon: Award,          exact: false },
       { href: "/admin/partners",         label: "Parceiros",             icon: Handshake, exact: false },
       { href: "/admin/recommendations",  label: "Recomendações",         icon: Sparkles,  exact: false },
-      { href: "/admin/trust-graph",      label: "Trust Graph",           icon: Network,   exact: true  },
+      { href: "/admin/trust-graph",      label: "Rede de Confiança",     icon: Network,   exact: true  },
     ],
   },
   {
@@ -73,7 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/disputes", label: "Disputas",     icon: MessageSquareWarning, exact: false },
       { href: "/admin/activity", label: "Atividades",   icon: Activity,             exact: false },
       { href: "/admin/audit",    label: "Auditoria",    icon: ScrollText,           exact: false },
-      { href: "/admin/risk",     label: "Risk Score",   icon: ShieldAlert,          exact: false },
+      { href: "/admin/risk",     label: "Índice de Risco",   icon: ShieldAlert,          exact: false },
     ],
   },
 ]

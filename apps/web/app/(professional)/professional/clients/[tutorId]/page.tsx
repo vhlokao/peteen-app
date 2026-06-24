@@ -58,7 +58,7 @@ export default async function ProfessionalClientHistoryPage({
         <RelationshipReviewsList
           reviews={history.reviews}
           showAuthor
-          emptyMessage="Nenhuma review recebida deste tutor ainda."
+          emptyMessage="Nenhuma avaliação recebida deste tutor ainda."
         />
       </div>
 

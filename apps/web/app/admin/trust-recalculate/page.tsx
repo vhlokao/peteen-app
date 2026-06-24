@@ -18,7 +18,7 @@ import Link from "next/link"
 import { prisma } from "@/lib/prisma/client"
 import { RecalculateButton } from "./RecalculateButton"
 
-export const metadata: Metadata = { title: "Trust Recalculate" }
+export const metadata: Metadata = { title: "Recalcular Índice de Confiança" }
 
 export default async function TrustRecalculatePage() {
   const stats = await prisma.professionalProfile.aggregate({
@@ -46,13 +46,13 @@ export default async function TrustRecalculatePage() {
         </Link>
         <div className="flex items-center gap-2">
           <RefreshCw className="size-5 text-muted-foreground" />
-          <h1 className="text-lg font-bold text-foreground">Trust Score Backfill</h1>
+          <h1 className="text-lg font-bold text-foreground">Recalcular Índice de Confiança</h1>
           <span className="rounded bg-amber-100 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
             Dev only
           </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          Recalcula e persiste o Trust Score de todos os profissionais ativos.
+          Recalcula e persiste o Índice de Confiança de todos os profissionais ativos.
         </p>
       </div>
 
@@ -62,7 +62,7 @@ export default async function TrustRecalculatePage() {
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <div>
             <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              {outdated} profissional{outdated !== 1 ? "is" : ""} com Trust Score desatualizado
+              {outdated} profissional{outdated !== 1 ? "is" : ""} com Índice de Confiança desatualizado
             </p>
             <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
               trustUpdatedAt é null — o hook updateProfessionalTrust ainda não rodou para eles.
@@ -108,7 +108,7 @@ export default async function TrustRecalculatePage() {
       {/* Debug links */}
       <div className="rounded-xl border border-dashed border-border p-4 text-xs text-muted-foreground">
         <p className="font-medium text-foreground mb-2">Links úteis</p>
-        <p>Trust Debug por profissional: <code className="font-mono">/admin/trust-debug/[professionalId]</code></p>
+        <p>Detalhes por profissional: <code className="font-mono">/admin/trust-debug/[professionalId]</code></p>
         <p className="mt-1">Discovery: <Link href="/discover" className="text-primary underline">/discover</Link></p>
       </div>
     </div>

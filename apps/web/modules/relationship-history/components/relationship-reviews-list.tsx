@@ -14,7 +14,7 @@ type RelationshipReviewsListProps = {
 
 export function RelationshipReviewsList({
   reviews,
-  emptyMessage = "Nenhuma review enviada ainda.",
+  emptyMessage = "Nenhuma avaliação enviada ainda.",
   showAuthor = false,
 }: RelationshipReviewsListProps) {
   const fmt = (d: Date) => format(d, "dd/MM/yyyy", { locale: ptBR })
@@ -22,7 +22,7 @@ export function RelationshipReviewsList({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Reviews</CardTitle>
+        <CardTitle className="text-base">Avaliações</CardTitle>
       </CardHeader>
       <CardContent>
         {reviews.length === 0 ? (

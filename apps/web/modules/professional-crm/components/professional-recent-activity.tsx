@@ -38,12 +38,12 @@ export function ProfessionalRecentActivity({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Atividade recente</CardTitle>
+        <CardTitle className="text-base">Atividades Recentes</CardTitle>
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Nenhuma atividade ainda. Suas solicitações e reviews aparecerão aqui.
+            Nenhuma atividade ainda. Suas solicitações e avaliações aparecerão aqui.
           </p>
         ) : (
           <ul className="space-y-3">

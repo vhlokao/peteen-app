@@ -36,7 +36,7 @@ function activityLabel(type: ProfessionalActivityType): string {
     "request.received": "Nova solicitação recebida",
     "request.accepted": "Solicitação aceita",
     "service.completed": "Serviço concluído",
-    "review.received": "Review recebida",
+    "review.received": "Avaliação recebida",
     "recurrence.new": "Nova recorrência",
     "verification.approved": "Verificação aprovada",
     "verification.suspended": "Selo de verificação suspenso",
@@ -360,7 +360,7 @@ export function buildProfessionalNextActions(input: {
     actions.push({
       id: "trust",
       label: "Melhorar reputação",
-      description: `Trust Score atual: ${Math.round(input.stats.trustScore)} — conclua serviços com qualidade e consistência.`,
+      description: `Índice de Confiança atual: ${Math.round(input.stats.trustScore)} — conclua serviços com qualidade e consistência.`,
       href: "/professional/metricas",
       variant: "outline",
     })

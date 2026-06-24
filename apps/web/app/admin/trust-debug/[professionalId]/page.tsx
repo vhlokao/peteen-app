@@ -19,7 +19,7 @@ import { REFERENCE_WEIGHTS, RECURRENCE_SESSION_BONUS } from "@/modules/trust-eng
 import { Separator } from "@/components/ui/separator"
 
 export const metadata: Metadata = {
-  title: "Trust Debug",
+  title: "Detalhes do Índice de Confiança",
 }
 
 // Force dynamic rendering — dados em tempo real
@@ -116,11 +116,11 @@ export default async function TrustDebugPage({ params }: PageProps) {
           className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Voltar para Trust Engine
+          Voltar para Índice de Confiança
         </Link>
         <div className="flex items-center gap-2">
           <Shield className="size-5 text-muted-foreground" />
-          <h1 className="text-lg font-bold text-foreground">Trust Debug</h1>
+          <h1 className="text-lg font-bold text-foreground">Detalhes do Índice de Confiança</h1>
           <span className="rounded bg-amber-100 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
             Dev only
           </span>
@@ -172,7 +172,7 @@ export default async function TrustDebugPage({ params }: PageProps) {
         </p>
 
         <div className="divide-y divide-border">
-          <Row label="Reviews"          value={<span className={trust.breakdown.reviews > 0 ? "text-green-600 dark:text-green-400" : ""}>{formatValue(trust.breakdown.reviews)}</span>} />
+          <Row label="Avaliações"       value={<span className={trust.breakdown.reviews > 0 ? "text-green-600 dark:text-green-400" : ""}>{formatValue(trust.breakdown.reviews)}</span>} />
           <Row label="Conclusões"       value={<span className={trust.breakdown.completions > 0 ? "text-green-600 dark:text-green-400" : ""}>{formatValue(trust.breakdown.completions)}</span>} />
           <Row label="Recorrência"      value={<span className={trust.breakdown.recurrence > 0 ? "text-primary" : ""}>{formatValue(trust.breakdown.recurrence)}</span>} />
           <Row label="Bônus"            value={formatValue(trust.breakdown.bonuses)} />
@@ -189,7 +189,7 @@ export default async function TrustDebugPage({ params }: PageProps) {
             }
           />
           <Row label="Penalidades"      value={<span className={trust.breakdown.penalties < 0 ? "text-destructive" : ""}>{formatValue(trust.breakdown.penalties)}</span>} />
-          <Row label="Trust Graph 🤝"   value={<span className={trust.breakdown.trustGraphBonus > 0 ? "text-violet-600 dark:text-violet-400" : ""}>{formatValue(trust.breakdown.trustGraphBonus)}</span>} />
+          <Row label="Rede de Confiança 🤝" value={<span className={trust.breakdown.trustGraphBonus > 0 ? "text-violet-600 dark:text-violet-400" : ""}>{formatValue(trust.breakdown.trustGraphBonus)}</span>} />
         </div>
 
         <Separator className="my-3" />
@@ -207,7 +207,7 @@ export default async function TrustDebugPage({ params }: PageProps) {
           Metadados
         </h2>
         <div className="divide-y divide-border">
-          <Row label="TrustEvents processados"    value={trust.meta.totalEvents} />
+          <Row label="Eventos processados"        value={trust.meta.totalEvents} />
           <Row label="Atendimentos concluídos"    value={trust.meta.totalCompletedRequests} />
           <Row label="Tutores recorrentes únicos" value={<span className="flex items-center gap-1"><Users className="size-3" />{trust.meta.uniqueRecurringTutors}</span>} />
           <Row label="Última atualização (DB)"    value={formatDate(profile.trustUpdatedAt)} />
@@ -250,11 +250,11 @@ export default async function TrustDebugPage({ params }: PageProps) {
       {/* Trust Events log */}
       <section className="rounded-2xl border border-border bg-card p-5">
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          TrustEvents recentes ({events.length})
+          Eventos de confiança recentes ({events.length})
         </h2>
 
         {events.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Nenhum TrustEvent registrado.</p>
+          <p className="text-sm text-muted-foreground">Nenhum evento de confiança registrado.</p>
         ) : (
           <div className="space-y-2">
             {events.map((e) => (

@@ -27,6 +27,7 @@ import {
   type ServiceType,
   type ProfessionalPublicProfile,
 } from "@/modules/professional/domain/types"
+import { formatPublicServicePriceCompact } from "@/modules/professional/domain/format-service-price"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Schema local — usa tipos de input compatíveis com HTML forms
@@ -225,11 +226,7 @@ export function RequestServiceSheet({
                 {activeServices.map((service) => (
                   <option key={service.id} value={service.id}>
                     {service.name} — {SERVICE_TYPE_LABELS[service.serviceType as ServiceType]}
-                    {service.priceMin != null && service.priceMax != null
-                      ? ` (R$ ${service.priceMin}–${service.priceMax})`
-                      : service.priceMin != null
-                        ? ` (a partir de R$ ${service.priceMin})`
-                        : ""}
+                    {formatPublicServicePriceCompact(service)}
                   </option>
                 ))}
               </NativeSelect>

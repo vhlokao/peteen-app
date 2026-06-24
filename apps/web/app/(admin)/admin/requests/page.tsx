@@ -117,7 +117,7 @@ export default async function AdminRequestsPage({ searchParams }: RequestsPagePr
     <div>
       <AdminPageHeader
         title="Solicitações"
-        description="Histórico completo de service requests."
+        description="Histórico completo de solicitações de serviço."
         count={requests.length}
       />
 

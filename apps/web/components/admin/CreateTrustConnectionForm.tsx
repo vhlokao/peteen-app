@@ -239,7 +239,7 @@ export function CreateTrustConnectionForm({ professionals, partners = [], onCrea
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Peso: <strong>+{defaultWeight} pts</strong> no Trust Score
+          Peso: <strong>+{defaultWeight} pts</strong> no Índice de Confiança
         </p>
 
         {error && <p className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{error}</p>}

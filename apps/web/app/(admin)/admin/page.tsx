@@ -89,7 +89,7 @@ export default async function AdminDashboardPage() {
           </Link>
           <Link href="/admin/reviews">
             <AdminMetricCard
-              label="Reviews"
+              label="Avaliações"
               value={metrics.totalReviews}
               icon={<Star className="size-5" />}
             />
@@ -97,15 +97,15 @@ export default async function AdminDashboardPage() {
         </div>
       </section>
 
-      {/* Linha 3: Trust & Recorrência */}
+      {/* Linha 3: Confiança e Recorrência */}
       <section className="mt-6">
         <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Trust & Recorrência
+          Confiança e Recorrência
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Link href="/admin/trust">
             <AdminMetricCard
-              label="Trust Score médio"
+              label="Índice de Confiança médio"
               value={`${metrics.averageTrustScore} pts`}
               description="Média entre todos os profissionais"
               icon={<TrendingUp className="size-5" />}
@@ -131,7 +131,7 @@ export default async function AdminDashboardPage() {
           </Link>
           <Link href="/admin/trust-graph">
             <AdminMetricCard
-              label="Trust Connections"
+              label="Conexões de Confiança"
               value={metrics.activeTrustConnections}
               description="Conexões de confiança ativas na rede"
               variant={metrics.activeTrustConnections > 0 ? "success" : "default"}
@@ -199,7 +199,7 @@ export default async function AdminDashboardPage() {
           </Link>
           <Link href="/admin/reviews">
             <AdminMetricCard
-              label="Reviews ocultadas"
+              label="Avaliações ocultadas"
               value={metrics.hiddenReviews}
               variant={metrics.hiddenReviews > 0 ? "warning" : "default"}
               description="Ocultadas por moderação admin"
@@ -208,7 +208,7 @@ export default async function AdminDashboardPage() {
           </Link>
           <Link href="/admin/risk">
             <AdminMetricCard
-              label="Risk Score"
+              label="Índice de Risco"
               value="Ver ranking"
               description="Profissionais ordenados por risco"
               icon={<ShieldAlert className="size-5" />}

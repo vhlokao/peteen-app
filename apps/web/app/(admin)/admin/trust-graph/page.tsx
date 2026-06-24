@@ -14,7 +14,7 @@ import {
   SOURCE_TYPE_LABELS,
 } from "@/modules/trust-graph/domain/constants"
 
-export const metadata: Metadata = { title: "Admin — Trust Graph" }
+export const metadata: Metadata = { title: "Admin — Rede de Confiança" }
 export const dynamic = "force-dynamic"
 
 function formatDate(d: Date): string {
@@ -61,7 +61,7 @@ export default async function AdminTrustGraphPage({
   return (
     <div>
       <AdminPageHeader
-        title="Trust Graph"
+        title="Rede de Confiança"
         description="Conexões de confiança entre origens e profissionais da rede Peteen."
       />
 

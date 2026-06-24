@@ -38,7 +38,7 @@ const STAT_CARDS: StatCard[] = [
     icon: Users,
     href: "/tutor#profissionais",
   },
-  { key: "reviewsGiven", label: "Reviews dadas", icon: Star, href: "/tutor/requests" },
+  { key: "reviewsGiven", label: "Avaliações enviadas", icon: Star, href: "/tutor/requests" },
 ]
 
 export function TutorStatsGrid({ stats }: { stats: TutorDashboardStats }) {

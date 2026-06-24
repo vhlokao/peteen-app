@@ -38,7 +38,7 @@ function buildTimelineEvents(
   for (const review of reviews) {
     events.push({
       id: `rev-${review.id}`,
-      label: `Review enviada — ${review.rating} estrelas`,
+      label: `Avaliação enviada — ${review.rating} estrelas`,
       sublabel: review.comment ?? undefined,
       date: review.createdAt,
       kind: "review",

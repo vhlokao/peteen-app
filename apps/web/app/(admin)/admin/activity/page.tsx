@@ -15,7 +15,7 @@ export default async function AdminActivityPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader
-        title="Central de atividades"
+        title="Atividades"
         description="Eventos operacionais globais — verificação, moderação e auditoria."
       />
       <ActivityFeed

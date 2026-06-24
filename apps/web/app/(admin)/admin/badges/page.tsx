@@ -189,7 +189,7 @@ export default async function AdminBadgesPage() {
 
             <tr>
 
-              {["Profissional", "Cidade", "Trust", "Reviews", "Atendimentos", "Badges", "Status verificação"].map((h) => (
+              {["Profissional", "Cidade", "Confiança", "Avaliações", "Atendimentos", "Badges", "Status verificação"].map((h) => (
 
                 <th
 
@@ -323,7 +323,7 @@ export default async function AdminBadgesPage() {
 
           <span>🔄 <strong>Recorrente</strong> — completedServices ≥ 3</span>
 
-          <span>🛡️ <strong>Confiável</strong> — Trust Score ≥ 25</span>
+          <span>🛡️ <strong>Confiável</strong> — Índice de Confiança ≥ 25</span>
 
           <span>⭐ <strong>Muito Bem Avaliado</strong> — 5+ reviews com média ≥ 4.5</span>
 

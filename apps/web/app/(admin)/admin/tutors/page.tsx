@@ -42,7 +42,7 @@ const COLUMNS = [
   },
   {
     key: "reviews",
-    header: "Reviews dadas",
+    header: "Avaliações enviadas",
     render: (row: AdminTutorRow) => (
       <span className="tabular-nums">{row.reviewCount}</span>
     ),

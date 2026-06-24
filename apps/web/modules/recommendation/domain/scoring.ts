@@ -49,7 +49,7 @@ export function computeRecommendationScore(input: RecommendationInput): Recommen
   if (trustPts > 0) {
     factors.push({
       key:    "trust",
-      label:  `Trust Score ${input.trustScore.toFixed(0)}`,
+      label:  `Índice de Confiança ${input.trustScore.toFixed(0)}`,
       points: trustPts,
     })
   }

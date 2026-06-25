@@ -83,6 +83,27 @@ export type PartnerRecommendationGroup = {
   }>
 }
 
+/** Linha plana para gestão de recomendações (Etapa 7.2) */
+export type PartnerRecommendationRow = {
+  connectionId: string
+  professionalId: string
+  displayName: string
+  city: string
+  specialty: string
+  isActive: boolean
+  statusLabel: "Ativa" | "Inativa"
+  recommendedAt: Date
+  publicProfileHref: string
+}
+
+export type ProfessionalSearchResult = {
+  id: string
+  displayName: string
+  city: string
+  specialty: string
+  trustScore: number
+}
+
 export type PartnerPortalData = {
   partner: PartnerPortalProfile
   stats: PartnerDashboardStats

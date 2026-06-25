@@ -45,3 +45,61 @@ export async function recordPartnerProfileAudit(
     // auditoria nunca deve quebrar fluxo principal
   }
 }
+
+export type PartnerRecommendationAuditAction =
+  | "partner.recommendation_created"
+  | "partner.recommendation_deactivated"
+  | "partner.recommendation_activated"
+
+type RecommendationAuditPayload = {
+  id: string
+  partnerId: string
+  professionalId: string
+  professionalName: string
+  isActive: boolean
+}
+
+function recommendationAuditPayload(input: {
+  connectionId: string
+  partnerId: string
+  professionalId: string
+  professionalName: string
+  isActive: boolean
+}): RecommendationAuditPayload {
+  return {
+    id: input.connectionId,
+    partnerId: input.partnerId,
+    professionalId: input.professionalId,
+    professionalName: input.professionalName,
+    isActive: input.isActive,
+  }
+}
+
+export async function recordPartnerRecommendationAudit(
+  userId: string,
+  action: PartnerRecommendationAuditAction,
+  input: {
+    connectionId: string
+    partnerId: string
+    professionalId: string
+    professionalName: string
+    isActive: boolean
+  },
+  before?: RecommendationAuditPayload | null
+): Promise<void> {
+  try {
+    const after = recommendationAuditPayload(input)
+    await prisma.auditLog.create({
+      data: {
+        userId,
+        action,
+        entity: "TrustConnection",
+        entityId: input.connectionId,
+        before: before ? (before as Prisma.InputJsonValue) : undefined,
+        after: after as Prisma.InputJsonValue,
+      },
+    })
+  } catch {
+    // auditoria nunca deve quebrar fluxo principal
+  }
+}

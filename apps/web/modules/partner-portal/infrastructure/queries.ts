@@ -18,6 +18,8 @@ import type {
   PartnerNextAction,
   PartnerPortalData,
   PartnerRecommendationGroup,
+  PartnerRecommendationRow,
+  ProfessionalSearchResult,
 } from "../domain/types"
 import { toPartnerPortalProfile } from "./repository"
 
@@ -296,7 +298,7 @@ export function buildPartnerNextActions(input: {
       label: "Fazer primeira recomendação",
       description:
         "Indique profissionais confiáveis para fortalecer sua presença na rede.",
-      href: "/onboarding/partner",
+      href: "/partner/recommendations",
       variant: "default",
     })
   }
@@ -383,6 +385,133 @@ export async function getPartnerRecommendationGroups(
     const aDate = a.recommendations[0]?.recommendedAt.getTime() ?? 0
     const bDate = b.recommendations[0]?.recommendedAt.getTime() ?? 0
     return bDate - aDate
+  })
+}
+
+export async function getPartnerRecommendations(
+  partnerId: string
+): Promise<PartnerRecommendationRow[]> {
+  const connections = await prisma.trustConnection.findMany({
+    where: partnerConnectionsWhere(partnerId),
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      targetId: true,
+      isActive: true,
+      createdAt: true,
+      targetProfile: {
+        select: {
+          id: true,
+          displayName: true,
+          city: true,
+          serviceTypes: true,
+        },
+      },
+    },
+  })
+
+  return connections.map((conn) => ({
+    connectionId: conn.id,
+    professionalId: conn.targetProfile.id,
+    displayName: conn.targetProfile.displayName,
+    city: conn.targetProfile.city,
+    specialty: formatSpecialty(conn.targetProfile.serviceTypes),
+    isActive: conn.isActive,
+    statusLabel: conn.isActive ? "Ativa" : "Inativa",
+    recommendedAt: conn.createdAt,
+    publicProfileHref: `/discover/${conn.targetProfile.id}`,
+  }))
+}
+
+export async function findPartnerRecommendationById(
+  connectionId: string,
+  partnerId: string
+) {
+  return prisma.trustConnection.findFirst({
+    where: {
+      id: connectionId,
+      ...partnerConnectionsWhere(partnerId),
+    },
+    select: {
+      id: true,
+      targetId: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+      connectionType: true,
+      sourcePartnerId: true,
+      targetProfile: {
+        select: {
+          id: true,
+          displayName: true,
+          city: true,
+        },
+      },
+    },
+  })
+}
+
+export async function findPartnerRecommendationForProfessional(
+  partnerId: string,
+  professionalId: string
+) {
+  return prisma.trustConnection.findFirst({
+    where: {
+      targetId: professionalId,
+      ...partnerConnectionsWhere(partnerId),
+    },
+    select: { id: true, isActive: true },
+  })
+}
+
+export async function searchProfessionalsForPartnerRecommendation(
+  partnerId: string,
+  filters: { name?: string; city?: string }
+): Promise<ProfessionalSearchResult[]> {
+  const name = filters.name?.trim()
+  const city = filters.city?.trim()
+
+  if (!name && !city) return []
+
+  const existing = await prisma.trustConnection.findMany({
+    where: partnerConnectionsWhere(partnerId),
+    select: { targetId: true },
+  })
+  const excludedIds = existing.map((c) => c.targetId)
+
+  const rows = await prisma.professionalProfile.findMany({
+    where: {
+      deletedAt: null,
+      id: excludedIds.length > 0 ? { notIn: excludedIds } : undefined,
+      ...(name
+        ? { displayName: { contains: name, mode: "insensitive" } }
+        : {}),
+      ...(city ? { city: { equals: city, mode: "insensitive" } } : {}),
+    },
+    select: {
+      id: true,
+      displayName: true,
+      city: true,
+      trustScore: true,
+      serviceTypes: true,
+    },
+    orderBy: [{ trustScore: "desc" }, { displayName: "asc" }],
+    take: 20,
+  })
+
+  return rows.map((r) => ({
+    id: r.id,
+    displayName: r.displayName,
+    city: r.city,
+    specialty: formatSpecialty(r.serviceTypes),
+    trustScore: r.trustScore,
+  }))
+}
+
+export async function findProfessionalForRecommendation(professionalId: string) {
+  return prisma.professionalProfile.findFirst({
+    where: { id: professionalId, deletedAt: null },
+    select: { id: true, displayName: true, city: true },
   })
 }
 

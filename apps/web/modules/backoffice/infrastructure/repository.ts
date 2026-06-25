@@ -596,6 +596,50 @@ function collectEntityIds(
   return [...new Set(entries.filter((e) => e.entityType.toUpperCase() === upper).map((e) => e.entityId))]
 }
 
+const PARTNER_RECOMMENDATION_ACTIONS = new Set([
+  "partner.recommendation_created",
+  "partner.recommendation_deactivated",
+  "partner.recommendation_activated",
+])
+
+function extractRecommendationAuditPayload(
+  after: Record<string, unknown> | null,
+  before: Record<string, unknown> | null
+): { partnerId?: string; professionalName?: string } | null {
+  const data = after ?? before
+  if (!data) return null
+
+  const partnerId =
+    typeof data.partnerId === "string" ? data.partnerId : undefined
+  const professionalName =
+    typeof data.professionalName === "string" ? data.professionalName : undefined
+
+  if (!partnerId && !professionalName) return null
+  return { partnerId, professionalName }
+}
+
+function resolvePartnerRecommendationEntityLabel(
+  action: string,
+  entityId: string,
+  after: Record<string, unknown> | null,
+  before: Record<string, unknown> | null,
+  partnerNames: Map<string, string>
+): string | null {
+  if (!PARTNER_RECOMMENDATION_ACTIONS.has(action)) return null
+
+  const payload = extractRecommendationAuditPayload(after, before)
+  const partnerName = payload?.partnerId
+    ? partnerNames.get(payload.partnerId)
+    : undefined
+  const professionalName = payload?.professionalName
+
+  if (partnerName && professionalName) {
+    return `Recomendação: ${partnerName} → ${professionalName}`
+  }
+
+  return `Recomendação #${entityId}`
+}
+
 export async function getAdminAuditLogs(
   filter: AdminAuditFilter = {}
 ): Promise<AdminAuditRow[]> {
@@ -636,7 +680,19 @@ export async function getAdminAuditLogs(
         ...collectEntityIds(allEntries, "PROFESSIONALPROFILE"),
       ]),
     ]
-    const partnerIds = collectEntityIds(allEntries, "PARTNER")
+    const partnerIds = [
+      ...new Set([
+        ...collectEntityIds(allEntries, "PARTNER"),
+        ...userLogs.flatMap((l) => {
+          if (!PARTNER_RECOMMENDATION_ACTIONS.has(l.action)) return []
+          const payload = extractRecommendationAuditPayload(
+            l.after as Record<string, unknown> | null,
+            l.before as Record<string, unknown> | null
+          )
+          return payload?.partnerId ? [payload.partnerId] : []
+        }),
+      ]),
+    ]
     const tutorProfileIds = collectEntityIds(allEntries, "TUTORPROFILE")
     const petIds = collectEntityIds(allEntries, "PET")
 
@@ -684,6 +740,9 @@ export async function getAdminAuditLogs(
     const partnerLabel = new Map(
       partners.map((p) => [p.id, `${p.businessName} — parceiro (${p.city})`])
     )
+    const partnerBusinessName = new Map(
+      partners.map((p) => [p.id, p.businessName])
+    )
     const tutorProfileLabel = new Map(
       tutorProfiles.map((t) => [
         t.id,
@@ -716,6 +775,7 @@ export async function getAdminAuditLogs(
 
     const userRows: AdminAuditRow[] = userLogs.map((l) => {
       const after = l.after as Record<string, unknown> | null
+      const before = l.before as Record<string, unknown> | null
       const fallbackLabel =
         typeof after?.displayName === "string"
           ? `${after.displayName} — ${l.user.email ?? "sem email"}`
@@ -730,8 +790,17 @@ export async function getAdminAuditLogs(
         action:      l.action,
         entityType:  l.entity,
         entityId:    l.entityId,
-        entityLabel: resolveEntityLabel(l.entity, l.entityId) ?? fallbackLabel,
-        metadata:    (after ?? (l.before as Record<string, unknown> | null)) ?? null,
+        entityLabel:
+          resolvePartnerRecommendationEntityLabel(
+            l.action,
+            l.entityId,
+            after,
+            before,
+            partnerBusinessName
+          ) ??
+          resolveEntityLabel(l.entity, l.entityId) ??
+          fallbackLabel,
+        metadata:    (after ?? before) ?? null,
         createdAt:   l.createdAt,
       }
     })

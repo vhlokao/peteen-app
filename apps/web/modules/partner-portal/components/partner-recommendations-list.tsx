@@ -1,32 +1,46 @@
-import Link from "next/link"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
-import { ExternalLink } from "lucide-react"
+"use client"
 
-import { Badge } from "@/components/ui/badge"
-import { buttonVariants } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { buildProfessionalDiscoverUrl } from "@/modules/partner-portal/domain/navigation"
-import type { PartnerRecommendationGroup } from "../domain/types"
+import { useRouter } from "next/navigation"
+import { useState } from "react"
+import { Plus } from "lucide-react"
+
+import type { PartnerRecommendationRow } from "../domain/types"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { PartnerRecommendationCard } from "./partner-recommendation-card"
+import { PartnerRecommendationForm } from "./partner-recommendation-form"
+
+type Props = {
+  recommendations: PartnerRecommendationRow[]
+  defaultCity?: string
+}
 
 export function PartnerRecommendationsList({
-  groups,
-}: {
-  groups: PartnerRecommendationGroup[]
-}) {
-  if (groups.length === 0) {
+  recommendations,
+  defaultCity,
+}: Props) {
+  const router = useRouter()
+  const [creating, setCreating] = useState(false)
+
+  function refresh() {
+    router.refresh()
+  }
+
+  if (recommendations.length === 0 && !creating) {
     return (
       <Card>
-        <CardContent className="py-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            Nenhuma recomendação registrada ainda.
-          </p>
-          <Link
-            href="/onboarding/partner"
-            className={buttonVariants({ variant: "outline", size: "sm", className: "mt-4" })}
-          >
-            Fazer primeira recomendação
-          </Link>
+        <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">
+              Nenhum profissional recomendado
+            </h2>
+            <p className="max-w-sm text-sm text-muted-foreground">
+              Comece indicando profissionais confiáveis para fortalecer sua rede.
+            </p>
+          </div>
+          <Button type="button" onClick={() => setCreating(true)}>
+            Adicionar recomendação
+          </Button>
         </CardContent>
       </Card>
     )
@@ -34,56 +48,47 @@ export function PartnerRecommendationsList({
 
   return (
     <div className="space-y-4">
-      {groups.map((group) => (
-        <Card key={group.professionalId}>
-          <CardHeader className="pb-3">
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <CardTitle className="text-base">{group.displayName}</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  {group.city} · {group.specialty}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant={group.isConnectionActive ? "default" : "secondary"}>
-                  {group.isConnectionActive ? "Conexão ativa" : "Sem conexão ativa"}
-                </Badge>
-                <Link
-                  href={buildProfessionalDiscoverUrl(
-                    group.professionalId,
-                    "/partner/recommendations"
-                  )}
-                  className={buttonVariants({
-                    variant: "outline",
-                    size: "sm",
-                    className: "gap-1",
-                  })}
-                >
-                  Perfil público
-                  <ExternalLink className="size-3.5" />
-                </Link>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <ul className="divide-y divide-border">
-              {group.recommendations.map((rec) => (
-                <li
-                  key={rec.connectionId}
-                  className="flex flex-col gap-1 py-2 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <span className="text-sm text-muted-foreground">
-                    {format(rec.recommendedAt, "dd MMM yyyy", { locale: ptBR })}
-                  </span>
-                  <Badge variant={rec.isActive ? "outline" : "secondary"}>
-                    {rec.statusLabel}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          {recommendations.length} recomendação
+          {recommendations.length !== 1 ? "ões" : ""}
+          {" · "}
+          {recommendations.filter((r) => r.isActive).length} ativa
+          {recommendations.filter((r) => r.isActive).length !== 1 ? "s" : ""}
+        </p>
+        {!creating && (
+          <Button
+            type="button"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setCreating(true)}
+          >
+            <Plus className="size-4" />
+            Nova recomendação
+          </Button>
+        )}
+      </div>
+
+      {creating && (
+        <PartnerRecommendationForm
+          defaultCity={defaultCity}
+          onCancel={() => setCreating(false)}
+          onSuccess={() => {
+            setCreating(false)
+            refresh()
+          }}
+        />
+      )}
+
+      <div className="space-y-3">
+        {recommendations.map((recommendation) => (
+          <PartnerRecommendationCard
+            key={recommendation.connectionId}
+            recommendation={recommendation}
+            onUpdated={refresh}
+          />
+        ))}
+      </div>
     </div>
   )
 }

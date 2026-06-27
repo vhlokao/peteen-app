@@ -12,8 +12,9 @@ import {
   type TrustLevel,
 } from "@/modules/professional/domain/types"
 import {
-  isPublicTrustBuilding,
+  getPublicTrustState,
   PUBLIC_TRUST_BUILDING_LABEL,
+  PUBLIC_TRUST_INITIAL_LABEL,
 } from "@/modules/trust-engine/domain/public-trust-display"
 import { BadgePill } from "@/components/shared/badges/BadgePill"
 import type { BadgeData } from "@/modules/badges/domain/types"
@@ -86,6 +87,15 @@ export function ProfessionalCard({
     .join("")
     .toUpperCase()
 
+  const trustState = getPublicTrustState(trustScore, trustLevel, {
+    reviewCount,
+    isVerified,
+    hasPartnerEndorsement: (partnerEndorsements ?? []).length > 0,
+    hasReputationBadge:    (reputationBadges ?? []).length > 0,
+    recurringClientsCount,
+    completedCount: myCompletedServices,
+  })
+
   return (
     <Card className="group transition-shadow hover:shadow-md">
       <CardContent className="flex flex-col gap-4 p-4">
@@ -143,9 +153,13 @@ export function ProfessionalCard({
           {/* Trust Score + nível */}
           <div className="flex items-center gap-1.5">
             <span className="text-[0.65rem] text-muted-foreground">Confiança</span>
-            {isPublicTrustBuilding(trustScore, trustLevel) ? (
+            {trustState === "building" ? (
               <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium bg-muted text-muted-foreground">
                 {PUBLIC_TRUST_BUILDING_LABEL}
+              </span>
+            ) : trustState === "initial" ? (
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+                {PUBLIC_TRUST_INITIAL_LABEL}
               </span>
             ) : (
               <>

@@ -8,6 +8,7 @@ import {
   setConnectionActive,
   countActiveConnectionsBySource,
 } from "@/modules/trust-graph/infrastructure/repository"
+import { updateProfessionalTrust } from "@/modules/trust-engine/application/update-professional-trust"
 import { TRUST_CONNECTION_WEIGHTS } from "@/modules/trust-graph/domain/constants"
 import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 
@@ -118,6 +119,9 @@ export async function createPartnerRecommendationAction(
       }
     )
 
+    // Recalcula Trust Score do profissional (trustGraphBonus mudou; falha silenciosa)
+    await updateProfessionalTrust(professionalId)
+
     revalidateRecommendationPaths(partner.slug, professionalId)
     return { success: true, data: { connectionId: connection.id } }
   } catch (err) {
@@ -166,6 +170,9 @@ export async function deactivatePartnerRecommendationAction(
       },
       before
     )
+
+    // Recalcula Trust Score do profissional (trustGraphBonus mudou; falha silenciosa)
+    await updateProfessionalTrust(existing.targetId)
 
     revalidateRecommendationPaths(partner.slug, existing.targetId)
     return { success: true, data: undefined }
@@ -225,6 +232,9 @@ export async function activatePartnerRecommendationAction(
       },
       before
     )
+
+    // Recalcula Trust Score do profissional (trustGraphBonus mudou; falha silenciosa)
+    await updateProfessionalTrust(existing.targetId)
 
     revalidateRecommendationPaths(partner.slug, existing.targetId)
     return { success: true, data: undefined }

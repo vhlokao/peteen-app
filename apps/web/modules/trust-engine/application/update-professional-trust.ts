@@ -35,9 +35,9 @@ export async function updateProfessionalTrust(professionalId: string): Promise<v
       },
     })
 
-    // Invalida cache de descoberta para que o ranking reflita o novo score
-    revalidatePath("/(tutor)/discover")
-    revalidatePath(`/(tutor)/discover/${professionalId}`)
+    // Invalida cache de descoberta — URLs reais, sem route group prefix
+    revalidatePath("/discover")
+    revalidatePath(`/discover/${professionalId}`)
   } catch (err) {
     console.error("[updateProfessionalTrust]", err)
     // Falha silenciosa — não lança erro para preservar a operação principal

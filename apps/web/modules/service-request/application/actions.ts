@@ -449,6 +449,11 @@ export async function cancelServiceRequestAction(
 
     const updated = await transitionStatus(requestId, toStatus, { trustEvent })
 
+    // Recalcula Trust Score se cancelamento do profissional gerou TrustEvent (falha silenciosa)
+    if (trustEvent) {
+      await updateProfessionalTrust(request.professionalId)
+    }
+
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
     revalidatePath("/requests")
@@ -751,6 +756,11 @@ async function applyTransition({
       : undefined
 
     const updated = await transitionStatus(requestId, toStatus, { trustEvent })
+
+    // Recalcula Trust Score se a transição gerou TrustEvent (falha silenciosa)
+    if (trustEvent) {
+      await updateProfessionalTrust(request.professionalId)
+    }
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")

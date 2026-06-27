@@ -13,6 +13,7 @@ import { revalidatePath } from "next/cache"
 
 import { requireAdmin } from "@/modules/identity/application/get-session"
 import { createAdminAudit } from "@/modules/moderation/infrastructure/repository"
+import { updateProfessionalTrust } from "@/modules/trust-engine/application/update-professional-trust"
 import {
   createTrustConnection,
   setConnectionActive,
@@ -73,6 +74,9 @@ export async function createTrustConnectionAction(
       },
     })
 
+    // Recalcula Trust Score do profissional alvo (falha silenciosa)
+    await updateProfessionalTrust(input.targetId)
+
     revalidatePath("/admin/trust-graph")
     revalidatePath("/admin")
     return { ok: true, data: { id: connection.id } }
@@ -95,7 +99,7 @@ export async function setTrustConnectionActiveAction(
 ): Promise<ActionResult<void>> {
   try {
     const adminId = await assertAdmin()
-    await setConnectionActive(id, isActive)
+    const { targetId } = await setConnectionActive(id, isActive)
 
     await createAdminAudit({
       adminId,
@@ -104,6 +108,9 @@ export async function setTrustConnectionActiveAction(
       entityId:   id,
       metadata:   { isActive },
     })
+
+    // Recalcula Trust Score do profissional alvo (falha silenciosa)
+    await updateProfessionalTrust(targetId)
 
     revalidatePath("/admin/trust-graph")
     revalidatePath("/admin/trust")

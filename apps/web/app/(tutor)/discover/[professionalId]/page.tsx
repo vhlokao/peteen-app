@@ -32,9 +32,11 @@ import {
   type TrustLevel,
 } from "@/modules/professional/domain/types"
 import {
-  isPublicTrustBuilding,
+  getPublicTrustState,
   PUBLIC_TRUST_BUILDING_LABEL,
   PUBLIC_TRUST_BUILDING_MESSAGE,
+  PUBLIC_TRUST_INITIAL_LABEL,
+  PUBLIC_TRUST_INITIAL_MESSAGE,
 } from "@/modules/trust-engine/domain/public-trust-display"
 import { formatPublicServicePrice } from "@/modules/professional/domain/format-service-price"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -163,6 +165,14 @@ export default async function ProfessionalProfilePage({
 
   const myRelationshipCompleted = myRelationship?.completedServices
 
+  const trustState = getPublicTrustState(trust.score, trust.level, {
+    reviewCount:          totalReviews,
+    isVerified:           verificationActive,
+    hasPartnerEndorsement: partnerEndorsements.length > 0,
+    completedCount:       trust.meta.totalCompletedRequests,
+    recurringClientsCount: analytics?.totalRelationships ?? 0,
+  })
+
   return (
     <div className="page-container max-w-2xl">
       <PublicPageBackLink
@@ -230,9 +240,13 @@ export default async function ProfessionalProfilePage({
 
             {/* Trust Score */}
             <div className="flex items-center gap-2">
-              {isPublicTrustBuilding(trust.score, trust.level) ? (
+              {trustState === "building" ? (
                 <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-muted text-muted-foreground">
                   {PUBLIC_TRUST_BUILDING_LABEL}
+                </span>
+              ) : trustState === "initial" ? (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+                  {PUBLIC_TRUST_INITIAL_LABEL}
                 </span>
               ) : (
                 <>
@@ -281,9 +295,13 @@ export default async function ProfessionalProfilePage({
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Índice de Confiança
           </h2>
-          {isPublicTrustBuilding(trust.score, trust.level) ? (
-            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${TRUST_LEVEL_COLORS[trust.level]}`}>
-              {TRUST_LEVEL_LABELS[trust.level]}
+          {trustState === "building" ? (
+            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">
+              {PUBLIC_TRUST_BUILDING_LABEL}
+            </span>
+          ) : trustState === "initial" ? (
+            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
+              {PUBLIC_TRUST_INITIAL_LABEL}
             </span>
           ) : (
             <div className="flex items-center gap-2">
@@ -299,10 +317,15 @@ export default async function ProfessionalProfilePage({
           )}
         </div>
 
-        {isPublicTrustBuilding(trust.score, trust.level) ? (
-          /* Estado "em construção" — sem barra vazia nem zeros */
+        {trustState === "building" ? (
+          /* Sem evidência — mensagem de início de jornada */
           <p className="text-sm text-muted-foreground leading-relaxed">
             {PUBLIC_TRUST_BUILDING_MESSAGE}
+          </p>
+        ) : trustState === "initial" ? (
+          /* Evidência inicial — mensagem positiva sem barra vazia */
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {PUBLIC_TRUST_INITIAL_MESSAGE}
           </p>
         ) : (
           <>

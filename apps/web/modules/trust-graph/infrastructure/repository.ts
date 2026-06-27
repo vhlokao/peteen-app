@@ -173,10 +173,15 @@ export async function createTrustConnection(
   }
 }
 
-/** Altera isActive de uma conexão */
+/** Altera isActive de uma conexão. Retorna targetId para sync do Trust Score. */
 export async function setConnectionActive(
   id: string,
   isActive: boolean
-): Promise<void> {
-  await prisma.trustConnection.update({ where: { id }, data: { isActive } })
+): Promise<{ targetId: string }> {
+  const updated = await prisma.trustConnection.update({
+    where:  { id },
+    data:   { isActive },
+    select: { targetId: true },
+  })
+  return { targetId: updated.targetId }
 }

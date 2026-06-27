@@ -24,6 +24,7 @@ import {
   ClipboardCheck,
   Activity,
   Bell,
+  FlaskConical,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -78,6 +79,17 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/risk",     label: "Índice de Risco",   icon: ShieldAlert,          exact: false },
     ],
   },
+  // Visível apenas em development — página retorna notFound() em production
+  ...(process.env.NODE_ENV === "development"
+    ? [
+        {
+          title: "Desenvolvimento",
+          items: [
+            { href: "/admin/dev-tools", label: "Dev Tools", icon: FlaskConical, exact: false },
+          ],
+        },
+      ]
+    : []),
 ]
 
 function normalizePath(pathname: string): string {

@@ -53,9 +53,12 @@ import {
   countCompletedRequestsBetween,
   hasPendingRequestsForPet,
   hasRecentCompletionBetween,
+  hasActiveRequestBetween,
+  hasInProgressRequestForProfessional,
 } from "../infrastructure/repository"
 import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
+import { isDevBypassEnabled } from "@/modules/antifraude/domain/dev-flags"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRIAÇÃO
@@ -125,6 +128,24 @@ export async function createServiceRequestAction(
       }
     }
 
+    // ── Guardrail operacional: solicitação duplicada em aberto ───────────────
+    // Impede que o tutor abra múltiplas solicitações ativas para o mesmo profissional.
+    // Bypassável em development via DEV_BYPASS_OPERATIONAL_GUARDRAILS=true (.env.local).
+    if (!isDevBypassEnabled("operational")) {
+      const hasDuplicate = await hasActiveRequestBetween(
+        tutorProfile.id,
+        parsed.data.professionalId
+      )
+      if (hasDuplicate) {
+        return {
+          success: false,
+          error:
+            "Você já possui uma solicitação em andamento com este profissional. Finalize ou cancele a solicitação atual antes de criar uma nova.",
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Ownership: o pet deve pertencer ao tutor autenticado
     const { findPetByIdAndTutorId } = await import(
       "@/modules/tutor/infrastructure/repository"
@@ -190,15 +211,69 @@ export async function createServiceRequestAction(
 
 /**
  * Aceita uma solicitação. Apenas profissionais. PENDING → ACCEPTED.
+ *
+ * Guardrail operacional MVP:
+ *   Bloqueia aceite se o profissional já possui outro atendimento IN_PROGRESS,
+ *   evitando conflito operacional antes de existir agenda real.
  */
 export async function acceptServiceRequestAction(
   requestId: string
 ): Promise<ActionResult<ServiceRequestData>> {
-  return applyTransition({
-    requestId,
-    toStatus: "ACCEPTED",
-    requiredActor: "professional",
-  })
+  try {
+    const session = await requireAuth()
+
+    const ctx = await findRequestWithOwnershipContext(requestId)
+    if (!ctx) {
+      return { success: false, error: "Solicitação não encontrada." }
+    }
+
+    const { request, professionalUserId } = ctx
+
+    if (professionalUserId !== session.id) {
+      return {
+        success: false,
+        error: "Apenas o profissional pode realizar esta ação.",
+      }
+    }
+
+    const toStatus: RequestStatus = "ACCEPTED"
+    if (!isValidTransition(request.status, toStatus)) {
+      return {
+        success: false,
+        error: `Transição inválida: "${request.status}" → "${toStatus}".`,
+      }
+    }
+
+    // ── Guardrail operacional: não aceitar com atendimento em andamento ───────
+    // Bypassável em development via DEV_BYPASS_OPERATIONAL_GUARDRAILS=true (.env.local).
+    if (!isDevBypassEnabled("operational")) {
+      const busy = await hasInProgressRequestForProfessional(
+        request.professionalId,
+        requestId
+      )
+      if (busy) {
+        return {
+          success: false,
+          error:
+            "Você já possui um atendimento em andamento. Finalize o atendimento atual antes de aceitar uma nova solicitação.",
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const updated = await transitionStatus(requestId, toStatus)
+
+    revalidatePath("/tutor/requests")
+    revalidatePath("/tutor")
+    revalidatePath("/requests")
+    revalidatePath(`/tutor/requests/${requestId}`)
+    revalidatePath(`/requests/${requestId}`)
+
+    return { success: true, data: updated }
+  } catch (err) {
+    console.error("[acceptServiceRequestAction]", err)
+    return { success: false, error: "Erro interno ao aceitar solicitação." }
+  }
 }
 
 /**
@@ -254,19 +329,37 @@ export async function startServiceRequestAction(
       }
     }
 
+    // ── Guardrail operacional: profissional com IN_PROGRESS não pode iniciar ──
+    // Bypassável em development via DEV_BYPASS_OPERATIONAL_GUARDRAILS=true (.env.local).
+    if (!isDevBypassEnabled("operational")) {
+      const busy = await hasInProgressRequestForProfessional(
+        request.professionalId,
+        requestId
+      )
+      if (busy) {
+        return {
+          success: false,
+          error:
+            "Você já possui um atendimento em andamento. Finalize o atendimento atual antes de iniciar outro.",
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Guardrail antifraude: conclusão recente bloqueia início ──────────────
-    // Impede que o profissional inicie um atendimento que não poderá ser concluído
-    // pelo guardrail de 24h — evita solicitação presa em IN_PROGRESS.
-    const tooSoon = await hasRecentCompletionBetween(
-      request.tutorId,
-      request.professionalId,
-      ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
-    )
-    if (tooSoon) {
-      return {
-        success: false,
-        error:
-          "Este atendimento não pode ser iniciado ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para iniciar um novo atendimento recorrente.",
+    // Bypassável em development via DEV_BYPASS_ANTIFRAUD_GUARDRAILS=true (.env.local).
+    if (!isDevBypassEnabled("antifraud")) {
+      const tooSoon = await hasRecentCompletionBetween(
+        request.tutorId,
+        request.professionalId,
+        ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
+      )
+      if (tooSoon) {
+        return {
+          success: false,
+          error:
+            "Este atendimento não pode ser iniciado ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para iniciar um novo atendimento recorrente.",
+        }
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -418,16 +511,19 @@ export async function completeServiceRequestAction(
     // ── Guardrail antifraude: conclusão muito próxima ─────────────────────────
     // Impede que um profissional registre múltiplas conclusões para o mesmo tutor
     // em menos de 24 horas — protege contra inflação artificial de recorrência.
-    const tooSoon = await hasRecentCompletionBetween(
-      request.tutorId,
-      request.professionalId,
-      ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
-    )
-    if (tooSoon) {
-      return {
-        success: false,
-        error:
-          "Este atendimento não pode ser concluído ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para registrar uma nova conclusão.",
+    // Bypassável em development via DEV_BYPASS_ANTIFRAUD_GUARDRAILS=true (.env.local).
+    if (!isDevBypassEnabled("antifraud")) {
+      const tooSoon = await hasRecentCompletionBetween(
+        request.tutorId,
+        request.professionalId,
+        ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
+      )
+      if (tooSoon) {
+        return {
+          success: false,
+          error:
+            "Este atendimento não pode ser concluído ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para registrar uma nova conclusão.",
+        }
       }
     }
     // ─────────────────────────────────────────────────────────────────────────

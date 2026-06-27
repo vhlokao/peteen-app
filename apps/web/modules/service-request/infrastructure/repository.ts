@@ -229,6 +229,51 @@ export async function countCompletedRequestsBetween(
 }
 
 /**
+ * Verifica se já existe uma solicitação ativa (PENDING / ACCEPTED / IN_PROGRESS)
+ * entre o mesmo par tutor-profissional.
+ *
+ * Guardrail operacional MVP:
+ *   Impede que o tutor crie múltiplas solicitações abertas para o mesmo profissional,
+ *   evitando estados confusos e expectativas operacionais erradas.
+ */
+export async function hasActiveRequestBetween(
+  tutorId: string,
+  professionalId: string
+): Promise<boolean> {
+  const count = await prisma.serviceRequest.count({
+    where: {
+      tutorId,
+      professionalId,
+      status: { in: ["PENDING", "ACCEPTED", "IN_PROGRESS"] },
+    },
+  })
+  return count > 0
+}
+
+/**
+ * Verifica se o profissional já possui outro atendimento IN_PROGRESS.
+ *
+ * Guardrail operacional MVP:
+ *   Impede que um profissional inicie ou aceite um novo atendimento enquanto
+ *   já está com um atendimento em andamento, evitando conflitos operacionais.
+ *
+ * @param excludeRequestId - ignora a própria request em avaliação na contagem
+ */
+export async function hasInProgressRequestForProfessional(
+  professionalId: string,
+  excludeRequestId?: string
+): Promise<boolean> {
+  const count = await prisma.serviceRequest.count({
+    where: {
+      professionalId,
+      status: "IN_PROGRESS",
+      ...(excludeRequestId ? { id: { not: excludeRequestId } } : {}),
+    },
+  })
+  return count > 0
+}
+
+/**
  * Verifica se já existe uma conclusão recente entre o mesmo par tutor-profissional.
  *
  * Guardrail antifraude MVP:
@@ -452,4 +497,74 @@ function mapToWithParticipants(result: {
       : null,
     review: result.review,
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEV/TEST ONLY — estas funções NÃO devem ser chamadas em production.
+// A proteção primária está nas Server Actions que as invocam (NODE_ENV check).
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type DevActiveRequest = {
+  id:               string
+  status:           string
+  serviceType:      string
+  createdAt:        Date
+  scheduledAt:      Date | null
+  tutorId:          string
+  professionalId:   string
+  tutorName:        string
+  professionalName: string
+}
+
+/**
+ * Lista todas as solicitações ativas (PENDING/ACCEPTED/IN_PROGRESS).
+ * Usada somente pela página /admin/dev-tools em ambiente de desenvolvimento.
+ */
+export async function devFindActiveRequests(): Promise<DevActiveRequest[]> {
+  const rows = await prisma.serviceRequest.findMany({
+    where: {
+      status: { in: ["PENDING", "ACCEPTED", "IN_PROGRESS"] },
+    },
+    select: {
+      id:           true,
+      status:       true,
+      serviceType:  true,
+      createdAt:    true,
+      scheduledAt:  true,
+      tutorId:      true,
+      professionalId: true,
+      tutor:        { select: { displayName: true } },
+      professional: { select: { displayName: true } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  })
+
+  return rows.map((r) => ({
+    id:               r.id,
+    status:           r.status,
+    serviceType:      r.serviceType,
+    createdAt:        r.createdAt,
+    scheduledAt:      r.scheduledAt,
+    tutorId:          r.tutorId,
+    professionalId:   r.professionalId,
+    tutorName:        r.tutor.displayName,
+    professionalName: r.professional.displayName,
+  }))
+}
+
+/**
+ * Força atualização de status de uma solicitação, bypassando a máquina de estados
+ * e sem gerar TrustEvents reputacionais.
+ *
+ * Usar apenas em dev-actions com proteção NODE_ENV + admin.
+ */
+export async function devForceStatusUpdate(
+  requestId: string,
+  newStatus: "CANCELLED_BY_TUTOR" | "CANCELLED_BY_PROFESSIONAL" | "EXPIRED"
+): Promise<void> {
+  await prisma.serviceRequest.update({
+    where: { id: requestId },
+    data:  { status: newStatus },
+  })
 }

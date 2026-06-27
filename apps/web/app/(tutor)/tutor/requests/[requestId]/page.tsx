@@ -38,6 +38,9 @@ import { Separator } from "@/components/ui/separator"
 import { RequestTimeline } from "@/components/requests/RequestTimeline"
 import { ReviewForm } from "@/components/reviews/ReviewForm"
 import { TutorRequestActions } from "@/modules/tutor-portal/components/tutor-request-actions"
+import { findDisputeByRequestId } from "@/modules/disputes/infrastructure/queries"
+import { DisputeReportSection } from "@/modules/disputes/components/dispute-form"
+import { DisputeStatusCard } from "@/modules/disputes/components/dispute-status-card"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
@@ -166,9 +169,18 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
   const canCancel = ["PENDING", "ACCEPTED"].includes(request.status)
   const canReview = isCompleted && !hasReview
 
-  const [existingReviewResult, myRelationship] = await Promise.all([
+  const blockedDisputeStatuses = new Set([
+    "PENDING",
+    "CANCELLED_BY_TUTOR",
+    "CANCELLED_BY_PROFESSIONAL",
+    "EXPIRED",
+  ])
+  const canOpenDispute = !blockedDisputeStatuses.has(request.status)
+
+  const [existingReviewResult, myRelationship, dispute] = await Promise.all([
     isCompleted && hasReview ? getReviewForRequestAction(requestId) : null,
     getMyRelationshipWithProfessional(request.professional.id),
+    findDisputeByRequestId(requestId),
   ])
 
   const existingReview = existingReviewResult?.success
@@ -390,6 +402,12 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
             O profissional confirmou o atendimento. Aguarde o início ou
             conclusão do serviço.
           </div>
+        ) : null}
+
+        {dispute ? <DisputeStatusCard dispute={dispute} /> : null}
+
+        {!dispute && canOpenDispute ? (
+          <DisputeReportSection requestId={requestId} />
         ) : null}
       </div>
     </div>

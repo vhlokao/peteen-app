@@ -17,6 +17,8 @@ import {
   Handshake,
   ScrollText,
   Activity,
+  Scale,
+  AlertTriangle,
 } from "lucide-react"
 
 import type { ActivityType } from "../domain/types"
@@ -44,6 +46,9 @@ export const ACTIVITY_ICONS: Record<ActivityType, LucideIcon> = {
   partner_activated: Handshake,
   partner_deactivated: Handshake,
   admin_action: ScrollText,
+  dispute_opened: Scale,
+  dispute_received: AlertTriangle,
+  dispute_pending: Scale,
 }
 
 export const DEFAULT_ACTIVITY_ICON: LucideIcon = Activity

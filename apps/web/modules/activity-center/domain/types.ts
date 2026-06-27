@@ -26,6 +26,9 @@ export type ActivityType =
   | "partner_activated"
   | "partner_deactivated"
   | "admin_action"
+  | "dispute_opened"
+  | "dispute_received"
+  | "dispute_pending"
 
 export type ActivityEntityType =
   | "ServiceRequest"
@@ -39,6 +42,7 @@ export type ActivityEntityType =
   | "TutorProfessionalRelationship"
   | "AdminAuditLog"
   | "AuditLog"
+  | "Dispute"
   | string
 
 export type ActivityItem = {

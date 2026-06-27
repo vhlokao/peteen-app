@@ -27,6 +27,8 @@ const ACTION_COLORS: Record<string, string> = {
   "flag.create":   "bg-orange-100 text-orange-700",
   "flag.resolve":  "bg-green-100 text-green-700",
   "dispute.update":"bg-blue-100 text-blue-700",
+  "dispute.created": "bg-amber-100 text-amber-700",
+  "dispute.status_updated": "bg-blue-100 text-blue-700",
   "review.hide":   "bg-red-100 text-red-700",
   "review.restore":"bg-emerald-100 text-emerald-700",
   "trust.recalculate": "bg-purple-100 text-purple-700",

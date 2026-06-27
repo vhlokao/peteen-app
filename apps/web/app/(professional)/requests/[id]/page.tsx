@@ -33,6 +33,8 @@ import { Separator } from "@/components/ui/separator"
 import { RequestTimeline } from "@/components/requests/RequestTimeline"
 import { RequestActions } from "@/components/requests/RequestActions"
 import { ReviewForm } from "@/components/reviews/ReviewForm"
+import { findDisputeForProfessionalRequest } from "@/modules/disputes/infrastructure/queries"
+import { DisputeBanner } from "@/modules/disputes/components/dispute-banner"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
@@ -171,12 +173,15 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
   const hasReview = request.review !== null
 
   // Busca review completa e relacionamento em paralelo (condicional ao role)
-  const [existingReviewResult, myRelationship] = await Promise.all([
+  const [existingReviewResult, myRelationship, dispute] = await Promise.all([
     isTutorView && isCompleted && hasReview
       ? getReviewForRequestAction(id)
       : Promise.resolve(null),
     isTutorView
       ? getMyRelationshipWithProfessional(request.professional.id)
+      : Promise.resolve(null),
+    isProfessionalView
+      ? findDisputeForProfessionalRequest(id, request.professional.id)
       : Promise.resolve(null),
   ])
 
@@ -347,6 +352,8 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
             }}
           />
         </section>
+
+        {isProfessionalView && dispute ? <DisputeBanner dispute={dispute} /> : null}
 
         {/* Ações do profissional */}
         {isActionable && (

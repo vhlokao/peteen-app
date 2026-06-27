@@ -45,7 +45,7 @@ export async function getTutorActivityFeed(
 ): Promise<ActivityItem[]> {
   const items: ActivityItem[] = []
 
-  const [requests, reviews, pets, archivedLogs, relationships, recurringRequests] =
+  const [requests, reviews, pets, archivedLogs, relationships, recurringRequests, disputes] =
     await Promise.all([
       prisma.serviceRequest.findMany({
         where: { tutorId },
@@ -110,6 +110,12 @@ export async function getTutorActivityFeed(
           createdAt: true,
           professional: { select: { id: true, displayName: true } },
         },
+      }),
+      prisma.dispute.findMany({
+        where: { request: { tutorId } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { id: true, requestId: true, reason: true, createdAt: true },
       }),
     ])
 
@@ -230,6 +236,20 @@ export async function getTutorActivityFeed(
     })
   }
 
+  for (const d of disputes) {
+    items.push({
+      id: `tutor-dispute-${d.id}`,
+      type: "dispute_opened",
+      title: "Disputa aberta",
+      description: "Você abriu uma disputa.",
+      createdAt: d.createdAt,
+      entityId: d.id,
+      entityType: "Dispute",
+      href: `/tutor/requests/${d.requestId}`,
+      metadata: { reason: d.reason },
+    })
+  }
+
   return finalize(items, limit)
 }
 
@@ -244,7 +264,7 @@ export async function getProfessionalActivityFeed(
   const items: ActivityItem[] = []
   const seloAtivo = isProfessionalVerificationActive(profile)
 
-  const [requests, reviews, relationships, verifications, recommendations, profileLogs] =
+  const [requests, reviews, relationships, verifications, recommendations, profileLogs, disputes] =
     await Promise.all([
       prisma.serviceRequest.findMany({
         where: { professionalId },
@@ -313,6 +333,12 @@ export async function getProfessionalActivityFeed(
         orderBy: { createdAt: "desc" },
         take: 10,
         select: { id: true, createdAt: true },
+      }),
+      prisma.dispute.findMany({
+        where: { request: { professionalId } },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: { id: true, requestId: true, reason: true, createdAt: true },
       }),
     ])
 
@@ -431,6 +457,20 @@ export async function getProfessionalActivityFeed(
       entityId: professionalId,
       entityType: "ProfessionalProfile",
       href: `/professional/profile`,
+    })
+  }
+
+  for (const d of disputes) {
+    items.push({
+      id: `pro-dispute-${d.id}`,
+      type: "dispute_received",
+      title: "Disputa aberta",
+      description: "Foi aberta uma disputa em uma solicitação.",
+      createdAt: d.createdAt,
+      entityId: d.id,
+      entityType: "Dispute",
+      href: `/requests/${d.requestId}`,
+      metadata: { reason: d.reason },
     })
   }
 
@@ -630,6 +670,8 @@ const ADMIN_ACTIONS = new Set([
   "review.restore",
   "partner.activate",
   "partner.deactivate",
+  "dispute.created",
+  "dispute.status_updated",
 ])
 
 type AdminActionMeta = {
@@ -705,6 +747,16 @@ function adminActionMeta(action: string): AdminActionMeta {
       title: "Parceiro desativado",
       href: "/admin/partners",
     },
+    "dispute.created": {
+      type: "dispute_pending",
+      title: "Nova disputa",
+      href: "/admin/disputes",
+    },
+    "dispute.status_updated": {
+      type: "admin_action",
+      title: "Disputa atualizada",
+      href: "/admin/disputes",
+    },
   }
   return (
     map[action] ?? {
@@ -766,13 +818,19 @@ export async function getAdminActivityFeed(limit = DEFAULT_LIMIT): Promise<Activ
   for (const log of userLogs) {
     const meta = adminActionMeta(log.action)
     const summary = summarizeMetadata(log.after ?? log.before)
+    const disputeDescription =
+      log.action === "dispute.created"
+        ? "Nova disputa aguardando análise."
+        : null
     items.push({
       id: `user-log-${log.id}`,
       type: meta.type,
       title: meta.title,
-      description: summary
-        ? `${log.entity} · ${summary}`
-        : `${log.entity} · ${log.entityId.slice(0, 8)}…`,
+      description:
+        disputeDescription ??
+        (summary
+          ? `${log.entity} · ${summary}`
+          : `${log.entity} · ${log.entityId.slice(0, 8)}…`),
       createdAt: log.createdAt,
       entityId: log.entityId,
       entityType: log.entity,

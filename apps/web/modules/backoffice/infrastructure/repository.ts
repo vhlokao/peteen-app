@@ -602,6 +602,53 @@ const PARTNER_RECOMMENDATION_ACTIONS = new Set([
   "partner.recommendation_activated",
 ])
 
+function isDisputeAuditEntry(entityType: string, action: string): boolean {
+  return entityType.toUpperCase() === "DISPUTE" || action.startsWith("dispute.")
+}
+
+function extractDisputeAuditPayload(
+  after: Record<string, unknown> | null,
+  before: Record<string, unknown> | null
+): { requestId?: string } | null {
+  const data = after ?? before
+  if (!data) return null
+
+  const requestId =
+    typeof data.requestId === "string" ? data.requestId : undefined
+
+  return requestId ? { requestId } : null
+}
+
+function formatDisputeEntityLabel(
+  tutorName: string,
+  professionalName: string
+): string {
+  return `Disputa: ${tutorName} × ${professionalName}`
+}
+
+function resolveDisputeEntityLabel(
+  action: string,
+  entityType: string,
+  entityId: string,
+  after: Record<string, unknown> | null,
+  before: Record<string, unknown> | null,
+  disputeLabels: Map<string, string>,
+  disputeLabelsByRequestId: Map<string, string>
+): string | null {
+  if (!isDisputeAuditEntry(entityType, action)) return null
+
+  const fromDisputeId = disputeLabels.get(entityId)
+  if (fromDisputeId) return fromDisputeId
+
+  const payload = extractDisputeAuditPayload(after, before)
+  if (payload?.requestId) {
+    const fromRequestId = disputeLabelsByRequestId.get(payload.requestId)
+    if (fromRequestId) return fromRequestId
+  }
+
+  return `Disputa #${entityId}`
+}
+
 function extractRecommendationAuditPayload(
   after: Record<string, unknown> | null,
   before: Record<string, unknown> | null
@@ -695,8 +742,41 @@ export async function getAdminAuditLogs(
     ]
     const tutorProfileIds = collectEntityIds(allEntries, "TUTORPROFILE")
     const petIds = collectEntityIds(allEntries, "PET")
+    const disputeIds = [
+      ...new Set([
+        ...collectEntityIds(allEntries, "DISPUTE"),
+        ...adminLogs
+          .filter((l) => isDisputeAuditEntry(l.entityType, l.action))
+          .map((l) => l.entityId),
+        ...userLogs
+          .filter((l) => isDisputeAuditEntry(l.entity, l.action))
+          .map((l) => l.entityId),
+      ]),
+    ]
+    const disputeRequestIds = [
+      ...new Set([
+        ...adminLogs
+          .filter((l) => isDisputeAuditEntry(l.entityType, l.action))
+          .flatMap((l) => {
+            const payload = extractDisputeAuditPayload(
+              (l.metadata as Record<string, unknown> | null) ?? null,
+              null
+            )
+            return payload?.requestId ? [payload.requestId] : []
+          }),
+        ...userLogs
+          .filter((l) => isDisputeAuditEntry(l.entity, l.action))
+          .flatMap((l) => {
+            const payload = extractDisputeAuditPayload(
+              l.after as Record<string, unknown> | null,
+              l.before as Record<string, unknown> | null
+            )
+            return payload?.requestId ? [payload.requestId] : []
+          }),
+      ]),
+    ]
 
-    const [professionals, partners, tutorProfiles, pets] = await Promise.all([
+    const [professionals, partners, tutorProfiles, pets, disputes] = await Promise.all([
       proIds.length
         ? prisma.professionalProfile.findMany({
             where: { id: { in: proIds } },
@@ -729,6 +809,28 @@ export async function getAdminAuditLogs(
             select: { id: true, name: true },
           })
         : Promise.resolve([]),
+      disputeIds.length || disputeRequestIds.length
+        ? prisma.dispute.findMany({
+            where: {
+              OR: [
+                ...(disputeIds.length ? [{ id: { in: disputeIds } }] : []),
+                ...(disputeRequestIds.length
+                  ? [{ requestId: { in: disputeRequestIds } }]
+                  : []),
+              ],
+            },
+            select: {
+              id: true,
+              requestId: true,
+              request: {
+                select: {
+                  tutor: { select: { displayName: true } },
+                  professional: { select: { displayName: true } },
+                },
+              },
+            },
+          })
+        : Promise.resolve([]),
     ])
 
     const proLabel = new Map(
@@ -750,6 +852,17 @@ export async function getAdminAuditLogs(
       ])
     )
     const petLabel = new Map(pets.map((p) => [p.id, p.name]))
+    const disputeLabel = new Map<string, string>()
+    const disputeLabelByRequestId = new Map<string, string>()
+
+    for (const dispute of disputes) {
+      const label = formatDisputeEntityLabel(
+        dispute.request.tutor.displayName,
+        dispute.request.professional.displayName
+      )
+      disputeLabel.set(dispute.id, label)
+      disputeLabelByRequestId.set(dispute.requestId, label)
+    }
 
     function resolveEntityLabel(entityType: string, entityId: string): string | null {
       const type = entityType.toUpperCase()
@@ -761,17 +874,30 @@ export async function getAdminAuditLogs(
       return null
     }
 
-    const adminRows: AdminAuditRow[] = adminLogs.map((l) => ({
-      id:          l.id,
-      actorEmail:  l.admin.email ?? "—",
-      actorKind:   "admin",
-      action:      l.action,
-      entityType:  l.entityType,
-      entityId:    l.entityId,
-      entityLabel: resolveEntityLabel(l.entityType, l.entityId),
-      metadata:    (l.metadata as Record<string, unknown>) ?? null,
-      createdAt:   l.createdAt,
-    }))
+    const adminRows: AdminAuditRow[] = adminLogs.map((l) => {
+      const metadata = (l.metadata as Record<string, unknown>) ?? null
+
+      return {
+        id:          l.id,
+        actorEmail:  l.admin.email ?? "—",
+        actorKind:   "admin",
+        action:      l.action,
+        entityType:  l.entityType,
+        entityId:    l.entityId,
+        entityLabel:
+          resolveDisputeEntityLabel(
+            l.action,
+            l.entityType,
+            l.entityId,
+            metadata,
+            null,
+            disputeLabel,
+            disputeLabelByRequestId
+          ) ?? resolveEntityLabel(l.entityType, l.entityId),
+        metadata,
+        createdAt:   l.createdAt,
+      }
+    })
 
     const userRows: AdminAuditRow[] = userLogs.map((l) => {
       const after = l.after as Record<string, unknown> | null
@@ -791,6 +917,15 @@ export async function getAdminAuditLogs(
         entityType:  l.entity,
         entityId:    l.entityId,
         entityLabel:
+          resolveDisputeEntityLabel(
+            l.action,
+            l.entity,
+            l.entityId,
+            after,
+            before,
+            disputeLabel,
+            disputeLabelByRequestId
+          ) ??
           resolvePartnerRecommendationEntityLabel(
             l.action,
             l.entityId,

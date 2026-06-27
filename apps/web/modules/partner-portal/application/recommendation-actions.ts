@@ -6,8 +6,10 @@ import type { ActionResult } from "@/modules/tutor/domain/types"
 import {
   createTrustConnection,
   setConnectionActive,
+  countActiveConnectionsBySource,
 } from "@/modules/trust-graph/infrastructure/repository"
 import { TRUST_CONNECTION_WEIGHTS } from "@/modules/trust-graph/domain/constants"
+import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 
 import { requirePartnerContext } from "./require-partner"
 import { recordPartnerRecommendationAudit } from "../infrastructure/audit"
@@ -78,6 +80,19 @@ export async function createPartnerRecommendationAction(
         error: existing.isActive
           ? "Este profissional já foi recomendado."
           : "Este profissional já possui recomendação inativa. Reative-a na lista.",
+      }
+    }
+
+    // Guardrail antifraude: limite de endossos ativos por parceiro no MVP
+    const activeEndorsements = await countActiveConnectionsBySource(
+      partner.id,
+      "PARTNER_RECOMMENDS_PROFESSIONAL"
+    )
+    if (activeEndorsements >= ANTIFRAUD_GUARDRAILS.MAX_ACTIVE_PARTNER_ENDORSEMENTS_MVP) {
+      return {
+        success: false,
+        error:
+          "Este parceiro já atingiu o limite de recomendações ativas no MVP. Desative uma recomendação antiga ou solicite revisão administrativa.",
       }
     }
 
@@ -173,6 +188,19 @@ export async function activatePartnerRecommendationAction(
 
     if (existing.isActive) {
       return { success: false, error: "Recomendação já está ativa." }
+    }
+
+    // Guardrail antifraude: reativação também não pode ultrapassar o limite ativo
+    const activeEndorsements = await countActiveConnectionsBySource(
+      partner.id,
+      "PARTNER_RECOMMENDS_PROFESSIONAL"
+    )
+    if (activeEndorsements >= ANTIFRAUD_GUARDRAILS.MAX_ACTIVE_PARTNER_ENDORSEMENTS_MVP) {
+      return {
+        success: false,
+        error:
+          "Este parceiro já atingiu o limite de recomendações ativas no MVP. Desative uma recomendação antiga ou solicite revisão administrativa.",
+      }
     }
 
     await setConnectionActive(connectionId, true)

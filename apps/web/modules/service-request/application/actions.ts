@@ -52,7 +52,10 @@ import {
   transitionStatus,
   countCompletedRequestsBetween,
   hasPendingRequestsForPet,
+  hasRecentCompletionBetween,
 } from "../infrastructure/repository"
+import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
+import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRIAÇÃO
@@ -217,15 +220,70 @@ export async function rejectServiceRequestAction(
 
 /**
  * Inicia o atendimento. Apenas profissionais. ACCEPTED → IN_PROGRESS.
+ *
+ * Guardrail antifraude MVP:
+ *   Bloqueia o início se já existe uma conclusão recente entre o mesmo par
+ *   tutor-profissional nas últimas 24h — evita que um serviço entre em andamento
+ *   quando não poderá ser concluído por causa do guardrail de conclusão.
  */
 export async function startServiceRequestAction(
   requestId: string
 ): Promise<ActionResult<ServiceRequestData>> {
-  return applyTransition({
-    requestId,
-    toStatus: "IN_PROGRESS",
-    requiredActor: "professional",
-  })
+  try {
+    const session = await requireAuth()
+
+    const ctx = await findRequestWithOwnershipContext(requestId)
+    if (!ctx) {
+      return { success: false, error: "Solicitação não encontrada." }
+    }
+
+    const { request, professionalUserId } = ctx
+
+    if (professionalUserId !== session.id) {
+      return {
+        success: false,
+        error: "Apenas o profissional pode realizar esta ação.",
+      }
+    }
+
+    const toStatus: RequestStatus = "IN_PROGRESS"
+    if (!isValidTransition(request.status, toStatus)) {
+      return {
+        success: false,
+        error: `Transição inválida: "${request.status}" → "${toStatus}".`,
+      }
+    }
+
+    // ── Guardrail antifraude: conclusão recente bloqueia início ──────────────
+    // Impede que o profissional inicie um atendimento que não poderá ser concluído
+    // pelo guardrail de 24h — evita solicitação presa em IN_PROGRESS.
+    const tooSoon = await hasRecentCompletionBetween(
+      request.tutorId,
+      request.professionalId,
+      ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
+    )
+    if (tooSoon) {
+      return {
+        success: false,
+        error:
+          "Este atendimento não pode ser iniciado ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para iniciar um novo atendimento recorrente.",
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const updated = await transitionStatus(requestId, toStatus)
+
+    revalidatePath("/tutor/requests")
+    revalidatePath("/tutor")
+    revalidatePath("/requests")
+    revalidatePath(`/tutor/requests/${requestId}`)
+    revalidatePath(`/requests/${requestId}`)
+
+    return { success: true, data: updated }
+  } catch (err) {
+    console.error("[startServiceRequestAction]", err)
+    return { success: false, error: "Erro interno ao iniciar solicitação." }
+  }
 }
 
 /**
@@ -357,6 +415,23 @@ export async function completeServiceRequestAction(
       }
     }
 
+    // ── Guardrail antifraude: conclusão muito próxima ─────────────────────────
+    // Impede que um profissional registre múltiplas conclusões para o mesmo tutor
+    // em menos de 24 horas — protege contra inflação artificial de recorrência.
+    const tooSoon = await hasRecentCompletionBetween(
+      request.tutorId,
+      request.professionalId,
+      ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
+    )
+    if (tooSoon) {
+      return {
+        success: false,
+        error:
+          "Este atendimento não pode ser concluído ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para registrar uma nova conclusão.",
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // TrustEvent de recorrência (apenas se isRecurring com histórico)
     let trustEvent: TrustEventPayload | undefined
 
@@ -409,6 +484,13 @@ export async function completeServiceRequestAction(
 
     // Recalcula Trust Score após conclusão (falha silenciosa)
     await updateProfessionalTrust(request.professionalId)
+
+    // Detector passivo de recorrência artificial — não bloqueia, falha silenciosa
+    detectArtificialRecurrence(
+      request.tutorId,
+      request.professionalId,
+      professionalUserId
+    ).catch(() => null)
 
     return { success: true, data: updated }
   } catch (err) {

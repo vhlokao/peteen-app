@@ -119,6 +119,30 @@ export async function countActiveConnections(): Promise<number> {
   }
 }
 
+/**
+ * Conta conexões ativas de uma fonte específica, opcionalmente filtradas por tipo.
+ *
+ * Guardrail antifraude MVP:
+ *   Usado para verificar se um parceiro atingiu o limite de endossos ativos
+ *   antes de criar ou reativar uma TrustConnection.
+ */
+export async function countActiveConnectionsBySource(
+  sourceId: string,
+  connectionType?: TrustConnectionType
+): Promise<number> {
+  try {
+    return await prisma.trustConnection.count({
+      where: {
+        sourceId,
+        isActive: true,
+        ...(connectionType ? { connectionType } : {}),
+      },
+    })
+  } catch {
+    return 0
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ESCRITA
 // ─────────────────────────────────────────────────────────────────────────────

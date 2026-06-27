@@ -61,8 +61,10 @@ import {
   findPublicReviewsForProfessional,
   findMyReviewsAsTutor,
   countRecentReviewsByTutor,
+  countRecentReviewsForProfessional,
   getReviewSummaryForProfessional,
 } from "../infrastructure/repository"
+import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRIAÇÃO — ação principal
@@ -175,6 +177,21 @@ export async function createReviewAction(
       return {
         success: false,
         error: `Você atingiu o limite de ${REVIEW_LIMITS.MAX_REVIEWS_PER_DAY} avaliações por dia. Tente novamente amanhã.`,
+      }
+    }
+
+    // ── 9b. Rate limiting por profissional: ≤ 20 reviews recebidas em 24h ───
+    // Proteção contra review bombing coordenado: múltiplas contas avaliando
+    // o mesmo profissional em curto período para inflar artificialmente o score.
+    const receivedRecently = await countRecentReviewsForProfessional(
+      request.professionalId,
+      24
+    )
+    if (receivedRecently >= ANTIFRAUD_GUARDRAILS.MAX_REVIEWS_RECEIVED_PER_PROFESSIONAL_24H) {
+      return {
+        success: false,
+        error:
+          "Este profissional recebeu muitas avaliações recentemente. Tente novamente mais tarde.",
       }
     }
 

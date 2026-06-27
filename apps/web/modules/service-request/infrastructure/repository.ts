@@ -229,6 +229,30 @@ export async function countCompletedRequestsBetween(
 }
 
 /**
+ * Verifica se já existe uma conclusão recente entre o mesmo par tutor-profissional.
+ *
+ * Guardrail antifraude MVP:
+ *   Impede que um profissional registre múltiplas conclusões para o mesmo tutor
+ *   em menos de `windowHours` horas, bloqueando inflação artificial de recorrência.
+ */
+export async function hasRecentCompletionBetween(
+  tutorId: string,
+  professionalId: string,
+  windowHours: number
+): Promise<boolean> {
+  const windowStart = new Date(Date.now() - windowHours * 60 * 60 * 1000)
+  const count = await prisma.serviceRequest.count({
+    where: {
+      tutorId,
+      professionalId,
+      status:      "COMPLETED",
+      completedAt: { gte: windowStart },
+    },
+  })
+  return count > 0
+}
+
+/**
  * Verifica se um pet tem solicitações ativas (PENDING ou ACCEPTED).
  * Usado para impedir soft delete de pets com solicitações em aberto.
  */

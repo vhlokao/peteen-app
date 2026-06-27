@@ -220,6 +220,26 @@ export async function countRecentReviewsByTutor(
 }
 
 /**
+ * Conta reviews recebidas por um profissional nas últimas `windowHours` horas.
+ *
+ * Guardrail antifraude MVP:
+ *   Um profissional não deve receber mais de MAX_REVIEWS_RECEIVED_PER_PROFESSIONAL_24H
+ *   reviews em 24 horas. Proteção contra campanhas coordenadas de review bombing.
+ */
+export async function countRecentReviewsForProfessional(
+  professionalId: string,
+  windowHours: number = 24
+): Promise<number> {
+  const windowStart = new Date(Date.now() - windowHours * 60 * 60 * 1000)
+  return prisma.review.count({
+    where: {
+      request:   { professionalId },
+      createdAt: { gte: windowStart },
+    },
+  })
+}
+
+/**
  * Conta reviews que um tutor específico já fez para um profissional específico.
  * Idealmente deve ser 1 (uma review por atendimento).
  * Usado para detectar padrões de review em série para o mesmo profissional.

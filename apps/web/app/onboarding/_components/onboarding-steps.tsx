@@ -1,25 +1,36 @@
 import { cn } from "@/lib/utils";
 
 type OnboardingStepsProps = {
-  /** Etapa atual (1 = escolha de persona, 2 = cadastro de perfil, 3 = primeiro pet) */
-  current: 1 | 2 | 3;
+  /** Etapa atual (1-indexed) */
+  current: number;
+  /** Fluxo de onboarding — define labels e quantidade de etapas */
+  flow?: "tutor" | "professional";
 };
 
-const STEPS = [
+const TUTOR_STEPS = [
   { label: "Perfil" },
   { label: "Cadastro" },
   { label: "Pet" },
 ] as const;
 
+const PROFESSIONAL_STEPS = [
+  { label: "Perfil" },
+  { label: "Cadastro" },
+  { label: "Horários" },
+  { label: "Serviço" },
+] as const;
+
 /**
  * Indicador de progresso para o fluxo de onboarding.
- * Exibe 3 etapas com estado: concluída, ativa ou pendente.
+ * Exibe etapas com estado: concluída, ativa ou pendente.
  */
-export function OnboardingSteps({ current }: OnboardingStepsProps) {
+export function OnboardingSteps({ current, flow = "tutor" }: OnboardingStepsProps) {
+  const steps = flow === "professional" ? PROFESSIONAL_STEPS : TUTOR_STEPS;
+
   return (
     <div className="flex items-center gap-1">
-      {STEPS.map((step, idx) => {
-        const stepNum = (idx + 1) as 1 | 2 | 3;
+      {steps.map((step, idx) => {
+        const stepNum = idx + 1;
         const isDone = stepNum < current;
         const isActive = stepNum === current;
 
@@ -46,7 +57,7 @@ export function OnboardingSteps({ current }: OnboardingStepsProps) {
               </span>
             </div>
 
-            {idx < STEPS.length - 1 && (
+            {idx < steps.length - 1 && (
               <div
                 className={cn(
                   "mb-4 h-px w-8 shrink-0",

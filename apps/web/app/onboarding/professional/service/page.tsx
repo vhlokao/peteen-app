@@ -30,7 +30,7 @@ export default async function OnboardingProfessionalServicePage() {
 
   return (
     <div className="space-y-8">
-      <OnboardingSteps current={3} />
+      <OnboardingSteps current={4} flow="professional" />
 
       <div className="space-y-1">
         <h1 className="font-heading text-2xl font-bold text-foreground">

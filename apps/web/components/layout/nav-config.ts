@@ -14,6 +14,7 @@ import {
   Activity,
   Package,
   Bell,
+  Calendar,
 } from "lucide-react";
 
 import type { AppShellVariant } from "@/types";
@@ -49,6 +50,7 @@ export const shellNavConfig: Record<AppShellVariant, ShellNavItem[]> = {
   professional: [
     { label: "Início", shortLabel: "Início", href: "/professional", icon: LayoutDashboard },
     { label: "Solicitações", shortLabel: "Fila", href: "/requests", icon: Inbox },
+    { label: "Agenda", shortLabel: "Agenda", href: "/professional/agenda", icon: Calendar },
     { label: "Clientes", shortLabel: "Clientes", href: "/professional/clients", icon: Users },
     { label: "Pets", shortLabel: "Pets", href: "/professional/pets", icon: PawPrint },
     { label: "Avaliações", shortLabel: "Avaliaç.", href: "/professional/reviews", icon: Star },

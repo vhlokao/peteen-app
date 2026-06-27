@@ -21,7 +21,7 @@ export default async function OnboardingProfessionalPage() {
   if (!ctx.authenticated) redirect("/login");
 
   if (ctx.user.primaryRole === "PROFESSIONAL") {
-    redirect("/onboarding/professional/service");
+    redirect("/onboarding/professional/availability");
   }
 
   if (ctx.user.primaryRole !== null) {
@@ -30,7 +30,7 @@ export default async function OnboardingProfessionalPage() {
 
   return (
     <div className="space-y-8">
-      <OnboardingSteps current={2} />
+      <OnboardingSteps current={2} flow="professional" />
 
       <div className="space-y-1">
         <h1 className="font-heading text-2xl font-bold text-foreground">
@@ -41,7 +41,7 @@ export default async function OnboardingProfessionalPage() {
         </p>
       </div>
 
-      <ProfessionalProfileForm redirectTo="/onboarding/professional/service" />
+      <ProfessionalProfileForm redirectTo="/onboarding/professional/availability" />
     </div>
   );
 }

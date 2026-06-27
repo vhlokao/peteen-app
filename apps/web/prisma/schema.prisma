@@ -167,10 +167,11 @@ model ProfessionalProfile {
   planExpiresAt DateTime?
 
   // Relações de domínio
-  services      Service[]
-  requests      ServiceRequest[]
-  crmClients    CrmClient[]
-  relationships TutorProfessionalRelationship[]
+  services       Service[]
+  requests       ServiceRequest[]
+  crmClients     CrmClient[]
+  relationships  TutorProfessionalRelationship[]
+  availabilities ProfessionalAvailability[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -186,6 +187,23 @@ model ProfessionalProfile {
   @@index([trustScore])
   @@index([trustLevel])
   @@map("professional_profiles")
+}
+
+// Etapa 7.6 — Disponibilidade semanal indicativa do profissional (MVP)
+model ProfessionalAvailability {
+  id                    String              @id @default(cuid())
+  professionalProfileId String
+  professionalProfile   ProfessionalProfile @relation(fields: [professionalProfileId], references: [id], onDelete: Cascade)
+  weekday               Int
+  startTime             String
+  endTime               String
+  isActive              Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@unique([professionalProfileId, weekday])
+  @@index([professionalProfileId])
+  @@map("professional_availabilities")
 }
 
 model PartnerProfile {

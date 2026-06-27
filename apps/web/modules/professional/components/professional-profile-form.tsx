@@ -55,7 +55,7 @@ type ProfessionalProfileFormProps = {
 };
 
 export function ProfessionalProfileForm({
-  redirectTo = "/onboarding/professional/service",
+  redirectTo = "/onboarding/professional/availability",
 }: ProfessionalProfileFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);

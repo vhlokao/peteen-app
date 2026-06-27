@@ -5,6 +5,8 @@ import Link from "next/link"
 
 import { getProfessionalPublicProfileAction } from "@/modules/professional/application/actions"
 import { PublicPageBackLink } from "@/modules/partner-portal/components/public-page-back-link"
+import { PublicAvailabilityCard } from "@/modules/professional-availability/components/public-availability-card"
+import { getPublicAvailabilityForProfessional } from "@/modules/professional-availability/infrastructure/queries"
 import { getProfessionalBadges } from "@/modules/badges/application/get-professional-badges"
 import type { BadgeResolverResult } from "@/modules/badges/domain/types"
 import { isProfessionalVerificationActive } from "@/modules/verification/domain/verification-state"
@@ -123,13 +125,14 @@ export default async function ProfessionalProfilePage({
       getMyRelationshipWithProfessional(professionalId),
     ])
 
-  const [badgesResult, partnerEndorsements] = await Promise.all([
+  const [badgesResult, partnerEndorsements, availabilityDays] = await Promise.all([
     getProfessionalBadges(professionalId).catch(
       (): BadgeResolverResult => ({ badges: [], verifications: [] })
     ),
     getPartnerEndorsementsForProfessional(professionalId).catch(
       (): PartnerEndorsement[] => []
     ),
+    getPublicAvailabilityForProfessional(professionalId).catch(() => []),
   ])
 
   if (!profileResult.success || !profileResult.data) {
@@ -531,6 +534,8 @@ export default async function ProfessionalProfilePage({
           </div>
         )}
       </section>
+
+      <PublicAvailabilityCard days={availabilityDays} />
 
       {/* CTA — Solicitar atendimento */}
       <div className="sticky bottom-4 z-10">

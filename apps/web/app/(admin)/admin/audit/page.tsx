@@ -2,54 +2,31 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
 import { getAdminAuditAction } from "@/modules/backoffice/application/actions"
+import {
+  AUDIT_ACTION_COLORS,
+  formatAuditActionLabel,
+  formatAuditEntityDisplay,
+  formatAuditEntityTypeLabel,
+  formatAuditMetadataSummary,
+  formatShortEntityId,
+} from "@/modules/backoffice/domain/audit-labels"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
 
-const ENTITY_TYPE_LABELS: Record<string, string> = {
-  OperationalFlag: "Flag",
-  Dispute: "Disputa",
-  Review: "Avaliação",
-  PROFESSIONAL: "Profissional",
-  ProfessionalProfile: "Profissional",
-  PARTNER: "Parceiro",
-  Partner: "Parceiro",
-  TutorProfile: "Tutor",
-  Pet: "Pet",
-  Service: "Serviço",
-  ServiceRequest: "Solicitação",
-  TrustConnection: "Recomendação",
-}
-
-function formatEntityType(entityType: string): string {
-  return ENTITY_TYPE_LABELS[entityType] ?? entityType
-}
-
-const ACTION_COLORS: Record<string, string> = {
-  "flag.create":   "bg-orange-100 text-orange-700",
-  "flag.resolve":  "bg-green-100 text-green-700",
-  "dispute.update":"bg-blue-100 text-blue-700",
-  "dispute.created": "bg-amber-100 text-amber-700",
-  "dispute.status_updated": "bg-blue-100 text-blue-700",
-  "review.hide":   "bg-red-100 text-red-700",
-  "review.restore":"bg-emerald-100 text-emerald-700",
-  "trust.recalculate": "bg-purple-100 text-purple-700",
-  "verification.approved": "bg-emerald-100 text-emerald-700",
-  "verification.rejected": "bg-red-100 text-red-700",
-  "verification.suspended": "bg-amber-100 text-amber-700",
-  "verification.reactivated": "bg-sky-100 text-sky-700",
-  "tutor.profile_updated": "bg-teal-100 text-teal-700",
-  "professional.profile_updated": "bg-indigo-100 text-indigo-700",
-  "pet.created": "bg-emerald-100 text-emerald-700",
-  "pet.updated": "bg-sky-100 text-sky-700",
-  "pet.archived": "bg-neutral-200 text-neutral-700",
-  "professional.service_created": "bg-emerald-100 text-emerald-700",
-  "professional.service_updated": "bg-sky-100 text-sky-700",
-  "professional.service_activated": "bg-green-100 text-green-700",
-  "professional.service_deactivated": "bg-amber-100 text-amber-700",
-  "professional.availability_updated": "bg-indigo-100 text-indigo-700",
-  "partner.recommendation_created": "bg-emerald-100 text-emerald-700",
-  "partner.recommendation_deactivated": "bg-amber-100 text-amber-700",
-  "partner.recommendation_activated": "bg-green-100 text-green-700",
-}
+const ENTITY_FILTER_OPTIONS = [
+  "OperationalFlag",
+  "Dispute",
+  "Review",
+  "PROFESSIONAL",
+  "ProfessionalProfile",
+  "PARTNER",
+  "Partner",
+  "TutorProfile",
+  "Pet",
+  "Service",
+  "ServiceRequest",
+  "TrustConnection",
+  "ProfessionalAvailability",
+] as const
 
 type Props = {
   searchParams: Promise<Record<string, string | undefined>>
@@ -57,7 +34,7 @@ type Props = {
 
 export default async function AdminAuditPage({ searchParams }: Props) {
   const params = await searchParams
-  const action     = params.action
+  const action = params.action
   const entityType = params.entityType
 
   const result = await getAdminAuditAction({ action, entityType })
@@ -70,34 +47,28 @@ export default async function AdminAuditPage({ searchParams }: Props) {
     <div className="space-y-6">
       <AdminPageHeader
         title="Auditoria Administrativa"
-        description="Trilha imutável de ações de admins no backoffice e de usuários na plataforma (pets, perfil de tutor)."
+        description="Trilha imutável de ações na plataforma — eventos técnicos com contexto legível para operação."
       />
 
-      {/* Filtros */}
       <form method="GET" className="flex flex-wrap gap-3">
         <input
           name="action"
           defaultValue={action ?? ""}
-          placeholder="Filtrar por ação (ex: review.hide)"
-          className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm"
+          placeholder="Filtrar por ação (ex: dispute.created)"
+          className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
         />
 
         <select
           name="entityType"
           defaultValue={entityType ?? ""}
-          className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm"
+          className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
         >
           <option value="">Todos os tipos</option>
-          <option value="OperationalFlag">Flag</option>
-          <option value="Dispute">Disputa</option>
-          <option value="Review">Avaliação</option>
-          <option value="PROFESSIONAL">Profissional</option>
-          <option value="PARTNER">Parceiro</option>
-          <option value="TutorProfile">Perfil de tutor</option>
-          <option value="ProfessionalProfile">Perfil profissional</option>
-          <option value="Pet">Pet</option>
-          <option value="Service">Serviço</option>
-          <option value="TrustConnection">Conexão de confiança</option>
+          {ENTITY_FILTER_OPTIONS.map((type) => (
+            <option key={type} value={type}>
+              {formatAuditEntityTypeLabel(type)}
+            </option>
+          ))}
         </select>
 
         <button
@@ -108,21 +79,22 @@ export default async function AdminAuditPage({ searchParams }: Props) {
         </button>
         <a
           href="/admin/audit"
-          className="rounded border border-neutral-200 px-4 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50"
+          className="rounded border border-neutral-200 px-4 py-1.5 text-sm text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
         >
           Limpar
         </a>
       </form>
 
       <p className="text-sm text-neutral-500">
-        {logs.length} registro{logs.length !== 1 ? "s" : ""} encontrado{logs.length !== 1 ? "s" : ""}
+        {logs.length} registro{logs.length !== 1 ? "s" : ""} encontrado
+        {logs.length !== 1 ? "s" : ""}
       </p>
 
-      <div className="overflow-x-auto rounded-lg border border-neutral-200">
-        <table className="min-w-full divide-y divide-neutral-100 text-sm">
-          <thead className="bg-neutral-50">
+      <div className="overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
+        <table className="min-w-full divide-y divide-neutral-100 text-sm dark:divide-neutral-800">
+          <thead className="bg-neutral-50 dark:bg-neutral-900/50">
             <tr>
-              {["Ator", "Ação", "Tipo", "Entidade", "Metadata", "Quando"].map((h) => (
+              {["Ator", "Ação", "Tipo", "Entidade", "Detalhes", "Quando"].map((h) => (
                 <th
                   key={h}
                   className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-neutral-500"
@@ -132,60 +104,70 @@ export default async function AdminAuditPage({ searchParams }: Props) {
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-neutral-50 bg-white">
+          <tbody className="divide-y divide-neutral-50 bg-white dark:divide-neutral-800 dark:bg-neutral-950">
             {logs.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-neutral-400">
+                <td colSpan={6} className="px-4 py-10 text-center text-neutral-400">
                   Nenhum registro de auditoria encontrado.
                 </td>
               </tr>
             )}
-            {logs.map((log) => (
-              <tr key={log.id} className="hover:bg-neutral-50">
-                <td className="px-4 py-3 text-xs text-neutral-600">
-                  <div className="flex flex-col gap-0.5">
-                    <span>{log.actorEmail}</span>
-                    <span className="text-[0.65rem] text-neutral-400">
-                      {log.actorKind === "admin" ? "admin" : "usuário"}
-                    </span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-mono font-medium ${ACTION_COLORS[log.action] ?? "bg-neutral-100 text-neutral-600"}`}
-                  >
-                    {log.action}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-xs text-neutral-500">
-                  {formatEntityType(log.entityType)}
-                </td>
-                <td className="px-4 py-3">
-                  {log.entityLabel ? (
-                    <div>
-                      <p className="text-sm font-medium text-neutral-800">
-                        {log.entityLabel}
-                      </p>
-                      <p className="font-mono text-[0.65rem] text-neutral-400">
-                        {log.entityId}
-                      </p>
+            {logs.map((log) => {
+              const entityDisplay = formatAuditEntityDisplay(
+                log.entityType,
+                log.entityId,
+                log.entityLabel
+              )
+              const metadataSummary = formatAuditMetadataSummary(log.action, log.metadata)
+
+              return (
+                <tr key={log.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/40">
+                  <td className="px-4 py-3 text-xs text-neutral-600 dark:text-neutral-400">
+                    <div className="flex flex-col gap-0.5">
+                      <span>{log.actorEmail}</span>
+                      <span className="text-[0.65rem] text-neutral-400">
+                        {log.actorKind === "admin" ? "Admin" : "Usuário"}
+                      </span>
                     </div>
-                  ) : (
-                    <span className="font-mono text-xs text-neutral-500">
-                      {log.entityId}
-                    </span>
-                  )}
-                </td>
-                <td className="max-w-[200px] px-4 py-3 text-xs text-neutral-400">
-                  {log.metadata
-                    ? JSON.stringify(log.metadata).slice(0, 80)
-                    : "—"}
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 text-xs text-neutral-500">
-                  {fmt(log.createdAt)}
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-col gap-1">
+                      <span
+                        className={`inline-flex w-fit rounded px-2 py-0.5 text-xs font-medium ${AUDIT_ACTION_COLORS[log.action] ?? "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"}`}
+                      >
+                        {formatAuditActionLabel(log.action)}
+                      </span>
+                      <span className="font-mono text-[0.65rem] text-neutral-400">
+                        {log.action}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-neutral-600 dark:text-neutral-400">
+                    {formatAuditEntityTypeLabel(log.entityType)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                        {entityDisplay.primary}
+                      </p>
+                      {entityDisplay.secondary ? (
+                        <p className="text-xs text-neutral-500">{entityDisplay.secondary}</p>
+                      ) : (
+                        <p className="font-mono text-[0.65rem] text-neutral-400">
+                          {formatShortEntityId(log.entityId)}
+                        </p>
+                      )}
+                    </div>
+                  </td>
+                  <td className="max-w-[240px] px-4 py-3 text-xs text-neutral-500">
+                    {metadataSummary ?? "—"}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-xs text-neutral-500">
+                    {fmt(log.createdAt)}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

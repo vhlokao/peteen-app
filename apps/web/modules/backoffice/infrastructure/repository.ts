@@ -626,6 +626,10 @@ function formatDisputeEntityLabel(
   return `Disputa: ${tutorName} × ${professionalName}`
 }
 
+function formatShortAuditId(id: string): string {
+  return id.length > 8 ? id.slice(0, 8) : id
+}
+
 function resolveDisputeEntityLabel(
   action: string,
   entityType: string,
@@ -646,7 +650,7 @@ function resolveDisputeEntityLabel(
     if (fromRequestId) return fromRequestId
   }
 
-  return `Disputa #${entityId}`
+  return `Disputa · ${formatShortAuditId(entityId)}`
 }
 
 function extractRecommendationAuditPayload(
@@ -684,7 +688,28 @@ function resolvePartnerRecommendationEntityLabel(
     return `Recomendação: ${partnerName} → ${professionalName}`
   }
 
-  return `Recomendação #${entityId}`
+  return `Recomendação · ${formatShortAuditId(entityId)}`
+}
+
+function resolveTrustConnectionEntityLabel(
+  entityType: string,
+  entityId: string,
+  trustConnectionLabels: Map<string, string>
+): string | null {
+  if (entityType.toUpperCase() !== "TRUSTCONNECTION") return null
+  return trustConnectionLabels.get(entityId) ?? `Conexão de confiança · ${formatShortAuditId(entityId)}`
+}
+
+function resolveAvailabilityEntityLabel(
+  action: string,
+  entityType: string,
+  entityId: string,
+  proLabel: Map<string, string>
+): string | null {
+  if (action !== "professional.availability_updated") return null
+  const profileLabel = proLabel.get(entityId)
+  if (profileLabel) return `Disponibilidade · ${profileLabel.split(" — ")[0]}`
+  return `Disponibilidade profissional · ${formatShortAuditId(entityId)}`
 }
 
 export async function getAdminAuditLogs(
@@ -776,7 +801,9 @@ export async function getAdminAuditLogs(
       ]),
     ]
 
-    const [professionals, partners, tutorProfiles, pets, disputes] = await Promise.all([
+    const trustConnectionIds = collectEntityIds(allEntries, "TRUSTCONNECTION")
+
+    const [professionals, partners, tutorProfiles, pets, disputes, trustConnections] = await Promise.all([
       proIds.length
         ? prisma.professionalProfile.findMany({
             where: { id: { in: proIds } },
@@ -831,6 +858,16 @@ export async function getAdminAuditLogs(
             },
           })
         : Promise.resolve([]),
+      trustConnectionIds.length
+        ? prisma.trustConnection.findMany({
+            where: { id: { in: trustConnectionIds } },
+            select: {
+              id: true,
+              sourcePartner: { select: { businessName: true } },
+              targetProfile: { select: { displayName: true } },
+            },
+          })
+        : Promise.resolve([]),
     ])
 
     const proLabel = new Map(
@@ -862,6 +899,17 @@ export async function getAdminAuditLogs(
       )
       disputeLabel.set(dispute.id, label)
       disputeLabelByRequestId.set(dispute.requestId, label)
+    }
+
+    const trustConnectionLabel = new Map<string, string>()
+    for (const connection of trustConnections) {
+      const partnerName =
+        connection.sourcePartner?.businessName ?? "Parceiro"
+      const professionalName = connection.targetProfile.displayName
+      trustConnectionLabel.set(
+        connection.id,
+        `Conexão: ${partnerName} → ${professionalName}`
+      )
     }
 
     function resolveEntityLabel(entityType: string, entityId: string): string | null {
@@ -933,6 +981,8 @@ export async function getAdminAuditLogs(
             before,
             partnerBusinessName
           ) ??
+          resolveTrustConnectionEntityLabel(l.entity, l.entityId, trustConnectionLabel) ??
+          resolveAvailabilityEntityLabel(l.action, l.entity, l.entityId, proLabel) ??
           resolveEntityLabel(l.entity, l.entityId) ??
           fallbackLabel,
         metadata:    (after ?? before) ?? null,

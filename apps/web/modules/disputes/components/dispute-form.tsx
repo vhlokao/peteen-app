@@ -49,6 +49,10 @@ export function DisputeForm({ requestId, onSuccess, onCancel }: Props) {
     <Card className="border-amber-200 dark:border-amber-800/40">
       <CardHeader className="pb-2">
         <CardTitle className="text-base">Reportar problema</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Descreva o que aconteceu. A equipe Peteen acompanhará o caso e manterá o
+          registro nesta solicitação.
+        </p>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -125,7 +129,8 @@ export function DisputeReportSection({ requestId }: ReportButtonProps) {
         Problemas com o atendimento
       </h2>
       <p className="mb-4 text-sm text-muted-foreground">
-        Se algo não saiu como esperado, você pode reportar para análise da equipe Peteen.
+        Teve algum problema com este atendimento? Você pode reportar para que a
+        equipe Peteen acompanhe o caso.
       </p>
       <Button type="button" variant="outline" size="sm" onClick={() => setOpen(true)}>
         Reportar problema

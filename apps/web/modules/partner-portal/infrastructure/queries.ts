@@ -8,6 +8,10 @@ import {
   SERVICE_TYPE_LABELS,
   type ServiceType,
 } from "@/modules/professional/domain/types"
+import {
+  buildDiscoverUrl,
+  buildPartnerPublicUrl,
+} from "@/modules/partner-portal/domain/navigation"
 import { RELATIONSHIP_LEVEL_THRESHOLDS } from "@/modules/relationship/domain/constants"
 import type { Partner } from "@/modules/partners/domain/types"
 import type {
@@ -219,7 +223,7 @@ export async function findRecentPartnerActivity(
       title: activityLabel("recommendation.created"),
       description: name,
       occurredAt: conn.createdAt,
-      href: `/discover/${conn.targetId}`,
+      href: buildDiscoverUrl(conn.targetId, { from: "partner", returnTo: "/partner" }),
     })
 
     if (
@@ -232,7 +236,7 @@ export async function findRecentPartnerActivity(
         title: activityLabel("connection.active"),
         description: name,
         occurredAt: conn.updatedAt,
-        href: `/discover/${conn.targetId}`,
+        href: buildDiscoverUrl(conn.targetId, { from: "partner", returnTo: "/partner" }),
       })
     } else if (!conn.isActive && conn.updatedAt.getTime() > conn.createdAt.getTime() + 1000) {
       items.push({
@@ -241,7 +245,7 @@ export async function findRecentPartnerActivity(
         title: activityLabel("recommendation.removed"),
         description: name,
         occurredAt: conn.updatedAt,
-        href: `/discover/${conn.targetId}`,
+        href: buildDiscoverUrl(conn.targetId, { from: "partner", returnTo: "/partner" }),
       })
     }
   }
@@ -254,7 +258,7 @@ export async function findRecentPartnerActivity(
       title: activityLabel("verification.approved"),
       description: "Sua organização foi verificada pela equipe Peteen",
       occurredAt: ver.reviewedAt,
-      href: `/partners/${partnerSlug}`,
+      href: buildPartnerPublicUrl(partnerSlug, "/partner"),
     })
   }
 
@@ -266,7 +270,7 @@ export async function findRecentPartnerActivity(
       title: activityLabel("professional.recurring"),
       description: `${rel.professional.displayName} · ${rel.completedServices} atendimentos concluídos`,
       occurredAt: rel.lastServiceAt,
-      href: `/discover/${rel.professionalId}`,
+      href: buildDiscoverUrl(rel.professionalId, { from: "partner", returnTo: "/partner" }),
     })
   }
 

@@ -21,7 +21,7 @@ export function ProfessionalServicesEmptyState({ onCreateClick }: Props) {
           </p>
         </div>
         <Button type="button" onClick={onCreateClick}>
-          Cadastrar serviço
+          Adicionar serviço
         </Button>
       </CardContent>
     </Card>

@@ -8,6 +8,10 @@ import { MapPin, Phone, Globe, ShieldCheck, Users, Link2, Sparkles } from "lucid
 
 import { getPartnerPublicProfileAction } from "@/modules/partners/application/actions"
 import { PublicPageBackLink } from "@/modules/partner-portal/components/public-page-back-link"
+import {
+  buildDiscoverUrl,
+  type PortalKind,
+} from "@/modules/partner-portal/domain/navigation"
 
 import { PARTNER_CATEGORY_LABELS, PARTNER_VERIFICATION_STATUS_LABELS } from "@/modules/partners/domain/constants"
 import { isPartnerVerificationActive } from "@/modules/verification/domain/verification-state"
@@ -59,6 +63,17 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
   const { operationalMetrics } = partner
 
   const activationScore = operationalMetrics.activationScore
+
+  function contextualDiscoverUrl(professionalId: string): string {
+    const from = query.from
+    if (from === "partner" || from === "tutor" || from === "professional") {
+      return buildDiscoverUrl(professionalId, {
+        from: from as PortalKind,
+        returnTo: query.returnTo,
+      })
+    }
+    return `/discover/${professionalId}`
+  }
 
 
 
@@ -304,7 +319,7 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
 
                 key={pro.professionalId}
 
-                href={`/discover/${pro.professionalId}`}
+                href={contextualDiscoverUrl(pro.professionalId)}
 
                 className="flex items-center gap-3 rounded-xl border border-border p-3 transition-colors hover:bg-muted/40"
 

@@ -56,8 +56,9 @@ export const shellNavConfig: Record<AppShellVariant, ShellNavItem[]> = {
   ],
   admin: [
     { label: "Painel", shortLabel: "Painel", href: "/admin", icon: LayoutDashboard },
+    { label: "Usuários", shortLabel: "Usuários", href: "/admin/users", icon: Users },
+    { label: "Auditoria", shortLabel: "Auditoria", href: "/admin/audit", icon: Activity },
+    { label: "Confiança", shortLabel: "Confiança", href: "/admin/trust", icon: Shield },
     { label: "Moderação", shortLabel: "Moderação", href: "/admin/moderacao", icon: Flag },
-    { label: "Antifraude", shortLabel: "Fraude", href: "/admin/antifraude", icon: Shield },
-    { label: "Rede", shortLabel: "Rede", href: "/admin/rede", icon: Users },
   ],
 };

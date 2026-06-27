@@ -163,7 +163,7 @@ export function ProfessionalServiceForm({
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          {mode === "create" ? "Novo serviço" : "Editar serviço"}
+          {mode === "create" ? "Adicionar serviço" : "Editar serviço"}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -299,7 +299,7 @@ export function ProfessionalServiceForm({
                   Salvando…
                 </>
               ) : mode === "create" ? (
-                "Criar serviço"
+                "Adicionar serviço"
               ) : (
                 "Salvar alterações"
               )}

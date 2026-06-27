@@ -13,6 +13,7 @@ import { OPERATIONAL_VERIFICATION_LABELS } from "@/modules/professional-crm/doma
 import { ProfessionalReputationBadges } from "@/modules/reputation-badges/components/professional-reputation-badges"
 import { ProfessionalTrustSummary } from "@/modules/reputation-badges/components/professional-trust-summary"
 import { getTutorProfessionalHistoryAction } from "@/modules/relationship-history/application/actions"
+import { buildDiscoverUrl } from "@/modules/partner-portal/domain/navigation"
 import { RelationshipSummaryCard } from "@/modules/relationship-history/components/relationship-summary-card"
 import { RelationshipPetsList } from "@/modules/relationship-history/components/relationship-pets-list"
 import { RelationshipRequestsList } from "@/modules/relationship-history/components/relationship-requests-list"
@@ -48,6 +49,8 @@ export default async function TutorProfessionalHistoryPage({
 
   const fmt = (d: Date | null) =>
     d ? format(d, "dd/MM/yyyy", { locale: ptBR }) : "—"
+
+  const discoverReturnTo = `/tutor/professionals/${professionalId}`
 
   return (
     <div className="page-container space-y-6">
@@ -111,13 +114,19 @@ export default async function TutorProfessionalHistoryPage({
           </div>
           <div className="flex flex-wrap gap-2">
             <Link
-              href={`/discover/${professional.id}`}
+              href={buildDiscoverUrl(professional.id, {
+                from: "tutor",
+                returnTo: discoverReturnTo,
+              })}
               className={buttonVariants({ size: "sm", variant: "outline" })}
             >
               Ver perfil público
             </Link>
             <Link
-              href={`/discover/${professional.id}`}
+              href={buildDiscoverUrl(professional.id, {
+                from: "tutor",
+                returnTo: discoverReturnTo,
+              })}
               className={buttonVariants({ size: "sm", className: "gap-1" })}
             >
               <RotateCcw className="size-3.5" />

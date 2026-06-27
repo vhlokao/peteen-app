@@ -3,13 +3,14 @@
  * Camada: application — guard de acesso para rotas do parceiro
  */
 
-import { notFound, redirect } from "next/navigation"
+import { redirect } from "next/navigation"
 
 import { requireAuth } from "@/modules/identity/application/get-session"
 import type { SessionUser } from "@/modules/identity/domain/types"
 import type { Partner } from "@/modules/partners/domain/types"
 import {
   findOwnedPartnerForUser,
+  findPartnerProfileByUserId,
   type PartnerProfileLink,
 } from "../infrastructure/repository"
 
@@ -33,13 +34,14 @@ export async function requirePartnerContext(): Promise<PartnerContext> {
     redirectForNonPartner(session)
   }
 
-  const owned = await findOwnedPartnerForUser(session.id)
-  if (!owned) {
+  const partnerProfile = await findPartnerProfileByUserId(session.id)
+  if (!partnerProfile) {
     redirect("/onboarding/partner")
   }
 
-  if (owned.partnerProfile.linkedPartnerId !== owned.partner.id) {
-    notFound()
+  const owned = await findOwnedPartnerForUser(session.id)
+  if (!owned || owned.partnerProfile.linkedPartnerId !== owned.partner.id) {
+    redirect("/partner/pending")
   }
 
   return {

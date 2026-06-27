@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma/client"
 import type { ServiceType } from "@/modules/professional/domain/types"
 import { countActivePetsByTutorId } from "@/modules/pets/infrastructure/repository"
 import { SERVICE_TYPE_LABELS } from "@/modules/professional/domain/types"
+import { buildDiscoverUrl } from "@/modules/partner-portal/domain/navigation"
 import type {
   HiredProfessionalSummary,
   TutorActivityItem,
@@ -283,7 +284,7 @@ export function buildNextActions(
       id: "rehire",
       label: "Contratar novamente",
       description: `Último profissional: ${top.displayName}`,
-      href: `/discover/${top.professionalId}`,
+      href: buildDiscoverUrl(top.professionalId, { from: "tutor", returnTo: "/tutor" }),
       variant: "outline",
     })
   }

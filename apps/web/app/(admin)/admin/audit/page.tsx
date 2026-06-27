@@ -4,6 +4,25 @@ import { ptBR } from "date-fns/locale"
 import { getAdminAuditAction } from "@/modules/backoffice/application/actions"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
 
+const ENTITY_TYPE_LABELS: Record<string, string> = {
+  OperationalFlag: "Flag",
+  Dispute: "Disputa",
+  Review: "Avaliação",
+  PROFESSIONAL: "Profissional",
+  ProfessionalProfile: "Profissional",
+  PARTNER: "Parceiro",
+  Partner: "Parceiro",
+  TutorProfile: "Tutor",
+  Pet: "Pet",
+  Service: "Serviço",
+  ServiceRequest: "Solicitação",
+  TrustConnection: "Recomendação",
+}
+
+function formatEntityType(entityType: string): string {
+  return ENTITY_TYPE_LABELS[entityType] ?? entityType
+}
+
 const ACTION_COLORS: Record<string, string> = {
   "flag.create":   "bg-orange-100 text-orange-700",
   "flag.resolve":  "bg-green-100 text-green-700",
@@ -136,7 +155,7 @@ export default async function AdminAuditPage({ searchParams }: Props) {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-xs text-neutral-500">
-                  {log.entityType}
+                  {formatEntityType(log.entityType)}
                 </td>
                 <td className="px-4 py-3">
                   {log.entityLabel ? (

@@ -18,6 +18,7 @@ import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/reposit
 import { getServiceRequestDetailAction } from "@/modules/service-request/application/actions"
 import { getReviewForRequestAction } from "@/modules/review/application/actions"
 import { getMyRelationshipWithProfessional } from "@/modules/relationship/application/actions"
+import { buildDiscoverUrl } from "@/modules/partner-portal/domain/navigation"
 import {
   RELATIONSHIP_LEVEL_LABELS,
   RELATIONSHIP_LEVEL_ICONS,
@@ -227,7 +228,10 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
             </Avatar>
             <div>
               <Link
-                href={`/discover/${pro.id}`}
+                href={buildDiscoverUrl(pro.id, {
+                  from: "tutor",
+                  returnTo: `/tutor/requests/${requestId}`,
+                })}
                 className="font-semibold text-foreground hover:text-primary"
               >
                 {pro.displayName}

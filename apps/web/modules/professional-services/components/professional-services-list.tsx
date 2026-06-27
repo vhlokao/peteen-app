@@ -40,7 +40,7 @@ export function ProfessionalServicesList({ services }: Props) {
         {!creating && (
           <Button type="button" size="sm" className="gap-1.5" onClick={() => setCreating(true)}>
             <Plus className="size-4" />
-            Novo Serviço
+            Adicionar serviço
           </Button>
         )}
       </div>

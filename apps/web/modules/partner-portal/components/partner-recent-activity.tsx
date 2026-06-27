@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { buttonVariants } from "@/components/ui/button"
 import type { PartnerActivityItem, PartnerActivityType } from "../domain/types"
 
 const ACTIVITY_ICONS: Record<PartnerActivityType, typeof ThumbsUp> = {
@@ -33,9 +34,18 @@ export function PartnerRecentActivity({
       </CardHeader>
       <CardContent>
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Nenhuma atividade ainda. Suas recomendações e conexões aparecerão aqui.
-          </p>
+          <div className="space-y-3 py-2 text-center sm:text-left">
+            <p className="text-sm font-medium text-foreground">Nenhuma atividade recente</p>
+            <p className="text-sm text-muted-foreground">
+              Suas recomendações e conexões aparecerão aqui conforme você usa o portal.
+            </p>
+            <Link
+              href="/partner/recommendations"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              Gerenciar recomendações
+            </Link>
+          </div>
         ) : (
           <ul className="space-y-3">
             {items.map((item) => {

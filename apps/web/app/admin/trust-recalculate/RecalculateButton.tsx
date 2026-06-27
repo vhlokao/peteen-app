@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import { Loader2, RefreshCw, CheckCircle2, XCircle } from "lucide-react"
 
-import { recalculateAllTrustScores } from "@/modules/trust-engine/application/recalculate-all-trust-scores"
+import { recalculateAllTrustAction } from "@/modules/backoffice/application/actions"
 import type { RecalculateReport } from "@/modules/trust-engine/application/recalculate-all-trust-scores"
 import { Button } from "@/components/ui/button"
 
@@ -17,12 +17,12 @@ export function RecalculateButton() {
     setError(null)
 
     startTransition(async () => {
-      try {
-        const result = await recalculateAllTrustScores()
-        setReport(result)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro desconhecido.")
+      const result = await recalculateAllTrustAction()
+      if (!result.success || !result.report) {
+        setError(result.error ?? "Erro ao recalcular índices de confiança.")
+        return
       }
+      setReport(result.report)
     })
   }
 
@@ -48,7 +48,6 @@ export function RecalculateButton() {
 
       {report && (
         <div className="space-y-4">
-          {/* Resumo */}
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: "Total", value: report.total, color: "text-foreground" },
@@ -66,7 +65,6 @@ export function RecalculateButton() {
             Concluído em {report.durationMs}ms
           </p>
 
-          {/* Detalhes */}
           <div className="overflow-hidden rounded-xl border border-border">
             <table className="w-full text-xs">
               <thead className="bg-muted/50">

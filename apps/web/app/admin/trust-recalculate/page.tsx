@@ -15,12 +15,15 @@ import type { Metadata } from "next"
 import { ArrowLeft, AlertTriangle, RefreshCw } from "lucide-react"
 import Link from "next/link"
 
+import { requireAdmin } from "@/modules/identity/application/get-session"
 import { prisma } from "@/lib/prisma/client"
 import { RecalculateButton } from "./RecalculateButton"
 
 export const metadata: Metadata = { title: "Recalcular Índice de Confiança" }
 
 export default async function TrustRecalculatePage() {
+  await requireAdmin()
+
   const stats = await prisma.professionalProfile.aggregate({
     where: { deletedAt: null },
     _count: true,
@@ -38,11 +41,11 @@ export default async function TrustRecalculatePage() {
       {/* Header */}
       <div>
         <Link
-          href="/discover"
+          href="/admin/trust"
           className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
-          Voltar
+          Voltar para Índice de Confiança
         </Link>
         <div className="flex items-center gap-2">
           <RefreshCw className="size-5 text-muted-foreground" />

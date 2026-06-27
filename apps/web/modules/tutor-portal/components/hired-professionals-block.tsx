@@ -8,6 +8,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { SERVICE_TYPE_LABELS } from "@/modules/professional/domain/types"
 import type { HiredProfessionalSummary } from "../domain/types"
+import { buildDiscoverUrl } from "@/modules/partner-portal/domain/navigation"
 
 export function HiredProfessionalsBlock({
   professionals,
@@ -69,13 +70,19 @@ export function HiredProfessionalsBlock({
                     Ver histórico
                   </Link>
                   <Link
-                    href={`/discover/${pro.professionalId}`}
+                    href={buildDiscoverUrl(pro.professionalId, {
+                      from: "tutor",
+                      returnTo: "/tutor",
+                    })}
                     className={buttonVariants({ size: "sm", variant: "outline" })}
                   >
                     Ver perfil público
                   </Link>
                   <Link
-                    href={`/discover/${pro.professionalId}`}
+                    href={buildDiscoverUrl(pro.professionalId, {
+                      from: "tutor",
+                      returnTo: "/tutor",
+                    })}
                     className={buttonVariants({
                       size: "sm",
                       variant: "outline",

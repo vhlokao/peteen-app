@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { buttonVariants } from "@/components/ui/button"
 import { requireProfessionalContext } from "@/modules/professional-crm/application/require-professional"
+import { buildDiscoverUrl } from "@/modules/partner-portal/domain/navigation"
 import { ProfessionalProfileEditForm } from "@/modules/professional/components/professional-profile-edit-form"
 import { ProfessionalTrustSummary } from "@/modules/reputation-badges/components/professional-trust-summary"
 import { ProfessionalServicesProfileBlock } from "@/modules/professional-services/components/professional-services-profile-block"
@@ -24,7 +25,10 @@ export default async function ProfessionalProfilePage() {
         description="Atualize as informações que aparecem para tutores no Discovery."
         action={
           <Link
-            href={`/discover/${profile.id}`}
+            href={buildDiscoverUrl(profile.id, {
+              from: "professional",
+              returnTo: "/professional/profile",
+            })}
             className={buttonVariants({ variant: "outline", size: "sm", className: "gap-1.5" })}
             target="_blank"
           >

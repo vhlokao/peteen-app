@@ -6,7 +6,9 @@ import { requireProfessionalContext } from "@/modules/professional-crm/applicati
 import { getProfessionalVerificationContext } from "@/modules/professional-crm/application/verification-context"
 import { getProfessionalMetricsData } from "@/modules/professional-crm/infrastructure/queries"
 import { ProfessionalMetricsGrid } from "@/modules/professional-crm/components/professional-metrics-grid"
+import { TrustBreakdownCard } from "@/modules/professional-crm/components/trust-breakdown-card"
 import { RequestProfessionalVerificationCard } from "@/modules/verification/components/RequestProfessionalVerificationCard"
+import { calculateTrustScore } from "@/modules/trust-engine/application/calculate-trust-score"
 
 export const metadata: Metadata = {
   title: "Métricas",
@@ -14,9 +16,10 @@ export const metadata: Metadata = {
 
 export default async function ProfessionalMetricsPage() {
   const { profile } = await requireProfessionalContext()
-  const [metrics, verification] = await Promise.all([
+  const [metrics, verification, trustResult] = await Promise.all([
     getProfessionalMetricsData(profile.id, profile),
     getProfessionalVerificationContext(profile.id, profile),
+    calculateTrustScore(profile.id),
   ])
 
   return (
@@ -31,6 +34,13 @@ export default async function ProfessionalMetricsPage() {
           Indicadores operacionais
         </h2>
         <ProfessionalMetricsGrid data={metrics} />
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          Seu Índice de Confiança
+        </h2>
+        <TrustBreakdownCard trustResult={trustResult} />
       </section>
 
       <Card>

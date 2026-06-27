@@ -31,6 +31,11 @@ import {
   type ServiceType,
   type TrustLevel,
 } from "@/modules/professional/domain/types"
+import {
+  isPublicTrustBuilding,
+  PUBLIC_TRUST_BUILDING_LABEL,
+  PUBLIC_TRUST_BUILDING_MESSAGE,
+} from "@/modules/trust-engine/domain/public-trust-display"
 import { formatPublicServicePrice } from "@/modules/professional/domain/format-service-price"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -225,17 +230,25 @@ export default async function ProfessionalProfilePage({
 
             {/* Trust Score */}
             <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 rounded-lg bg-muted px-2.5 py-1">
-                <span className="text-xs font-medium text-muted-foreground">Confiança</span>
-                <span className="text-sm font-bold text-foreground tabular-nums">
-                  {trust.score.toFixed(0)}
+              {isPublicTrustBuilding(trust.score, trust.level) ? (
+                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-muted text-muted-foreground">
+                  {PUBLIC_TRUST_BUILDING_LABEL}
                 </span>
-              </div>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TRUST_LEVEL_COLORS[trust.level]}`}
-              >
-                {TRUST_LEVEL_LABELS[trust.level]}
-              </span>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1 rounded-lg bg-muted px-2.5 py-1">
+                    <span className="text-xs font-medium text-muted-foreground">Confiança</span>
+                    <span className="text-sm font-bold text-foreground tabular-nums">
+                      {trust.score.toFixed(0)}
+                    </span>
+                  </div>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TRUST_LEVEL_COLORS[trust.level]}`}
+                  >
+                    {TRUST_LEVEL_LABELS[trust.level]}
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -268,54 +281,69 @@ export default async function ProfessionalProfilePage({
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Índice de Confiança
           </h2>
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-bold text-foreground tabular-nums">
-              {trust.score.toFixed(0)}
-            </span>
-            <span
-              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${TRUST_LEVEL_COLORS[trust.level]}`}
-            >
+          {isPublicTrustBuilding(trust.score, trust.level) ? (
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${TRUST_LEVEL_COLORS[trust.level]}`}>
               {TRUST_LEVEL_LABELS[trust.level]}
             </span>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-xl font-bold text-foreground tabular-nums">
+                {trust.score.toFixed(0)}
+              </span>
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${TRUST_LEVEL_COLORS[trust.level]}`}
+              >
+                {TRUST_LEVEL_LABELS[trust.level]}
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Barra de progresso */}
-        <div className="mb-5 h-2 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${trust.score}%` }}
-            role="progressbar"
-            aria-valuenow={trust.score}
-            aria-valuemin={0}
-            aria-valuemax={100}
-          />
-        </div>
+        {isPublicTrustBuilding(trust.score, trust.level) ? (
+          /* Estado "em construção" — sem barra vazia nem zeros */
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {PUBLIC_TRUST_BUILDING_MESSAGE}
+          </p>
+        ) : (
+          <>
+            {/* Barra de progresso */}
+            <div className="mb-5 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-all"
+                style={{ width: `${trust.score}%` }}
+                role="progressbar"
+                aria-valuenow={trust.score}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              />
+            </div>
 
-        {/* Breakdown */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <TrustStatCard
-            label="Avaliações"
-            value={trust.breakdown.reviews}
-            description="soma das avaliações"
-          />
-          <TrustStatCard
-            label="Concluídos"
-            value={trust.breakdown.completions}
-            description="atendimentos finalizados"
-          />
-          <TrustStatCard
-            label="Recorrência"
-            value={trust.breakdown.recurrence}
-            description="tutores que voltaram"
-          />
-          <TrustStatCard
-            label="Penalidades"
-            value={trust.breakdown.penalties}
-            isNegative
-            description="cancelamentos e disputas"
-          />
-        </div>
+            {/* Breakdown */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <TrustStatCard
+                label="Avaliações"
+                value={trust.breakdown.reviews}
+                description="soma das avaliações"
+              />
+              <TrustStatCard
+                label="Concluídos"
+                value={trust.breakdown.completions}
+                description="atendimentos finalizados"
+              />
+              <TrustStatCard
+                label="Recorrência"
+                value={trust.breakdown.recurrence}
+                description="tutores que voltaram"
+              />
+              <TrustStatCard
+                label="Penalidades"
+                value={trust.breakdown.penalties}
+                isNegative
+                description="cancelamentos e disputas"
+              />
+            </div>
+          </>
+        )}
       </section>
 
       <section className="mb-6">

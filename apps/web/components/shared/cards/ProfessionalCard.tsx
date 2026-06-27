@@ -11,6 +11,10 @@ import {
   type ServiceType,
   type TrustLevel,
 } from "@/modules/professional/domain/types"
+import {
+  isPublicTrustBuilding,
+  PUBLIC_TRUST_BUILDING_LABEL,
+} from "@/modules/trust-engine/domain/public-trust-display"
 import { BadgePill } from "@/components/shared/badges/BadgePill"
 import type { BadgeData } from "@/modules/badges/domain/types"
 import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
@@ -139,14 +143,22 @@ export function ProfessionalCard({
           {/* Trust Score + nível */}
           <div className="flex items-center gap-1.5">
             <span className="text-[0.65rem] text-muted-foreground">Confiança</span>
-            <span className="text-xs font-bold text-foreground tabular-nums">
-              {trustScore.toFixed(0)}
-            </span>
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium ${TRUST_LEVEL_COLORS[trustLevel]}`}
-            >
-              {TRUST_LEVEL_LABELS[trustLevel]}
-            </span>
+            {isPublicTrustBuilding(trustScore, trustLevel) ? (
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium bg-muted text-muted-foreground">
+                {PUBLIC_TRUST_BUILDING_LABEL}
+              </span>
+            ) : (
+              <>
+                <span className="text-xs font-bold text-foreground tabular-nums">
+                  {trustScore.toFixed(0)}
+                </span>
+                <span
+                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium ${TRUST_LEVEL_COLORS[trustLevel]}`}
+                >
+                  {TRUST_LEVEL_LABELS[trustLevel]}
+                </span>
+              </>
+            )}
           </div>
         </div>
 

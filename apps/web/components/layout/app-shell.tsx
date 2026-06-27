@@ -34,6 +34,8 @@ type AppShellProps = {
   children: ReactNode;
   className?: string;
   showTopBar?: boolean;
+  notificationCount?: number;
+  notificationsHref?: string;
 };
 
 export async function AppShell({
@@ -41,6 +43,8 @@ export async function AppShell({
   children,
   className,
   showTopBar = true,
+  notificationCount = 0,
+  notificationsHref,
 }: AppShellProps) {
   const hasNav = variant !== "marketing";
 
@@ -73,7 +77,13 @@ export async function AppShell({
 
   return (
     <div className="flex min-h-dvh flex-col">
-      {showTopBar ? <TopBar user={sessionUser} /> : null}
+      {showTopBar ? (
+        <TopBar
+          user={sessionUser}
+          notificationCount={notificationCount}
+          notificationsHref={notificationsHref}
+        />
+      ) : null}
 
       <div className="flex flex-1 overflow-hidden">
         {hasNav ? <Sidebar variant={variant} user={sessionUser} /> : null}

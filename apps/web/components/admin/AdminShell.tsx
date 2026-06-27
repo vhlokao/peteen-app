@@ -13,6 +13,8 @@ import Link from "next/link"
 import { LogOut, Shield } from "lucide-react"
 
 import { getAuthContext } from "@/modules/identity/application/get-session"
+import { getAdminNotificationCountAction } from "@/modules/notifications/application/actions"
+import { NotificationBell } from "@/modules/notifications/components/notification-bell"
 import { AdminNav } from "./AdminNav"
 
 type AdminShellProps = {
@@ -32,6 +34,7 @@ export async function AdminShell({ children }: AdminShellProps) {
   }
 
   const { email } = ctx.user
+  const notificationCount = await getAdminNotificationCountAction()
 
   return (
     <div className="flex h-dvh overflow-hidden bg-background">
@@ -71,9 +74,16 @@ export async function AdminShell({ children }: AdminShellProps) {
           <span className="text-xs text-muted-foreground">
             Backoffice operacional
           </span>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[0.65rem] font-medium text-muted-foreground">
-            {process.env.NODE_ENV === "development" ? "dev" : "prod"}
-          </span>
+          <div className="flex items-center gap-3">
+            <NotificationBell
+              href="/admin/notifications"
+              count={notificationCount}
+              showLabel
+            />
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[0.65rem] font-medium text-muted-foreground">
+              {process.env.NODE_ENV === "development" ? "dev" : "prod"}
+            </span>
+          </div>
         </header>
 
         {/* Conteúdo */}

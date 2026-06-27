@@ -10,6 +10,7 @@ import { getPartnerPublicProfileAction } from "@/modules/partners/application/ac
 import { PublicPageBackLink } from "@/modules/partner-portal/components/public-page-back-link"
 import {
   buildDiscoverUrl,
+  normalizeReturnPath,
   type PortalKind,
 } from "@/modules/partner-portal/domain/navigation"
 
@@ -69,10 +70,10 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
     if (from === "partner" || from === "tutor" || from === "professional") {
       return buildDiscoverUrl(professionalId, {
         from: from as PortalKind,
-        returnTo: query.returnTo,
+        returnTo: normalizeReturnPath(query.returnTo),
       })
     }
-    return `/discover/${professionalId}`
+    return `/discover/${encodeURIComponent(professionalId)}`
   }
 
 

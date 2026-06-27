@@ -13,6 +13,7 @@ import {
   ThumbsUp,
   Activity,
   Package,
+  Bell,
 } from "lucide-react";
 
 import type { AppShellVariant } from "@/types";
@@ -35,6 +36,7 @@ export const shellNavConfig: Record<AppShellVariant, ShellNavItem[]> = {
     { label: "Pets", shortLabel: "Pets", href: "/me/pets", icon: PawPrint },
     { label: "Perfil", shortLabel: "Perfil", href: "/tutor/perfil", icon: Users },
     { label: "Atividades", shortLabel: "Ativid.", href: "/tutor/activity", icon: Activity },
+    { label: "Notificações", shortLabel: "Alertas", href: "/tutor/notifications", icon: Bell },
   ],
   partner: [
     { label: "Início", shortLabel: "Início", href: "/partner", icon: LayoutDashboard },
@@ -42,6 +44,7 @@ export const shellNavConfig: Record<AppShellVariant, ShellNavItem[]> = {
     { label: "Métricas", shortLabel: "Métricas", href: "/partner/metrics", icon: BarChart3 },
     { label: "Perfil", shortLabel: "Perfil", href: "/partner/profile", icon: UserCircle },
     { label: "Atividades", shortLabel: "Ativid.", href: "/partner/activity", icon: Activity },
+    { label: "Notificações", shortLabel: "Alertas", href: "/partner/notifications", icon: Bell },
   ],
   professional: [
     { label: "Início", shortLabel: "Início", href: "/professional", icon: LayoutDashboard },
@@ -53,6 +56,7 @@ export const shellNavConfig: Record<AppShellVariant, ShellNavItem[]> = {
     { label: "Métricas", shortLabel: "Métricas", href: "/professional/metricas", icon: BarChart3 },
     { label: "Perfil", shortLabel: "Perfil", href: "/professional/profile", icon: UserCircle },
     { label: "Atividades", shortLabel: "Ativid.", href: "/professional/activity", icon: Activity },
+    { label: "Notificações", shortLabel: "Alertas", href: "/professional/notifications", icon: Bell },
   ],
   admin: [
     { label: "Painel", shortLabel: "Painel", href: "/admin", icon: LayoutDashboard },

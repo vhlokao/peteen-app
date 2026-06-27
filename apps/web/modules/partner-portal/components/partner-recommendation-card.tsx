@@ -12,7 +12,7 @@ import {
   deactivatePartnerRecommendationAction,
 } from "../application/recommendation-actions"
 import type { PartnerRecommendationRow } from "../domain/types"
-import { buildProfessionalDiscoverUrl } from "../domain/navigation"
+import { buildDiscoverUrl } from "../domain/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -70,10 +70,10 @@ export function PartnerRecommendationCard({ recommendation, onUpdated }: Props) 
 
         <div className="flex flex-wrap gap-2">
           <Link
-            href={buildProfessionalDiscoverUrl(
-              recommendation.professionalId,
-              "/partner/recommendations"
-            )}
+            href={buildDiscoverUrl(recommendation.professionalId, {
+              from: "partner",
+              returnTo: "/partner/recommendations",
+            })}
             className={buttonVariants({
               variant: "outline",
               size: "sm",

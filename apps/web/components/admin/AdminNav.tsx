@@ -23,6 +23,7 @@ import {
   Handshake,
   ClipboardCheck,
   Activity,
+  Bell,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -71,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/admin/flags",    label: "Flags",        icon: Flag,                 exact: false },
       { href: "/admin/disputes", label: "Disputas",     icon: MessageSquareWarning, exact: false },
+      { href: "/admin/notifications", label: "Notificações", icon: Bell, exact: false },
       { href: "/admin/activity", label: "Atividades",   icon: Activity,             exact: false },
       { href: "/admin/audit",    label: "Auditoria",    icon: ScrollText,           exact: false },
       { href: "/admin/risk",     label: "Índice de Risco",   icon: ShieldAlert,          exact: false },

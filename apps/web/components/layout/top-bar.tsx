@@ -8,6 +8,7 @@ import { useTheme } from "next-themes";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { NotificationBell } from "@/modules/notifications/components/notification-bell";
 import type { ShellSessionUser } from "@/types";
 
 const ROLE_LABEL: Record<NonNullable<ShellSessionUser["primaryRole"]>, string> = {
@@ -21,6 +22,8 @@ type TopBarProps = {
   showThemeToggle?: boolean;
   /** Usuário serializado vindo do AppShell (Server Component). Null em rotas de marketing. */
   user?: ShellSessionUser | null;
+  notificationCount?: number;
+  notificationsHref?: string;
 };
 
 function getInitials(email: string): string {
@@ -28,7 +31,12 @@ function getInitials(email: string): string {
   return (local ?? "?").slice(0, 2).toUpperCase();
 }
 
-export function TopBar({ showThemeToggle = true, user }: TopBarProps) {
+export function TopBar({
+  showThemeToggle = true,
+  user,
+  notificationCount = 0,
+  notificationsHref,
+}: TopBarProps) {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
   const isMarketing = pathname === "/";
@@ -64,6 +72,11 @@ export function TopBar({ showThemeToggle = true, user }: TopBarProps) {
                 Sou tutor
               </Link>
             </>
+          ) : null}
+
+          {/* Notificações */}
+          {isAuthenticated && notificationsHref ? (
+            <NotificationBell href={notificationsHref} count={notificationCount} />
           ) : null}
 
           {/* Toggle de tema */}

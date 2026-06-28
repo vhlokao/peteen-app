@@ -26,18 +26,17 @@ import {
 } from "@/modules/relationship/domain/constants"
 import { formatRelationshipSummary } from "@/modules/relationship/domain/relationship-levels"
 import {
-  TRUST_LEVEL_LABELS,
   SERVICE_TYPE_LABELS,
   type ServiceType,
   type TrustLevel,
 } from "@/modules/professional/domain/types"
 import {
   getPublicTrustState,
-  PUBLIC_TRUST_BUILDING_LABEL,
   PUBLIC_TRUST_BUILDING_MESSAGE,
-  PUBLIC_TRUST_INITIAL_LABEL,
   PUBLIC_TRUST_INITIAL_MESSAGE,
 } from "@/modules/trust-engine/domain/public-trust-display"
+import { TrustStateChip } from "@/components/shared/trust/TrustStateChip"
+import { TrustLevelBadge } from "@/components/shared/trust/TrustLevelBadge"
 import { formatPublicServicePrice } from "@/modules/professional/domain/format-service-price"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -95,13 +94,6 @@ export async function generateMetadata({ params }: ProfilePageProps): Promise<Me
   return { title: result.data.displayName }
 }
 
-const TRUST_LEVEL_COLORS: Record<TrustLevel, string> = {
-  INITIAL:     "bg-muted text-muted-foreground",
-  BUILDING:    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  ESTABLISHED: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
-  TRUSTED:     "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  ELITE:       "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-}
 
 /**
  * /discover/[professionalId] — Perfil público do profissional.
@@ -240,14 +232,8 @@ export default async function ProfessionalProfilePage({
 
             {/* Trust Score */}
             <div className="flex items-center gap-2">
-              {trustState === "building" ? (
-                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-muted text-muted-foreground">
-                  {PUBLIC_TRUST_BUILDING_LABEL}
-                </span>
-              ) : trustState === "initial" ? (
-                <span className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
-                  {PUBLIC_TRUST_INITIAL_LABEL}
-                </span>
+              {trustState !== "score" ? (
+                <TrustStateChip trustState={trustState} size="lg" />
               ) : (
                 <>
                   <div className="flex items-center gap-1 rounded-lg bg-muted px-2.5 py-1">
@@ -256,11 +242,7 @@ export default async function ProfessionalProfilePage({
                       {trust.score.toFixed(0)}
                     </span>
                   </div>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${TRUST_LEVEL_COLORS[trust.level]}`}
-                  >
-                    {TRUST_LEVEL_LABELS[trust.level]}
-                  </span>
+                  <TrustLevelBadge trustLevel={trust.level} size="md" />
                 </>
               )}
             </div>
@@ -295,24 +277,14 @@ export default async function ProfessionalProfilePage({
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Índice de Confiança
           </h2>
-          {trustState === "building" ? (
-            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-muted text-muted-foreground">
-              {PUBLIC_TRUST_BUILDING_LABEL}
-            </span>
-          ) : trustState === "initial" ? (
-            <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
-              {PUBLIC_TRUST_INITIAL_LABEL}
-            </span>
+          {trustState !== "score" ? (
+            <TrustStateChip trustState={trustState} size="md" className="font-semibold" />
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-xl font-bold text-foreground tabular-nums">
                 {trust.score.toFixed(0)}
               </span>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${TRUST_LEVEL_COLORS[trust.level]}`}
-              >
-                {TRUST_LEVEL_LABELS[trust.level]}
-              </span>
+              <TrustLevelBadge trustLevel={trust.level} size="md" className="font-semibold" />
             </div>
           )}
         </div>

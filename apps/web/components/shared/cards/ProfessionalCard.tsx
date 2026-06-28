@@ -7,15 +7,11 @@ import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
   SERVICE_TYPE_LABELS,
-  TRUST_LEVEL_LABELS,
   type ServiceType,
   type TrustLevel,
 } from "@/modules/professional/domain/types"
-import {
-  getPublicTrustState,
-  PUBLIC_TRUST_BUILDING_LABEL,
-  PUBLIC_TRUST_INITIAL_LABEL,
-} from "@/modules/trust-engine/domain/public-trust-display"
+import { getPublicTrustState } from "@/modules/trust-engine/domain/public-trust-display"
+import { TrustStateChip } from "@/components/shared/trust/TrustStateChip"
 import { BadgePill } from "@/components/shared/badges/BadgePill"
 import type { BadgeData } from "@/modules/badges/domain/types"
 import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
@@ -54,13 +50,6 @@ type ProfessionalCardProps = {
   partnerEndorsements?: PartnerEndorsement[]
 }
 
-const TRUST_LEVEL_COLORS: Record<TrustLevel, string> = {
-  INITIAL:     "bg-muted text-muted-foreground",
-  BUILDING:    "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  ESTABLISHED: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
-  TRUSTED:     "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  ELITE:       "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-}
 
 export function ProfessionalCard({
   id,
@@ -153,26 +142,12 @@ export function ProfessionalCard({
           {/* Trust Score + nível */}
           <div className="flex items-center gap-1.5">
             <span className="text-[0.65rem] text-muted-foreground">Confiança</span>
-            {trustState === "building" ? (
-              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium bg-muted text-muted-foreground">
-                {PUBLIC_TRUST_BUILDING_LABEL}
-              </span>
-            ) : trustState === "initial" ? (
-              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400">
-                {PUBLIC_TRUST_INITIAL_LABEL}
-              </span>
-            ) : (
-              <>
-                <span className="text-xs font-bold text-foreground tabular-nums">
-                  {trustScore.toFixed(0)}
-                </span>
-                <span
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.65rem] font-medium ${TRUST_LEVEL_COLORS[trustLevel]}`}
-                >
-                  {TRUST_LEVEL_LABELS[trustLevel]}
-                </span>
-              </>
-            )}
+            <TrustStateChip
+              trustState={trustState}
+              trustScore={trustScore}
+              trustLevel={trustLevel}
+              size="sm"
+            />
           </div>
         </div>
 

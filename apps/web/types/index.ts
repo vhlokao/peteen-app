@@ -8,8 +8,6 @@ export type NavItem = {
 
 export type AppShellVariant = "tutor" | "professional" | "partner" | "admin" | "marketing";
 
-export type TrustSignalLevel = "low" | "medium" | "high" | "verified";
-
 export type GeoScope = {
   neighborhood?: string;
   city?: string;

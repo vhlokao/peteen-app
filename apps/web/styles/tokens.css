@@ -1,5 +1,5 @@
 /**
- * TitiodePet Design Tokens
+ * Peteen Design Tokens
  * Referências: Airbnb (calor) · Stripe (precisão) · Linear (clareza)
  */
 
@@ -22,6 +22,7 @@
   --header-height: 3.5rem;
   --bottom-nav-height: 4rem;
   --sidebar-width: 16rem;
+  --sidebar-collapsed-width: 4rem;
   --content-max-width: 72rem;
   --page-padding-x: 1rem;
   --page-padding-y: 1.25rem;

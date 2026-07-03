@@ -1,9 +1,22 @@
 "use client";
 
+/**
+ * BottomNav mobile — exatamente as 4 ações principais da persona.
+ *
+ * Itens vêm de appNavigation[variant].mobile (fonte única de navegação).
+ * Notificações ficam no sino do TopBar. Conta/configurações/sair ficam
+ * no AvatarMenu. Nada disso entra aqui.
+ */
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { shellNavConfig, type ShellNavItem } from "@/components/layout/nav-config";
+import {
+  appNavigation,
+  filterNavigationItems,
+  isNavigationItemActive,
+} from "@/lib/navigation/app-navigation";
+import type { NavigationItem } from "@/lib/navigation/navigation-types";
 import { cn } from "@/lib/utils";
 import type { AppShellVariant } from "@/types";
 
@@ -11,15 +24,8 @@ type BottomNavProps = {
   variant: AppShellVariant;
 };
 
-function isActive(pathname: string, href: string) {
-  if (href === "/tutor" || href === "/professional" || href === "/partner" || href === "/admin") {
-    return pathname === href;
-  }
-  return pathname.startsWith(href);
-}
-
-function NavLink({ item, pathname }: { item: ShellNavItem; pathname: string }) {
-  const active = isActive(pathname, item.href);
+function NavLink({ item, pathname }: { item: NavigationItem; pathname: string }) {
+  const active = isNavigationItemActive(pathname, item);
   const Icon = item.icon;
 
   return (
@@ -34,14 +40,14 @@ function NavLink({ item, pathname }: { item: ShellNavItem; pathname: string }) {
     >
       <Icon className={cn("size-5", active && "stroke-[2.5]")} />
       {/* shortLabel para caber no espaço reduzido do mobile */}
-      <span>{item.shortLabel}</span>
+      <span>{item.shortLabel ?? item.label}</span>
     </Link>
   );
 }
 
 export function BottomNav({ variant }: BottomNavProps) {
   const pathname = usePathname();
-  const items = shellNavConfig[variant];
+  const items = filterNavigationItems(appNavigation[variant].mobile);
 
   if (items.length === 0) return null;
 

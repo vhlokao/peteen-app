@@ -6,50 +6,53 @@ import { Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import { AvatarMenu } from "@/components/layout/avatar-menu";
+import { TopNavLinks } from "@/components/layout/top-nav-links";
 import { NotificationBell } from "@/modules/notifications/components/notification-bell";
-import type { ShellSessionUser } from "@/types";
-
-const ROLE_LABEL: Record<NonNullable<ShellSessionUser["primaryRole"]>, string> = {
-  TUTOR: "Tutor",
-  PROFESSIONAL: "Profissional",
-  PARTNER: "Parceiro",
-  ADMIN: "Admin",
-};
+import { getVariantForRole } from "@/lib/navigation/app-navigation";
+import type { AppShellVariant, ShellSessionUser } from "@/types";
 
 type TopBarProps = {
   showThemeToggle?: boolean;
-  /** Usuário serializado vindo do AppShell (Server Component). Null em rotas de marketing. */
+  /** Persona ativa — normalmente "marketing" na landing pública. */
+  variant?: AppShellVariant;
+  /** Usuário serializado vindo do AppShell (Server Component). Null se não autenticado. */
   user?: ShellSessionUser | null;
   notificationCount?: number;
   notificationsHref?: string;
 };
 
-function getInitials(email: string): string {
-  const [local] = email.split("@");
-  return (local ?? "?").slice(0, 2).toUpperCase();
-}
-
 export function TopBar({
   showThemeToggle = true,
+  variant = "marketing",
   user,
   notificationCount = 0,
   notificationsHref,
 }: TopBarProps) {
   const pathname = usePathname();
   const { resolvedTheme, setTheme } = useTheme();
-  const isMarketing = pathname === "/";
   const isAuthenticated = !!user;
+
+  // Persona efetiva: quando um usuário autenticado acessa a landing pública,
+  // `variant` continua "marketing" (prop vinda do layout), mas o header deve
+  // mostrar a navegação/avatar da persona real dele — não tratá-lo como
+  // visitante. Fora da landing, `variant` já é a persona real.
+  const effectiveVariant: AppShellVariant =
+    isAuthenticated && user.primaryRole
+      ? getVariantForRole(user.primaryRole) ?? variant
+      : variant;
+
+  // Visitante = não autenticado, na landing pública.
+  const isVisitor = !isAuthenticated && pathname === "/";
 
   return (
     <header className="safe-top sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur-md">
-      <div className="mx-auto flex h-[var(--header-height)] max-w-[var(--content-max-width)] items-center justify-between px-[var(--page-padding-x)]">
-        {/* Logo — oculto no desktop autenticado (aparece na sidebar) */}
+      <div className="mx-auto flex h-[var(--header-height)] max-w-[var(--content-max-width)] items-center justify-between gap-4 px-[var(--page-padding-x)]">
+        {/* Logo — sempre visível, sempre leva à home pública */}
         <Link
-          href={isAuthenticated ? "#" : "/"}
+          href="/"
           aria-label="Peteen — página inicial"
-          className="flex items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground lg:hidden"
+          className="flex shrink-0 items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
         >
           <span className="inline-flex size-8 items-center justify-center rounded-lg bg-primary text-sm text-primary-foreground">
             P
@@ -57,24 +60,19 @@ export function TopBar({
           <span className="sr-only sm:not-sr-only">Peteen</span>
         </Link>
 
-        {/* Espaçador desktop: logo fica na sidebar, header desktop fica vazio à esquerda */}
-        <div className="hidden lg:block" />
+        {/* Navegação contextual mínima — só existe para persona autenticada com itens reais */}
+        {isAuthenticated ? <TopNavLinks variant={effectiveVariant} /> : null}
 
         {/* Ações à direita */}
-        <nav className="flex items-center gap-1 sm:gap-2">
-          {/* Marketing: botões de auth */}
-          {isMarketing && !isAuthenticated ? (
-            <>
-              <Link href="/login" className={buttonVariants({ variant: "ghost", size: "sm" })}>
-                Entrar
-              </Link>
-              <Link href="/tutor" className={buttonVariants({ size: "sm" })}>
-                Sou tutor
-              </Link>
-            </>
+        <nav className="flex shrink-0 items-center gap-1 sm:gap-2">
+          {/* Visitante: uma única CTA — o onboarding decide tutor/profissional depois */}
+          {isVisitor ? (
+            <Link href="/login" className={buttonVariants({ size: "sm" })}>
+              Começar
+            </Link>
           ) : null}
 
-          {/* Notificações */}
+          {/* Sino de notificações — sempre no topo, nunca no bottom nav */}
           {isAuthenticated && notificationsHref ? (
             <NotificationBell href={notificationsHref} count={notificationCount} />
           ) : null}
@@ -94,31 +92,9 @@ export function TopBar({
             </Button>
           ) : null}
 
-          {/* Avatar do usuário autenticado */}
+          {/* Menu da conta — central operacional do ator logado */}
           {isAuthenticated && user ? (
-            <Link
-              href={
-                user.primaryRole === "PROFESSIONAL"
-                  ? "/professional"
-                  : user.primaryRole === "ADMIN"
-                    ? "/admin"
-                    : "/tutor/perfil"
-              }
-              className="flex items-center gap-2"
-              aria-label="Ir para perfil"
-            >
-              {user.primaryRole ? (
-                <Badge
-                  variant="secondary"
-                  className="hidden text-[0.65rem] uppercase tracking-wide sm:inline-flex"
-                >
-                  {ROLE_LABEL[user.primaryRole]}
-                </Badge>
-              ) : null}
-              <Avatar size="sm">
-                <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
-              </Avatar>
-            </Link>
+            <AvatarMenu variant={effectiveVariant} user={user} />
           ) : null}
         </nav>
       </div>

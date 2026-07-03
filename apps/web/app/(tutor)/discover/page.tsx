@@ -14,12 +14,11 @@ import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
 import { getPartnerEndorsementsBatch } from "@/modules/partners/application/get-partner-endorsements"
 import { getRecommendations } from "@/modules/recommendation/application/get-recommendations"
 import { getLocalDiscoveryContextAction } from "@/modules/growth-engine/application/actions"
-import { ProfessionalCard } from "@/components/shared/cards/ProfessionalCard"
+import { ProfessionalDiscoveryCard } from "@/components/discovery/ProfessionalDiscoveryCard"
 import { RecommendationSection } from "@/components/discovery/RecommendationSection"
 import { EmptyState } from "@/components/shared/feedback/EmptyState"
 import { CitySearchInput } from "@/components/discovery/CitySearchInput"
-import { ServiceTypeSelect } from "@/components/discovery/ServiceTypeSelect"
-import { PageHeader } from "@/components/layout/page-header"
+import { DiscoverServiceChips } from "@/components/discovery/DiscoverServiceChips"
 
 export const metadata: Metadata = {
   title: "Descobrir profissionais",
@@ -33,12 +32,17 @@ type DiscoverPageProps = {
 }
 
 /**
- * /discover — Descoberta de profissionais confiáveis.
+ * /discover — Descoberta de profissionais confiáveis (UX 3.4 mobile-first).
  *
- * Princípio de design: a tela prioriza confiança, contexto e reputação — não preço.
+ * Princípio de design: a tela prioriza confiança, contexto e reputação — não
+ * preço. Nenhum score bruto de confiança é exibido (ver
+ * ProfessionalDiscoveryCard, que chama TrustStateChip sem a prop trustScore).
  *
- * Estratégia de busca: searchParams + RSC (sem React Query, sem client-side fetch).
- * A URL é a única fonte de verdade dos filtros ativos.
+ * Estratégia de busca: searchParams + RSC (sem React Query, sem client-side
+ * fetch). A URL é a única fonte de verdade dos filtros ativos — inalterada
+ * nesta etapa (city + serviceType). Nenhum sort real existe no backend hoje
+ * (a ordem já vem do Ranking Engine); por isso não foi adicionado controle
+ * de ordenação — ver relatório da missão UX 3.4.
  *
  * FASE 4 (Ranking Engine):
  *   `findProfessionalsAction` será substituído por `RankingEngine.query(filters, petContext)`.
@@ -83,13 +87,12 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
 
   const professionalIds = professionals.map((p) => p.id)
 
-  const tutorCityForRec =
-    cleanCity || tutorProfile?.city || null
+  const tutorCityForRec = cleanCity || tutorProfile?.city || null
   const tutorNeighborhood = tutorProfile?.neighborhood ?? null
   const tutorRegionId = tutorProfile?.regionId ?? null
   const tutorNeighborhoodId = tutorProfile?.neighborhoodId ?? null
 
-  // ── 3a. Relacionamentos pessoais do tutor + completedServices (badges) + endorsements ─
+  // ── 3a. Relacionamentos pessoais do tutor + endorsements ──────────────────
   // Uma query por tipo de dado — nenhuma N+1.
   const [myRelMap, partnerEndorsementsMap] = await Promise.all([
     tutorProfile && professionals.length > 0
@@ -105,12 +108,12 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
       ? await getProfessionalReputationBadgesBatch(professionalIds, myRelMap)
       : new Map<string, ReputationBadge[]>()
 
-  // ── 3b. Recomendações + contexto local Growth Engine ───────────────────────
+  // ── 3b. Recomendações + contexto local Growth Engine ──────────────────────
   const [recommendationBlocks, localContext] = await Promise.all([
     ctx.authenticated
       ? getRecommendations(
           {
-            tutorCity:            tutorCityForRec,
+            tutorCity: tutorCityForRec,
             tutorNeighborhood,
             tutorRegionId,
             tutorNeighborhoodId,
@@ -121,92 +124,88 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
         )
       : Promise.resolve([]),
     getLocalDiscoveryContextAction({
-      city:           hasCity ? cleanCity : tutorProfile?.city ?? null,
-      neighborhood:   tutorNeighborhood,
+      city: hasCity ? cleanCity : (tutorProfile?.city ?? null),
+      neighborhood: tutorNeighborhood,
       neighborhoodId: tutorNeighborhoodId,
-      regionId:       tutorRegionId,
+      regionId: tutorRegionId,
     }),
   ])
 
   return (
-    <div className="page-container">
-      <PageHeader
-        title="Descobrir"
-        description="Encontre pessoas confiáveis para cuidar do seu pet."
-      />
+    <div className="page-container pb-4">
+      {/* Header */}
+      <header className="mb-5">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          Encontre cuidado confiável
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Busque profissionais para cuidar do seu pet com mais segurança.
+        </p>
+      </header>
 
-      {/* Filtros */}
-      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end">
-        <div className="flex-1">
-          <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-            Cidade
-          </label>
-          <CitySearchInput defaultValue={cleanCity} />
-        </div>
+      {/* Busca principal — CitySearchInput preservado sem alteração */}
+      <div className="mb-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <CitySearchInput defaultValue={cleanCity} />
+      </div>
 
-        {hasCity && (
-          <div className="w-full sm:w-52">
-            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
-              Tipo de serviço
-            </label>
-            <ServiceTypeSelect defaultValue={cleanServiceType} />
-          </div>
-        )}
+      {/* Chips de serviço — sempre visíveis, escrevem serviceType na URL */}
+      <div className="mb-5">
+        <DiscoverServiceChips activeValue={cleanServiceType} />
+      </div>
 
-        {hasActiveFilters && (
+      {hasActiveFilters && (
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            {hasCity ? (
+              professionals.length > 0 ? (
+                <>
+                  <strong className="text-foreground">{professionals.length}</strong>{" "}
+                  {professionals.length !== 1 ? "profissionais" : "profissional"} em{" "}
+                  <strong className="text-foreground">{cleanCity}</strong>
+                  {hasServiceType && (
+                    <>
+                      {" "}
+                      ·{" "}
+                      <strong className="text-foreground">
+                        {SERVICE_TYPE_LABELS[cleanServiceType as ServiceType]}
+                      </strong>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  Nenhum profissional encontrado em{" "}
+                  <strong className="text-foreground">{cleanCity}</strong>
+                </>
+              )
+            ) : (
+              <>
+                Filtrando por{" "}
+                <strong className="text-foreground">
+                  {SERVICE_TYPE_LABELS[cleanServiceType as ServiceType]}
+                </strong>{" "}
+                — digite uma cidade para ver os resultados
+              </>
+            )}
+          </p>
           <Link
             href="/discover"
             className="shrink-0 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
           >
             Limpar filtros
           </Link>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Contexto local — Growth Engine 6.0 */}
+      {/* Contexto local — Growth Engine 6.0 (preservado) */}
       {localContext.messages.length > 0 && (
-        <div className="mb-4 space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+        <div className="mb-5 space-y-1.5 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
           {localContext.messages.map((msg) => (
             <p key={msg} className="text-sm text-foreground">
               {msg}
             </p>
           ))}
         </div>
-      )}
-
-      {/* Filtro ativo: label informativo */}
-      {hasCity && (
-        <p className="mb-4 text-sm text-muted-foreground">
-          {professionals.length > 0 ? (
-            <>
-              {professionals.length} profissional{professionals.length !== 1 ? "is" : ""} em{" "}
-              <strong className="text-foreground">{cleanCity}</strong>
-              {hasServiceType && (
-                <>
-                  {" "}
-                  para{" "}
-                  <strong className="text-foreground">
-                    {SERVICE_TYPE_LABELS[cleanServiceType as ServiceType]}
-                  </strong>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              Nenhum profissional encontrado em{" "}
-              <strong className="text-foreground">{cleanCity}</strong>
-              {hasServiceType && (
-                <>
-                  {" "}
-                  para{" "}
-                  <strong className="text-foreground">
-                    {SERVICE_TYPE_LABELS[cleanServiceType as ServiceType]}
-                  </strong>
-                </>
-              )}
-            </>
-          )}
-        </p>
       )}
 
       {/* Estado: sem cidade */}
@@ -223,25 +222,20 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
         <EmptyState
           icon={<Search className="size-7" />}
           title="Nenhum profissional encontrado"
-          description={
-            hasServiceType
-              ? "Tente remover o filtro de serviço ou buscar em outra cidade."
-              : "Ainda não há profissionais cadastrados nessa cidade."
-          }
+          description="Tente mudar o tipo de cuidado ou buscar por outra região."
           action={{ label: "Limpar filtros", href: "/discover" }}
         />
       )}
 
       {/* Lista de profissionais */}
       {professionals.length > 0 && (
-        // FASE 5: substituir por RankingEngine.query()
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {professionals.map((pro) => {
             const reputationBadges = reputationBadgesMap.get(pro.id) ?? []
             const verificationActive = isProfessionalVerificationActive(pro)
             const partnerEndorsementsList = partnerEndorsementsMap.get(pro.id) ?? []
             return (
-              <ProfessionalCard
+              <ProfessionalDiscoveryCard
                 key={pro.id}
                 id={pro.id}
                 displayName={pro.displayName}
@@ -270,7 +264,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
         <div
           className={
             hasCity && professionals.length > 0
-              ? "mt-8 border-t border-border pt-6"
+              ? "mt-9 border-t border-border pt-7"
               : "mt-6"
           }
         >

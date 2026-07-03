@@ -4,11 +4,13 @@
  * Renderiza até 4 blocos (for_you, top_rated, recurring, verified),
  * cada um com scroll horizontal de cards compactos.
  *
- * Blocos vazios são automaticamente omitidos.
+ * Blocos vazios são automaticamente omitidos. Nenhum score bruto é exibido —
+ * só o "mainReason" humano já calculado pela Recommendation Engine.
  */
 
+import type { ReactNode } from "react"
 import Link from "next/link"
-import { ShieldCheck, Star } from "lucide-react"
+import { RefreshCw, ShieldCheck, Sparkles, Star } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import type {
@@ -16,11 +18,11 @@ import type {
   RecommendedProfessional,
 } from "@/modules/recommendation/domain/types"
 
-const BLOCK_ICON: Record<string, string> = {
-  for_you:   "✨",
-  top_rated: "⭐",
-  recurring: "🔁",
-  verified:  "✓",
+const BLOCK_ICON: Record<string, ReactNode> = {
+  for_you: <Sparkles className="size-4" />,
+  top_rated: <Star className="size-4" />,
+  recurring: <RefreshCw className="size-4" />,
+  verified: <ShieldCheck className="size-4" />,
 }
 
 // ── Wrapper dos blocos ────────────────────────────────────────────────────────
@@ -34,7 +36,7 @@ export function RecommendationSection({ blocks }: SectionProps) {
   if (active.length === 0) return null
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-7">
       {active.map((block) => (
         <RecommendationBlockRow key={block.id} block={block} />
       ))}
@@ -47,10 +49,9 @@ export function RecommendationSection({ blocks }: SectionProps) {
 function RecommendationBlockRow({ block }: { block: RecommendationBlock }) {
   return (
     <section>
-      {/* Cabeçalho */}
       <div className="mb-3 flex items-start gap-2">
-        <span className="mt-0.5 text-base leading-none" aria-hidden>
-          {BLOCK_ICON[block.id] ?? "•"}
+        <span className="mt-0.5 shrink-0 text-primary" aria-hidden>
+          {BLOCK_ICON[block.id] ?? <Sparkles className="size-4" />}
         </span>
         <div>
           <h2 className="text-sm font-semibold text-foreground">{block.title}</h2>
@@ -58,8 +59,7 @@ function RecommendationBlockRow({ block }: { block: RecommendationBlock }) {
         </div>
       </div>
 
-      {/* Cards em scroll horizontal */}
-      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+      <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
         {block.professionals.map((pro) => (
           <RecommendedCard key={pro.professionalId} pro={pro} />
         ))}
@@ -81,14 +81,11 @@ function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
   return (
     <Link
       href={`/discover/${pro.professionalId}`}
-      className="group flex w-44 shrink-0 flex-col gap-2.5 rounded-xl border border-border bg-card p-3 transition-all hover:border-primary/30 hover:shadow-md"
+      className="flex w-44 shrink-0 flex-col gap-2.5 rounded-2xl border border-border bg-card p-3 shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
     >
-      {/* Identidade */}
       <div className="flex items-center gap-2">
-        <Avatar className="size-8 shrink-0">
-          {pro.avatarUrl && (
-            <AvatarImage src={pro.avatarUrl} alt={pro.displayName} />
-          )}
+        <Avatar className="size-9 shrink-0">
+          {pro.avatarUrl && <AvatarImage src={pro.avatarUrl} alt={pro.displayName} />}
           <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
             {initials}
           </AvatarFallback>
@@ -107,31 +104,17 @@ function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
         </div>
       </div>
 
-      {/* Avaliação */}
       {pro.averageRating !== null && pro.reviewCount > 0 && (
         <div className="flex items-center gap-1">
           <Star className="size-3 fill-amber-400 text-amber-400" />
           <span className="text-[0.65rem] font-semibold tabular-nums">
             {pro.averageRating.toFixed(1)}
           </span>
-          <span className="text-[0.65rem] text-muted-foreground">
-            ({pro.reviewCount})
-          </span>
+          <span className="text-[0.65rem] text-muted-foreground">({pro.reviewCount})</span>
         </div>
       )}
 
-      {/* Motivo principal da recomendação */}
-      <p className="truncate text-[0.65rem] font-medium text-primary">
-        {pro.score.mainReason}
-      </p>
-
-      {/* Barra de score visual */}
-      <div className="h-1 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className="h-full rounded-full bg-primary/50 transition-all"
-          style={{ width: `${pro.score.totalScore}%` }}
-        />
-      </div>
+      <p className="truncate text-[0.65rem] font-medium text-primary">{pro.score.mainReason}</p>
     </Link>
   )
 }

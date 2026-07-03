@@ -27,13 +27,13 @@ export function ProfessionalServicesList({ services }: { services: ServiceItem[]
         return (
           <div
             key={service.id}
-            className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card px-4 py-3.5 shadow-[var(--shadow-card)] transition-shadow hover:shadow-[var(--shadow-card-hover)]"
           >
             <div className="min-w-0">
               <p className="truncate font-medium leading-snug text-foreground">{service.name}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
+              <span className="mt-1 inline-flex w-fit items-center rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] font-medium text-muted-foreground">
                 {SERVICE_TYPE_LABELS[service.serviceType]}
-              </p>
+              </span>
             </div>
             {priceLabel && (
               <span className="shrink-0 text-xs text-muted-foreground">{priceLabel}</span>

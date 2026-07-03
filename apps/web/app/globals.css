@@ -63,6 +63,8 @@
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-trust: var(--shadow-trust);
+  --shadow-card: var(--shadow-card);
+  --shadow-card-hover: var(--shadow-card-hover);
 }
 
 /* ── Light theme — acolhedor, confiável, premium ── */

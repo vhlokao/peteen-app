@@ -43,8 +43,8 @@ export function ProfessionalHistorySummary({
   return (
     <section className="mb-5 space-y-3">
       {hasMyRelationship && myRelationship && (
-        <div className="flex items-center gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-          <span className="text-lg" aria-hidden>
+        <div className="flex items-center gap-3 rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/8 to-primary/[0.03] px-4 py-3.5 shadow-[var(--shadow-card)]">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-lg" aria-hidden>
             {RELATIONSHIP_LEVEL_ICONS[myRelationship.relationshipLevel]}
           </span>
           <div className="min-w-0 flex-1">
@@ -69,8 +69,10 @@ export function ProfessionalHistorySummary({
 
       {hasAnalytics && analytics && (
         <div className="grid grid-cols-3 gap-2.5">
-          <div className="flex flex-col items-center gap-1 rounded-xl bg-muted/50 p-3 text-center">
-            <Users className="size-4 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/30 p-3 text-center">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
+              <Users className="size-3.5 text-primary" />
+            </span>
             <span className="text-base font-bold tabular-nums text-foreground">
               {analytics.totalRelationships}
             </span>
@@ -78,8 +80,10 @@ export function ProfessionalHistorySummary({
               tutores atendidos
             </span>
           </div>
-          <div className="flex flex-col items-center gap-1 rounded-xl bg-muted/50 p-3 text-center">
-            <Repeat2 className="size-4 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/30 p-3 text-center">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
+              <Repeat2 className="size-3.5 text-primary" />
+            </span>
             <span className="text-base font-bold tabular-nums text-foreground">
               {analytics.recurringClients}
             </span>
@@ -87,8 +91,10 @@ export function ProfessionalHistorySummary({
               voltaram 3+ vezes
             </span>
           </div>
-          <div className="flex flex-col items-center gap-1 rounded-xl bg-muted/50 p-3 text-center">
-            <Heart className="size-4 text-muted-foreground" />
+          <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/30 p-3 text-center">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
+              <Heart className="size-3.5 text-primary" />
+            </span>
             <span className="text-base font-bold tabular-nums text-foreground">
               {analytics.trustedClients}
             </span>

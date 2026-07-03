@@ -7,19 +7,18 @@
 
 import type { BadgeData, VerificationData } from "@/modules/badges/domain/types"
 
-const BADGE_COLORS: Record<string, string> = {
-  TRUSTED:      "border-green-200 bg-green-50 text-green-800",
-  HIGHLY_RATED: "border-amber-200 bg-amber-50 text-amber-800",
-  RECURRING:    "border-blue-200 bg-blue-50 text-blue-800",
-  EXPERT:       "border-purple-200 bg-purple-50 text-purple-800",
-  FIRST_CLIENT: "border-teal-200 bg-teal-50 text-teal-800",
-}
-
 type Props = {
   badges:        BadgeData[]
   verifications: VerificationData[]
 }
 
+/**
+ * Versão compacta (UX 3.5.1) — grid 2 colunas com ícone em container suave,
+ * label + descrição truncada numa linha só. Antes eram blocos empilhados de
+ * altura livre com 5 cores pastel diferentes competindo entre si; agora usa
+ * um único tratamento visual neutro+azul, reduzindo a altura por item em
+ * mais da metade no mobile. Nenhum dado real removido.
+ */
 export function BadgeList({ badges, verifications }: Props) {
   const activeVerifications = verifications.filter(
     (v) => v.active && !v.internalOnly
@@ -33,23 +32,26 @@ export function BadgeList({ badges, verifications }: Props) {
       {/* Badges conquistados */}
       {badges.length > 0 && (
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Badges conquistados
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Conquistas
           </h3>
-          <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
             {badges.map((badge) => (
               <div
                 key={badge.type}
-                className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
-                  BADGE_COLORS[badge.type] ?? "border-border bg-muted/30 text-foreground"
-                }`}
+                title={badge.description}
+                className="flex items-center gap-2.5 rounded-xl border border-border/70 bg-muted/30 px-3 py-2"
               >
-                <span className="mt-0.5 text-xl" aria-hidden>
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm" aria-hidden>
                   {badge.emoji}
                 </span>
-                <div>
-                  <p className="text-sm font-semibold leading-tight">{badge.label}</p>
-                  <p className="mt-0.5 text-xs opacity-75">{badge.description}</p>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold leading-tight text-foreground">
+                    {badge.label}
+                  </p>
+                  <p className="truncate text-[0.65rem] text-muted-foreground">
+                    {badge.description}
+                  </p>
                 </div>
               </div>
             ))}
@@ -60,14 +62,14 @@ export function BadgeList({ badges, verifications }: Props) {
       {/* Selos de verificação */}
       {activeVerifications.length > 0 && (
         <div>
-          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Verificações
           </h3>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {activeVerifications.map((v) => (
               <span
                 key={v.type}
-                className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-medium text-primary"
+                className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 text-xs font-medium text-primary"
                 title={v.description}
               >
                 <span aria-hidden>{v.emoji}</span>

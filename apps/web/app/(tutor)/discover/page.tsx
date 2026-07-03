@@ -144,7 +144,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
       </header>
 
       {/* Busca principal — CitySearchInput preservado sem alteração */}
-      <div className="mb-4 rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="mb-4 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
         <CitySearchInput defaultValue={cleanCity} />
       </div>
 

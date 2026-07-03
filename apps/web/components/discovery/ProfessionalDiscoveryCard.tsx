@@ -95,30 +95,38 @@ export function ProfessionalDiscoveryCard({
   return (
     <Link
       href={`/discover/${id}`}
-      className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
+      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
     >
+      {/* Faixa decorativa sutil no topo — gradiente azul quase imperceptível */}
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-primary/[0.06] to-transparent"
+        aria-hidden
+      />
+
       {/* Identidade */}
-      <div className="flex items-start gap-3 p-4 pb-3">
-        <Avatar className="size-16 shrink-0 rounded-xl">
+      <div className="relative flex items-start gap-3 p-4 pb-3">
+        <Avatar className="size-16 shrink-0 rounded-2xl ring-1 ring-border/60">
           {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
-          <AvatarFallback className="rounded-xl bg-primary/10 text-lg font-semibold text-primary">
+          <AvatarFallback className="rounded-2xl bg-primary/10 text-lg font-semibold text-primary">
             {initials}
           </AvatarFallback>
         </Avatar>
 
         <div className="min-w-0 flex-1 pt-0.5">
           <div className="flex items-center gap-1.5">
-            <span className="truncate font-semibold text-foreground">{displayName}</span>
+            <span className="truncate text-[0.95rem] font-semibold tracking-tight text-foreground">
+              {displayName}
+            </span>
             {isVerified && (
               <ShieldCheck className="size-4 shrink-0 text-primary" aria-label="Verificado" />
             )}
           </div>
           {primaryService && (
-            <p className="truncate text-xs text-muted-foreground">
+            <span className="mt-1 inline-flex w-fit items-center rounded-md bg-muted px-1.5 py-0.5 text-[0.65rem] font-medium text-muted-foreground">
               {SERVICE_TYPE_LABELS[primaryService]}
-            </p>
+            </span>
           )}
-          <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+          <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3 shrink-0" />
             <span className="truncate">
               {city}, {state}
@@ -128,7 +136,7 @@ export function ProfessionalDiscoveryCard({
       </div>
 
       {/* Sinais de confiança — sempre antes do rodapé de avaliação/preço */}
-      <div className="flex flex-wrap items-center gap-1.5 px-4 pb-3">
+      <div className="relative flex flex-wrap items-center gap-1.5 px-4 pb-3">
         <TrustStateChip trustState={trustState} trustLevel={trustLevel} size="sm" />
 
         {myCompletedServices != null && myCompletedServices > 0 ? (
@@ -152,7 +160,7 @@ export function ProfessionalDiscoveryCard({
       </div>
 
       {/* Rodapé: avaliação + preço secundário + CTA */}
-      <div className="mt-auto flex items-center justify-between gap-2 border-t border-border px-4 py-3">
+      <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/70 bg-muted/20 px-4 py-3">
         <div className="flex min-w-0 items-center gap-1">
           {hasReviews ? (
             <>
@@ -174,7 +182,9 @@ export function ProfessionalDiscoveryCard({
           )}
         </div>
 
-        <span className="shrink-0 text-sm font-medium text-primary">Ver perfil →</span>
+        <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+          Ver perfil →
+        </span>
       </div>
     </Link>
   )

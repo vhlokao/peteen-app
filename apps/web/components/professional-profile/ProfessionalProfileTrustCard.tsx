@@ -42,9 +42,9 @@ export function ProfessionalProfileTrustCard({
         : SCORE_STATE_MESSAGE
 
   return (
-    <section className="mb-5 rounded-2xl border border-border bg-card p-5 shadow-sm">
+    <section className="relative mb-5 overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-b from-primary/[0.04] to-card p-5 shadow-[var(--shadow-card)]">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Confiança
         </h2>
         <TrustStateChip trustState={trustState} trustLevel={trustLevel} size="md" />
@@ -56,11 +56,11 @@ export function ProfessionalProfileTrustCard({
         professionalId={professionalId}
         viewerRelationshipCompletedServices={viewerRelationshipCompletedServices}
         max={6}
-        className="mt-3"
+        className="mt-3.5"
       />
 
       {partnerEndorsements.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border pt-3">
+        <div className="mt-3.5 flex flex-wrap items-center gap-1.5 border-t border-border/70 pt-3.5">
           <ShieldCheck className="size-3.5 shrink-0 text-primary" aria-hidden />
           <span className="text-xs text-muted-foreground">Recomendado por</span>
           <span className="text-xs font-medium text-primary">

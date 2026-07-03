@@ -148,8 +148,8 @@ export default async function ProfessionalProfilePage({
           </div>
 
           {/* Sobre */}
-          <section className="mb-5">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+          <section className="mb-5 rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
+            <h2 className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Sobre {profile.displayName.split(" ")[0]}
             </h2>
             <p className="text-sm leading-relaxed text-foreground">
@@ -158,7 +158,7 @@ export default async function ProfessionalProfilePage({
           </section>
 
           {hasLegacyBadges && (
-            <section className="mb-5 rounded-2xl border border-border bg-card p-5">
+            <section className="mb-5 rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
               <BadgeList badges={badgesResult.badges} verifications={badgesResult.verifications} />
             </section>
           )}
@@ -171,7 +171,7 @@ export default async function ProfessionalProfilePage({
 
           {/* Serviços */}
           <section className="mb-5">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Serviços
             </h2>
             <ProfessionalServicesList services={profile.services} />
@@ -184,7 +184,7 @@ export default async function ProfessionalProfilePage({
           {/* Avaliações */}
           <section className="mb-6">
             <div className="mb-3 flex items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Avaliações
                 {averageRating !== null && totalReviews > 0 && (
                   <span className="ml-2 font-normal normal-case text-foreground">
@@ -224,7 +224,7 @@ export default async function ProfessionalProfilePage({
             viewerRelationshipCompletedServices={myRelationshipCompleted}
             partnerEndorsements={partnerEndorsements}
           />
-          <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
             <RequestServiceSheet professional={requestServiceProfessional} pets={pets} />
           </div>
         </aside>

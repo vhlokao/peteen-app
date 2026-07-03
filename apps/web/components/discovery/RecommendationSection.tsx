@@ -49,12 +49,12 @@ export function RecommendationSection({ blocks }: SectionProps) {
 function RecommendationBlockRow({ block }: { block: RecommendationBlock }) {
   return (
     <section>
-      <div className="mb-3 flex items-start gap-2">
-        <span className="mt-0.5 shrink-0 text-primary" aria-hidden>
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden>
           {BLOCK_ICON[block.id] ?? <Sparkles className="size-4" />}
         </span>
         <div>
-          <h2 className="text-sm font-semibold text-foreground">{block.title}</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-foreground">{block.title}</h2>
           <p className="text-xs text-muted-foreground">{block.description}</p>
         </div>
       </div>
@@ -81,12 +81,12 @@ function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
   return (
     <Link
       href={`/discover/${pro.professionalId}`}
-      className="flex w-44 shrink-0 flex-col gap-2.5 rounded-2xl border border-border bg-card p-3 shadow-sm transition-all hover:border-primary/30 hover:shadow-md"
+      className="flex w-[10.5rem] shrink-0 flex-col gap-2.5 rounded-2xl border border-border/70 bg-card p-3.5 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
     >
       <div className="flex items-center gap-2">
-        <Avatar className="size-9 shrink-0">
+        <Avatar className="size-10 shrink-0 rounded-xl ring-1 ring-border/60">
           {pro.avatarUrl && <AvatarImage src={pro.avatarUrl} alt={pro.displayName} />}
-          <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
+          <AvatarFallback className="rounded-xl bg-primary/10 text-xs font-medium text-primary">
             {initials}
           </AvatarFallback>
         </Avatar>
@@ -114,7 +114,9 @@ function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
         </div>
       )}
 
-      <p className="truncate text-[0.65rem] font-medium text-primary">{pro.score.mainReason}</p>
+      <span className="w-fit truncate rounded-md bg-primary/8 px-1.5 py-0.5 text-[0.65rem] font-medium text-primary">
+        {pro.score.mainReason}
+      </span>
     </Link>
   )
 }

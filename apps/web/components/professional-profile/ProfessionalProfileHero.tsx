@@ -32,20 +32,24 @@ export function ProfessionalProfileHero({
     .toUpperCase()
 
   return (
-    <div className="mb-5 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-      <div className="relative h-20 bg-primary sm:h-24">
+    <div className="mb-5 overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-card)]">
+      <div className="relative h-24 bg-gradient-to-br from-primary via-primary to-[oklch(0.34_0.11_266)] sm:h-28">
         <div
-          className="pointer-events-none absolute -right-6 -top-6 size-28 rounded-full bg-white/10"
+          className="pointer-events-none absolute -right-8 -top-8 size-36 rounded-full bg-white/10 blur-[2px]"
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute -bottom-8 left-1/3 size-20 rounded-full bg-white/10"
+          className="pointer-events-none absolute -bottom-10 left-1/3 size-24 rounded-full bg-white/10"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/10 to-transparent"
           aria-hidden
         />
       </div>
 
       <div className="px-5 pb-5">
-        <Avatar className="-mt-10 size-20 shrink-0 rounded-2xl border-4 border-card shadow-sm sm:size-24">
+        <Avatar className="-mt-11 size-20 shrink-0 rounded-2xl border-4 border-card shadow-[var(--shadow-card)] sm:size-24">
           {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
           <AvatarFallback className="rounded-2xl bg-primary/10 text-2xl font-semibold text-primary">
             {initials}
@@ -54,17 +58,17 @@ export function ProfessionalProfileHero({
 
         <div className="mt-3">
           <div className="flex flex-wrap items-center gap-1.5">
-            <h1 className="text-xl font-bold leading-tight text-foreground">{displayName}</h1>
+            <h1 className="text-xl font-bold tracking-tight text-foreground">{displayName}</h1>
             {isVerified && (
               <ShieldCheck className="size-4 shrink-0 text-primary" aria-label="Verificado" />
             )}
           </div>
           {primaryService && (
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <span className="mt-1.5 inline-flex w-fit items-center rounded-md bg-primary/8 px-2 py-0.5 text-xs font-medium text-primary">
               {SERVICE_TYPE_LABELS[primaryService]}
-            </p>
+            </span>
           )}
-          <div className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+          <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
             <MapPin className="size-3.5 shrink-0" />
             <span>
               {city}, {state}

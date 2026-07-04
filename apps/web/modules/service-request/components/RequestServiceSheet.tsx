@@ -1,12 +1,11 @@
 "use client"
 
-import { useState, useTransition } from "react"
-import { useRouter } from "next/navigation"
+import { useEffect, useRef, useState, useTransition } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { toast } from "sonner"
-import { CalendarDays, Loader2 } from "lucide-react"
+import { ChevronLeft, Loader2 } from "lucide-react"
 
 import {
   Sheet,
@@ -16,21 +15,22 @@ import {
   SheetDescription,
   SheetFooter,
 } from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { createServiceRequestAction } from "@/modules/service-request/application/actions"
-import { SPECIES_LABELS, type PetData } from "@/modules/tutor/domain/types"
+import type { PetData } from "@/modules/tutor/domain/types"
 import {
-  SERVICE_TYPE_LABELS,
   type ServiceType,
   type ProfessionalPublicProfile,
 } from "@/modules/professional/domain/types"
-import { formatPublicServicePriceCompact } from "@/modules/professional/domain/format-service-price"
+import { RequestFlowProgress } from "./RequestFlowProgress"
+import { RequestPetStep } from "./RequestPetStep"
+import { RequestServiceStep } from "./RequestServiceStep"
+import { RequestScheduleStep } from "./RequestScheduleStep"
+import { RequestReviewStep } from "./RequestReviewStep"
+import { RequestSuccessState } from "./RequestSuccessState"
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Schema local — usa tipos de input compatíveis com HTML forms
+// Schema — idêntico ao original. Nenhum campo, regra ou mensagem mudou.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const requestFormSchema = z.object({
@@ -46,107 +46,117 @@ const requestFormSchema = z.object({
   notes: z.string().max(500, "Máximo 500 caracteres").optional(),
 })
 
-type RequestFormValues = z.infer<typeof requestFormSchema>
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Props
-// ─────────────────────────────────────────────────────────────────────────────
+export type RequestFormValues = z.infer<typeof requestFormSchema>
 
 type RequestServiceSheetProps = {
-  professional: Pick<
-    ProfessionalPublicProfile,
-    "id" | "displayName" | "services"
-  >
+  professional: Pick<ProfessionalPublicProfile, "id" | "displayName" | "services">
   pets: PetData[]
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Styled native select helper
-// ─────────────────────────────────────────────────────────────────────────────
+const STEP_PET = 0
+const STEP_SERVICE = 1
+const STEP_SCHEDULE = 2
+const STEP_REVIEW = 3
+const STEP_SUCCESS = 4
 
-function NativeSelect({
-  id,
-  className,
-  error,
-  ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement> & {
-  id?: string
-  error?: string
-}) {
-  return (
-    <div>
-      <div className="relative">
-        <select
-          id={id}
-          className={cn(
-            "h-9 w-full appearance-none rounded-md border border-input bg-background px-3 py-1 pr-8 text-sm shadow-xs",
-            "focus:outline-none focus:ring-1 focus:ring-ring",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            error && "border-destructive focus:ring-destructive",
-            className
-          )}
-          {...props}
-        />
-        <div className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-            <path
-              d="M2 4l4 4 4-4"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
-      </div>
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-    </div>
-  )
+const STEP_FIELDS: Record<number, (keyof RequestFormValues)[]> = {
+  [STEP_PET]: ["petId"],
+  [STEP_SERVICE]: ["serviceId"],
+  [STEP_SCHEDULE]: ["scheduledAt", "notes"],
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Component
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function RequestServiceSheet({
-  professional,
-  pets,
-}: RequestServiceSheetProps) {
-  const router = useRouter()
+/**
+ * RequestServiceSheet — fluxo guiado de solicitação (UX 3.6).
+ *
+ * Continua sendo UM formulário react-hook-form só (mesmo schema, mesmos
+ * campos, mesma validação) — "etapas" são só visibilidade condicional do
+ * mesmo form, então nenhum valor se perde ao navegar entre elas. O submit
+ * real (chamada da Server Action) só é disparado a partir da etapa de
+ * Revisão — nunca antes.
+ *
+ * Server Action, payload e contrato: idênticos ao componente anterior.
+ */
+export function RequestServiceSheet({ professional, pets }: RequestServiceSheetProps) {
   const [open, setOpen] = useState(false)
+  const [step, setStep] = useState(STEP_PET)
   const [isPending, startTransition] = useTransition()
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const submittingRef = useRef(false)
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null)
 
-  const activeServices = professional.services.filter((s) => {
-    // ProfessionalPublicProfile.services já filtra por isActive no repositório
-    return true
-  })
-
-  const todayStr = new Date().toISOString().split("T")[0]
+  const todayStr = new Date().toISOString().split("T")[0]!
 
   const {
     register,
     handleSubmit,
     reset,
+    trigger,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<RequestFormValues>({
     resolver: zodResolver(requestFormSchema),
     defaultValues: {
-      petId: "",
+      petId: pets.length === 1 ? pets[0]!.id : "",
       serviceId: "",
       scheduledAt: "",
       notes: "",
     },
   })
 
+  const values = watch()
+  const selectedPet = pets.find((p) => p.id === values.petId)
+  const selectedService = professional.services.find((s) => s.id === values.serviceId)
+
+  // Foco avança para o título da etapa a cada mudança — leitura de tela e
+  // teclado seguem o fluxo em vez de ficarem presos na etapa anterior.
+  useEffect(() => {
+    stepHeadingRef.current?.focus()
+  }, [step])
+
+  function resetFlow() {
+    setStep(STEP_PET)
+    setSubmitError(null)
+    submittingRef.current = false
+    reset({
+      petId: pets.length === 1 ? pets[0]!.id : "",
+      serviceId: "",
+      scheduledAt: "",
+      notes: "",
+    })
+  }
+
+  function handleOpenChange(next: boolean) {
+    setOpen(next)
+    if (!next) resetFlow()
+  }
+
+  async function goNext() {
+    const fields = STEP_FIELDS[step]
+    if (fields) {
+      const valid = await trigger(fields)
+      if (!valid) return
+    }
+    setStep((s) => Math.min(s + 1, STEP_REVIEW))
+  }
+
+  function goBack() {
+    setSubmitError(null)
+    setStep((s) => Math.max(s - 1, STEP_PET))
+  }
+
+  // Mesma lógica de submissão do componente anterior — payload idêntico.
   function onSubmit(values: RequestFormValues) {
-    const selectedService = professional.services.find(
-      (s) => s.id === values.serviceId
-    )
+    if (submittingRef.current) return // guarda contra duplo envio
+
+    const selectedService = professional.services.find((s) => s.id === values.serviceId)
     if (!selectedService) {
       toast.error("Serviço inválido. Tente novamente.")
       return
     }
+
+    submittingRef.current = true
+    setSubmitError(null)
 
     startTransition(async () => {
       const result = await createServiceRequestAction({
@@ -159,18 +169,19 @@ export function RequestServiceSheet({
       })
 
       if (!result.success) {
-        toast.error(result.error ?? "Erro ao enviar solicitação.")
+        const message = result.error ?? "Erro ao enviar solicitação."
+        toast.error(message)
+        setSubmitError(message)
+        submittingRef.current = false
         return
       }
 
-      toast.success("Solicitação enviada!", {
-        description: "O profissional receberá seu pedido em breve.",
-      })
-      setOpen(false)
-      reset()
-      router.push("/requests")
+      setStep(STEP_SUCCESS)
     })
   }
+
+  const isReview = step === STEP_REVIEW
+  const isSuccess = step === STEP_SUCCESS
 
   return (
     <>
@@ -180,103 +191,112 @@ export function RequestServiceSheet({
         onClick={() => setOpen(true)}
         disabled={pets.length === 0}
       >
-        {pets.length === 0
-          ? "Cadastre um pet para solicitar"
-          : "Solicitar atendimento"}
+        {pets.length === 0 ? "Cadastre um pet para solicitar" : "Solicitar atendimento"}
       </Button>
 
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetContent side="bottom" className="max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:max-h-[80dvh]">
-          <SheetHeader className="pb-2">
-            <SheetTitle>Solicitar atendimento</SheetTitle>
-            <SheetDescription>
-              Sua solicitação será enviada para{" "}
-              <strong>{professional.displayName}</strong>. O profissional
-              entrará em contato para confirmar.
-            </SheetDescription>
-          </SheetHeader>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5 px-4 pb-2">
-            {/* Pet */}
-            <div className="space-y-1.5">
-              <Label htmlFor="petId">Qual pet?</Label>
-              <NativeSelect
-                id="petId"
-                error={errors.petId?.message}
-                {...register("petId")}
-              >
-                <option value="">Selecione um pet…</option>
-                {pets.map((pet) => (
-                  <option key={pet.id} value={pet.id}>
-                    {pet.name} ({SPECIES_LABELS[pet.species]})
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-
-            {/* Serviço */}
-            <div className="space-y-1.5">
-              <Label htmlFor="serviceId">Tipo de serviço</Label>
-              <NativeSelect
-                id="serviceId"
-                error={errors.serviceId?.message}
-                {...register("serviceId")}
-              >
-                <option value="">Selecione um serviço…</option>
-                {activeServices.map((service) => (
-                  <option key={service.id} value={service.id}>
-                    {service.name} — {SERVICE_TYPE_LABELS[service.serviceType as ServiceType]}
-                    {formatPublicServicePriceCompact(service)}
-                  </option>
-                ))}
-              </NativeSelect>
-            </div>
-
-            {/* Data desejada */}
-            <div className="space-y-1.5">
-              <Label htmlFor="scheduledAt" className="flex items-center gap-1.5">
-                <CalendarDays className="size-3.5 text-muted-foreground" />
-                Data desejada
-              </Label>
-              <input
-                id="scheduledAt"
-                type="date"
-                min={todayStr}
-                className={cn(
-                  "h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs",
-                  "focus:outline-none focus:ring-1 focus:ring-ring",
-                  errors.scheduledAt && "border-destructive focus:ring-destructive"
+      <Sheet open={open} onOpenChange={handleOpenChange}>
+        <SheetContent
+          side="bottom"
+          className="flex max-h-[92dvh] flex-col overflow-hidden rounded-t-2xl p-0 sm:max-h-[85dvh] sm:max-w-lg"
+        >
+          {!isSuccess && (
+            <>
+              <SheetHeader className="shrink-0 gap-2 pb-1">
+                {step > STEP_PET && (
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    className="flex w-fit items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronLeft className="size-3.5" />
+                    Voltar
+                  </button>
                 )}
-                {...register("scheduledAt")}
-              />
-              {errors.scheduledAt && (
-                <p className="text-xs text-destructive">{errors.scheduledAt.message}</p>
-              )}
-            </div>
+                <SheetTitle
+                  ref={stepHeadingRef}
+                  tabIndex={-1}
+                  className="text-lg outline-none"
+                >
+                  {step === STEP_PET && "Quem vai receber o cuidado?"}
+                  {step === STEP_SERVICE && "Qual cuidado você precisa?"}
+                  {step === STEP_SCHEDULE && "Quando você precisa?"}
+                  {step === STEP_REVIEW && "Revise sua solicitação"}
+                </SheetTitle>
+                <SheetDescription>
+                  {step === STEP_PET && "Escolha o pet para este atendimento."}
+                  {step === STEP_SERVICE && `Serviços oferecidos por ${professional.displayName}.`}
+                  {step === STEP_SCHEDULE && "Preencha a data e, se quiser, alguma orientação."}
+                  {step === STEP_REVIEW && "Confira tudo antes de enviar."}
+                </SheetDescription>
+              </SheetHeader>
 
-            {/* Observações */}
-            <div className="space-y-1.5">
-              <Label htmlFor="notes">
-                Observações{" "}
-                <span className="text-muted-foreground font-normal">(opcional)</span>
-              </Label>
-              <Textarea
-                id="notes"
-                placeholder="Informe necessidades especiais, horário preferido, etc."
-                rows={3}
-                {...register("notes")}
-              />
-              {errors.notes && (
-                <p className="text-xs text-destructive">{errors.notes.message}</p>
-              )}
-            </div>
+              <RequestFlowProgress currentStep={step} />
+            </>
+          )}
 
-            <SheetFooter className="px-0 pt-2">
-              <Button type="submit" className="w-full" disabled={isPending}>
-                {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
-                {isPending ? "Enviando…" : "Confirmar solicitação"}
-              </Button>
-            </SheetFooter>
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4"
+          >
+            {step === STEP_PET && (
+              <RequestPetStep
+                pets={pets}
+                selectedPetId={values.petId}
+                onSelect={(id) => setValue("petId", id, { shouldValidate: true })}
+                error={errors.petId?.message}
+              />
+            )}
+
+            {step === STEP_SERVICE && (
+              <RequestServiceStep
+                services={professional.services}
+                selectedServiceId={values.serviceId}
+                onSelect={(id) => setValue("serviceId", id, { shouldValidate: true })}
+                error={errors.serviceId?.message}
+              />
+            )}
+
+            {step === STEP_SCHEDULE && (
+              <RequestScheduleStep register={register} errors={errors} todayStr={todayStr} />
+            )}
+
+            {isReview && (
+              <RequestReviewStep
+                professionalName={professional.displayName}
+                pet={selectedPet}
+                service={selectedService}
+                scheduledAt={values.scheduledAt}
+                notes={values.notes}
+                errorMessage={submitError}
+              />
+            )}
+
+            {isSuccess && (
+              <RequestSuccessState
+                professionalName={professional.displayName}
+                trackHref="/requests"
+                homeHref="/tutor"
+              />
+            )}
+
+            {!isSuccess && (
+              <SheetFooter className="mt-4 shrink-0 px-0 pt-2">
+                {isReview ? (
+                  <Button type="submit" className="w-full" disabled={isPending}>
+                    {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}
+                    {isPending ? "Enviando…" : "Enviar solicitação"}
+                  </Button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={goNext}
+                    className={buttonVariants({ className: "w-full" })}
+                  >
+                    Continuar
+                  </button>
+                )}
+              </SheetFooter>
+            )}
           </form>
         </SheetContent>
       </Sheet>

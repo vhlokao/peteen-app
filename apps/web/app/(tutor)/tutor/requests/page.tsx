@@ -1,37 +1,38 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { ClipboardList } from "lucide-react"
+import { ClipboardList, Search } from "lucide-react"
 import { redirect } from "next/navigation"
 
-import { PageHeader } from "@/components/layout/page-header"
 import { EmptyState } from "@/components/shared/feedback/EmptyState"
 import { buttonVariants } from "@/components/ui/button"
 import { getMyRequestsAsTutorAction } from "@/modules/service-request/application/actions"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
 import { TutorRequestCard } from "@/modules/tutor-portal/components/tutor-request-card"
+import { TutorRequestsTabs } from "@/modules/tutor-portal/components/TutorRequestsTabs"
+import { isActiveRequestStatus } from "@/modules/tutor-portal/domain/request-status-display"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { requireAuth } from "@/modules/identity/application/get-session"
 
 export const metadata: Metadata = {
-  title: "Minhas solicitações",
+  title: "Seus pedidos",
 }
-
-const OPEN = new Set(["PENDING", "ACCEPTED", "IN_PROGRESS"])
-const TERMINAL = new Set([
-  "CANCELLED_BY_TUTOR",
-  "CANCELLED_BY_PROFESSIONAL",
-  "DISPUTED",
-  "EXPIRED",
-])
 
 function groupRequests(requests: ServiceRequestWithParticipants[]) {
   return {
-    open: requests.filter((r) => OPEN.has(r.status)),
-    completed: requests.filter((r) => r.status === "COMPLETED"),
-    terminal: requests.filter((r) => TERMINAL.has(r.status)),
+    active: requests.filter((r) => isActiveRequestStatus(r.status)),
+    previous: requests.filter((r) => !isActiveRequestStatus(r.status)),
   }
 }
 
+/**
+ * /tutor/requests — Lista de solicitações do tutor (UX 3.7 mobile-first).
+ *
+ * Classificação Ativos/Anteriores reaproveita a mesma regra da versão
+ * anterior (isActiveRequestStatus, ver modules/tutor-portal/domain/
+ * request-status-display.ts) — PENDING/ACCEPTED/IN_PROGRESS ativos;
+ * COMPLETED/CANCELLED (tutor ou profissional)/DISPUTED/EXPIRED anteriores, como já
+ * era feito pelos sets OPEN/TERMINAL do código original.
+ */
 export default async function TutorRequestsPage() {
   const session = await requireAuth()
   const tutorProfile = await findTutorProfileByUserId(session.id)
@@ -42,19 +43,21 @@ export default async function TutorRequestsPage() {
 
   const result = await getMyRequestsAsTutorAction({ limit: 50 })
   const requests = result.success ? result.data : []
-  const groups = groupRequests(requests)
+  const { active, previous } = groupRequests(requests)
 
   return (
-    <div className="page-container space-y-8">
-      <PageHeader
-        title="Solicitações"
-        description="Acompanhe pedidos enviados, em andamento e concluídos."
-        action={
-          <Link href="/discover" className={buttonVariants({ size: "sm" })}>
-            Nova solicitação
-          </Link>
-        }
-      />
+    <div className="page-container space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Seus pedidos</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Acompanhe cada cuidado do início ao fim.
+          </p>
+        </div>
+        <Link href="/discover" className={buttonVariants({ size: "sm" })}>
+          Nova solicitação
+        </Link>
+      </header>
 
       {requests.length === 0 ? (
         <EmptyState
@@ -64,46 +67,39 @@ export default async function TutorRequestsPage() {
           action={{ label: "Descobrir profissionais", href: "/discover" }}
         />
       ) : (
-        <>
-          {groups.open.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-sm font-semibold text-foreground">
-                Em aberto ({groups.open.length})
-              </h2>
+        <TutorRequestsTabs
+          activeCount={active.length}
+          previousCount={previous.length}
+          activeContent={
+            active.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                {groups.open.map((req) => (
+                {active.map((req) => (
                   <TutorRequestCard key={req.id} request={req} />
                 ))}
               </div>
-            </section>
-          )}
-
-          {groups.completed.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-sm font-semibold text-foreground">
-                Concluídas ({groups.completed.length})
-              </h2>
+            ) : (
+              <EmptyState
+                icon={<Search className="size-7" />}
+                title="Você não tem pedidos em andamento"
+                action={{ label: "Buscar profissionais", href: "/discover" }}
+              />
+            )
+          }
+          previousContent={
+            previous.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2">
-                {groups.completed.map((req) => (
+                {previous.map((req) => (
                   <TutorRequestCard key={req.id} request={req} />
                 ))}
               </div>
-            </section>
-          )}
-
-          {groups.terminal.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-sm font-semibold text-muted-foreground">
-                Encerradas ({groups.terminal.length})
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-2">
-                {groups.terminal.map((req) => (
-                  <TutorRequestCard key={req.id} request={req} />
-                ))}
-              </div>
-            </section>
-          )}
-        </>
+            ) : (
+              <EmptyState
+                icon={<ClipboardList className="size-7" />}
+                title="Seus atendimentos concluídos aparecerão aqui"
+              />
+            )
+          }
+        />
       )}
     </div>
   )

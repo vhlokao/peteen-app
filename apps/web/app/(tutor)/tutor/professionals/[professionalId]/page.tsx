@@ -136,6 +136,7 @@ export default async function TutorProfessionalHistoryPage({
         professionalId={professional.id}
         viewerRelationshipCompletedServices={summary.completedServices}
         hideBadges
+        hideScore
       />
 
       <RelationshipSummaryCard

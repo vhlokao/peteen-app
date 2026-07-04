@@ -8,12 +8,20 @@ type ProfessionalTrustSummaryProps = {
   professionalId: string
   viewerRelationshipCompletedServices?: number
   hideBadges?: boolean
+  /**
+   * Esconde o card de Índice de Confiança bruto. Usar em qualquer contexto
+   * público/tutor — o número isolado só é apropriado na área do próprio
+   * profissional (Home/Perfil/Métricas, que usam outro componente,
+   * ProfessionalProfileTrustBlock, já contextualizado com o nível).
+   */
+  hideScore?: boolean
 }
 
 export async function ProfessionalTrustSummary({
   professionalId,
   viewerRelationshipCompletedServices,
   hideBadges = false,
+  hideScore = false,
 }: ProfessionalTrustSummaryProps) {
   const summary = await getProfessionalTrustSummary(professionalId, {
     viewerRelationshipCompletedServices,
@@ -21,14 +29,16 @@ export async function ProfessionalTrustSummary({
 
   if (!summary) return null
 
-  const stats = [
+  const allStats = [
     {
+      key: "score",
       label: "Índice de Confiança",
       value: summary.trustScore.toFixed(1),
       icon: Star,
       iconClass: "fill-amber-400 text-amber-400",
     },
     {
+      key: "reviews",
       label: "Total de Avaliações",
       value: String(summary.totalReviews),
       sub:
@@ -38,26 +48,32 @@ export async function ProfessionalTrustSummary({
       icon: ThumbsUp,
     },
     {
+      key: "recurring",
       label: "Clientes Recorrentes",
       value: String(summary.recurringClientsCount),
       icon: Repeat2,
     },
     {
+      key: "completed",
       label: "Serviços Concluídos",
       value: String(summary.completedServices),
       icon: CheckCircle2,
     },
     {
+      key: "recommendations",
       label: "Recomendações",
       value: String(summary.recommendationsCount),
       icon: Users,
     },
     {
+      key: "verification",
       label: "Verificação",
       value: summary.verificationLabel,
       icon: ShieldCheck,
     },
   ] as const
+
+  const stats = hideScore ? allStats.filter((s) => s.key !== "score") : allStats
 
   return (
     <div className="space-y-4">
@@ -69,7 +85,7 @@ export async function ProfessionalTrustSummary({
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {stats.map((stat) => (
               <div
-                key={stat.label}
+                key={stat.key}
                 className="rounded-xl border border-border bg-muted/30 p-3"
               >
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">

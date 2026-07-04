@@ -6,6 +6,7 @@
 import { redirect } from "next/navigation"
 
 import { requireAuth } from "@/modules/identity/application/get-session"
+import { resolveHomeForRoles } from "@/modules/identity/domain/role-routing"
 import { findProfessionalProfileByUserId } from "@/modules/professional/infrastructure/repository"
 import type { ProfessionalProfileData } from "@/modules/professional/domain/types"
 import type { SessionUser } from "@/modules/identity/domain/types"
@@ -19,7 +20,7 @@ export async function requireProfessionalContext(): Promise<ProfessionalContext>
   const session = await requireAuth()
 
   if (!session.roles.includes("PROFESSIONAL")) {
-    redirect("/tutor")
+    redirect(resolveHomeForRoles(session.roles, session.primaryRole))
   }
 
   const profile = await findProfessionalProfileByUserId(session.id)

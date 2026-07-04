@@ -6,6 +6,7 @@
 import { redirect } from "next/navigation"
 
 import { requireAuth } from "@/modules/identity/application/get-session"
+import { resolveHomeForRoles } from "@/modules/identity/domain/role-routing"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import type { TutorProfileData } from "@/modules/tutor/domain/types"
 import type { SessionUser } from "@/modules/identity/domain/types"
@@ -19,7 +20,7 @@ export async function requireTutorContext(): Promise<TutorContext> {
   const session = await requireAuth()
 
   if (!session.roles.includes("TUTOR")) {
-    redirect("/professional")
+    redirect(resolveHomeForRoles(session.roles, session.primaryRole))
   }
 
   const profile = await findTutorProfileByUserId(session.id)

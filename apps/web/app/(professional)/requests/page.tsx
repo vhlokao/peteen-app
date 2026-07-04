@@ -3,6 +3,7 @@ import { redirect } from "next/navigation"
 import { Inbox, Search } from "lucide-react"
 
 import { getAuthContext } from "@/modules/identity/application/get-session"
+import { resolveHomeForRoles } from "@/modules/identity/domain/role-routing"
 import { getMyRequestsAsProfessionalAction } from "@/modules/service-request/application/actions"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
 import { EmptyState } from "@/components/shared/feedback/EmptyState"
@@ -30,16 +31,28 @@ function groupRequests(requests: ServiceRequestWithParticipants[]) {
  * ACCEPTED/IN_PROGRESS têm ação disponível hoje, por isso COMPLETED entra
  * em Histórico junto dos estados terminais, não em uma seção própria.
  *
- * Rota compartilhada com o fluxo do tutor no mesmo arquivo original — o
- * tutor é redirecionado para /tutor/requests antes de qualquer render
+ * Rota compartilhada com o fluxo do tutor no mesmo arquivo original — quem
+ * não possui a role PROFESSIONAL é redirecionado antes de qualquer render
  * aqui, então esta página é, na prática, só a visão do profissional.
+ *
+ * Checagem por roles (não primaryRole): um usuário TUTOR+PROFESSIONAL deve
+ * continuar acessando esta tela mesmo que a persona ativa seja outra —
+ * primaryRole define preferência de destino, não permissão.
  */
 export default async function RequestsPage() {
   const ctx = await getAuthContext()
-  const isTutor = ctx.authenticated && ctx.user.primaryRole === "TUTOR"
 
-  if (isTutor) {
-    redirect("/tutor/requests")
+  if (!ctx.authenticated) {
+    redirect("/login")
+  }
+
+  const { roles, primaryRole } = ctx.user
+
+  if (!roles.includes("PROFESSIONAL")) {
+    if (roles.includes("TUTOR")) {
+      redirect("/tutor/requests")
+    }
+    redirect(resolveHomeForRoles(roles, primaryRole))
   }
 
   const result = await getMyRequestsAsProfessionalAction({ limit: 50 })

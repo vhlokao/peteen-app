@@ -108,7 +108,7 @@ export async function updatePetAction(
       }
     }
 
-    const updated = await updatePetRecord(petId, parsed.data)
+    const updated = await updatePetRecord(petId, tutorProfile.id, parsed.data)
     await recordPetAudit(session.id, "pet.updated", updated, existing)
 
     revalidatePetPaths()
@@ -133,7 +133,7 @@ export async function archivePetAction(petId: string): Promise<ActionResult> {
       return { success: false, error: "Pet não encontrado ou acesso negado." }
     }
 
-    const archived = await archivePetRecord(petId)
+    const archived = await archivePetRecord(petId, tutorProfile.id)
     await recordPetAudit(session.id, "pet.archived", archived, existing)
 
     revalidatePetPaths()

@@ -6,6 +6,7 @@
 import { redirect } from "next/navigation"
 
 import { requireAuth } from "@/modules/identity/application/get-session"
+import { resolveHomeForRoles } from "@/modules/identity/domain/role-routing"
 import type { SessionUser } from "@/modules/identity/domain/types"
 import type { Partner } from "@/modules/partners/domain/types"
 import {
@@ -20,18 +21,11 @@ export type PartnerContext = {
   partner: Partner
 }
 
-function redirectForNonPartner(session: SessionUser): never {
-  if (session.roles.includes("PROFESSIONAL")) redirect("/professional")
-  if (session.roles.includes("TUTOR")) redirect("/tutor")
-  if (session.roles.includes("ADMIN")) redirect("/admin")
-  redirect("/dashboard")
-}
-
 export async function requirePartnerContext(): Promise<PartnerContext> {
   const session = await requireAuth()
 
   if (!session.roles.includes("PARTNER")) {
-    redirectForNonPartner(session)
+    redirect(resolveHomeForRoles(session.roles, session.primaryRole))
   }
 
   const partnerProfile = await findPartnerProfileByUserId(session.id)

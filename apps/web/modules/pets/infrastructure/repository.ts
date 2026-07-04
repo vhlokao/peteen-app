@@ -97,8 +97,16 @@ export async function findPetByIdAndTutorId(
   })
 }
 
+/**
+ * updatePetRecord/archivePetRecord exigem tutorId além do id — defesa em
+ * profundidade. A Action já valida ownership via findPetByIdAndTutorId antes
+ * de chamar estas funções; aqui usamos updateMany (Prisma não permite campos
+ * não-únicos em update().where) para garantir que o próprio repositório não
+ * dependa exclusivamente da camada de Action para não mutar o pet errado.
+ */
 export async function updatePetRecord(
   id: string,
+  tutorId: string,
   input: UpdatePetInput
 ): Promise<PetData> {
   const description =
@@ -108,8 +116,8 @@ export async function updatePetRecord(
         ? input.notes ?? null
         : undefined
 
-  return prisma.pet.update({
-    where: { id },
+  const result = await prisma.pet.updateMany({
+    where: { id, tutorId },
     data: {
       ...(input.name !== undefined && { name: input.name }),
       ...(input.species !== undefined && { species: input.species }),
@@ -131,13 +139,25 @@ export async function updatePetRecord(
       }),
     },
   })
+
+  if (result.count === 0) {
+    throw new Error("Pet não encontrado ou acesso negado.")
+  }
+
+  return prisma.pet.findUniqueOrThrow({ where: { id } })
 }
 
-export async function archivePetRecord(id: string): Promise<PetData> {
-  return prisma.pet.update({
-    where: { id },
+export async function archivePetRecord(id: string, tutorId: string): Promise<PetData> {
+  const result = await prisma.pet.updateMany({
+    where: { id, tutorId },
     data: { isActive: false },
   })
+
+  if (result.count === 0) {
+    throw new Error("Pet não encontrado ou acesso negado.")
+  }
+
+  return prisma.pet.findUniqueOrThrow({ where: { id } })
 }
 
 /** @deprecated Preferir archivePetRecord — mantido para compatibilidade legada */

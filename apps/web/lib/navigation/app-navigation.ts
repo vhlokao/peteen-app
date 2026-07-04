@@ -174,7 +174,6 @@ export const appNavigation: Record<AppShellVariant, PersonaNavigation> = {
         items: [
           { label: "Painel parceiro", href: "/partner", icon: LayoutDashboard, exact: true },
           { label: "Recomendar profissional", href: "/partner/recommendations", icon: ThumbsUp },
-          { label: "Pendentes", href: "/partner/pending", icon: Clock },
           { label: "Métricas", href: "/partner/metrics", icon: BarChart3 },
           { label: "Perfil do parceiro", href: "/partner/profile", icon: UserCircle },
         ],
@@ -183,7 +182,7 @@ export const appNavigation: Record<AppShellVariant, PersonaNavigation> = {
     mobile: [
       { label: "Início", shortLabel: "Início", href: "/partner", icon: LayoutDashboard, exact: true },
       { label: "Recomendar", shortLabel: "Recomendar", href: "/partner/recommendations", icon: ThumbsUp },
-      { label: "Pendentes", shortLabel: "Pendentes", href: "/partner/pending", icon: Clock },
+      { label: "Métricas", shortLabel: "Métricas", href: "/partner/metrics", icon: BarChart3 },
       { label: "Perfil", shortLabel: "Perfil", href: "/partner/profile", icon: UserCircle },
     ],
   },

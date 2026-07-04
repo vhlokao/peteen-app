@@ -1,10 +1,9 @@
 import Link from "next/link"
-import { BarChart3, ThumbsUp, User, Users } from "lucide-react"
+import { BarChart3, ThumbsUp, User } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
 const ACTIONS: { label: string; href: string; icon: LucideIcon }[] = [
   { label: "Recomendar", href: "/partner/recommendations", icon: ThumbsUp },
-  { label: "Pendências", href: "/partner/pending", icon: Users },
   { label: "Métricas", href: "/partner/metrics", icon: BarChart3 },
   { label: "Perfil", href: "/partner/profile", icon: User },
 ]

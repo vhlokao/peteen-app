@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Loader2, AlertCircle, MapPin, User, Briefcase, X } from "lucide-react"
+import { Loader2, AlertCircle, MapPin, User, Briefcase, Phone, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { updateProfessionalProfileAction } from "@/modules/professional/application/actions"
@@ -127,7 +127,7 @@ export function ProfessionalProfileEditForm({
         </div>
       ) : null}
 
-      <SectionLabel icon={<User className="size-3.5" />} label="Identificação" />
+      <SectionLabel icon={<User className="size-3.5" />} label="Identidade" />
 
       <FormField
         name="displayName"
@@ -138,22 +138,6 @@ export function ProfessionalProfileEditForm({
           <Input
             {...field}
             {...register("displayName")}
-            disabled={isSubmitting}
-          />
-        )}
-      </FormField>
-
-      <FormField
-        name="phone"
-        label="Telefone (opcional)"
-        error={errors.phone?.message}
-      >
-        {(field) => (
-          <Input
-            {...field}
-            {...register("phone")}
-            type="tel"
-            placeholder="+55 11 9 9999-9999"
             disabled={isSubmitting}
           />
         )}
@@ -176,12 +160,32 @@ export function ProfessionalProfileEditForm({
         )}
       </FormField>
 
+      <SectionLabel icon={<User className="size-3.5" />} label="Sobre você" />
+
       <FormField name="bio" label="Bio (opcional)" error={errors.bio?.message}>
         {(field) => (
           <Textarea
             {...field}
             {...register("bio")}
             rows={4}
+            disabled={isSubmitting}
+          />
+        )}
+      </FormField>
+
+      <SectionLabel icon={<Phone className="size-3.5" />} label="Contato" />
+
+      <FormField
+        name="phone"
+        label="Telefone (opcional)"
+        error={errors.phone?.message}
+      >
+        {(field) => (
+          <Input
+            {...field}
+            {...register("phone")}
+            type="tel"
+            placeholder="+55 11 9 9999-9999"
             disabled={isSubmitting}
           />
         )}
@@ -260,10 +264,8 @@ export function ProfessionalProfileEditForm({
       </FormField>
 
       <div className="space-y-3">
-        <SectionLabel
-          icon={<Briefcase className="size-3.5" />}
-          label="Tipos de serviço *"
-        />
+        <SectionLabel icon={<Briefcase className="size-3.5" />} label="Especialidades" />
+        <p className="text-xs text-muted-foreground">Tipos de serviço *</p>
         <Controller
           name="serviceTypes"
           control={control}

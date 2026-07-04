@@ -22,7 +22,6 @@ import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
 const formSchema = z
@@ -160,13 +159,11 @@ export function ProfessionalServiceForm({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {mode === "create" ? "Adicionar serviço" : "Editar serviço"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
+    <div className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-primary/10">
+      <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        {mode === "create" ? "Adicionar serviço" : "Editar serviço"}
+      </h2>
+      <div>
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
           {serverError ? (
             <div
@@ -309,7 +306,7 @@ export function ProfessionalServiceForm({
             </Button>
           </div>
         </form>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }

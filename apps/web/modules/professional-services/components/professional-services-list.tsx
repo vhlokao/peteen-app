@@ -8,6 +8,7 @@ import type { ProfessionalServiceRow } from "../domain/types"
 import { Button } from "@/components/ui/button"
 import { ProfessionalServiceCard } from "./professional-service-card"
 import { ProfessionalServiceForm } from "./professional-service-form"
+import { ProfessionalServicesSummary } from "./professional-services-summary"
 import {
   ProfessionalServicesEmptyState,
 } from "./professional-services-empty-state"
@@ -31,19 +32,15 @@ export function ProfessionalServicesList({ services }: Props) {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          {services.length} serviço{services.length !== 1 ? "s" : ""} cadastrado
-          {services.length !== 1 ? "s" : ""}
-        </p>
-        {!creating && (
-          <Button type="button" size="sm" className="gap-1.5" onClick={() => setCreating(true)}>
-            <Plus className="size-4" />
-            Adicionar serviço
-          </Button>
-        )}
-      </div>
+    <div className="space-y-5">
+      <ProfessionalServicesSummary services={services} />
+
+      {!creating && (
+        <Button type="button" size="sm" className="w-full gap-1.5 sm:w-auto" onClick={() => setCreating(true)}>
+          <Plus className="size-4" />
+          Adicionar serviço
+        </Button>
+      )}
 
       {creating && (
         <ProfessionalServiceForm
@@ -56,7 +53,7 @@ export function ProfessionalServicesList({ services }: Props) {
         />
       )}
 
-      <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {services.map((service) => (
           <ProfessionalServiceCard key={service.id} service={service} onEditDone={refresh} />
         ))}

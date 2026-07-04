@@ -1,7 +1,6 @@
 import { PackagePlus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 
 type Props = {
   onCreateClick: () => void
@@ -9,21 +8,19 @@ type Props = {
 
 export function ProfessionalServicesEmptyState({ onCreateClick }: Props) {
   return (
-    <Card>
-      <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-        <PackagePlus className="size-10 text-muted-foreground/60" aria-hidden />
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-foreground">
-            Nenhum serviço cadastrado
-          </h2>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Adicione seu primeiro serviço para começar a receber solicitações.
-          </p>
-        </div>
-        <Button type="button" onClick={onCreateClick}>
-          Adicionar serviço
-        </Button>
-      </CardContent>
-    </Card>
+    <div className="flex flex-col items-center gap-4 rounded-2xl border border-border/70 bg-card p-10 text-center shadow-[var(--shadow-card)]">
+      <span className="flex size-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+        <PackagePlus className="size-7" />
+      </span>
+      <div className="space-y-1">
+        <h2 className="text-lg font-semibold text-foreground">Adicione seu primeiro serviço</h2>
+        <p className="max-w-sm text-sm text-muted-foreground">
+          Mostre aos tutores como você pode cuidar dos pets deles.
+        </p>
+      </div>
+      <Button type="button" onClick={onCreateClick}>
+        Adicionar serviço
+      </Button>
+    </div>
   )
 }

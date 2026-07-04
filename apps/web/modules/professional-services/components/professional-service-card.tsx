@@ -14,9 +14,7 @@ import {
   type ProfessionalServiceRow,
 } from "../domain/types"
 import { SERVICE_TYPE_LABELS } from "@/modules/professional/domain/types"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ProfessionalServiceForm } from "./professional-service-form"
 
 type Props = {
@@ -41,7 +39,7 @@ export function ProfessionalServiceCard({ service, onEditDone }: Props) {
 
       toast.success(
         service.isActive
-          ? "Serviço desativado com sucesso."
+          ? "Serviço pausado com sucesso."
           : "Serviço ativado com sucesso."
       )
       onEditDone()
@@ -63,70 +61,71 @@ export function ProfessionalServiceCard({ service, onEditDone }: Props) {
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div className="min-w-0 space-y-1">
-            <CardTitle className="text-base">{service.name}</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              {SERVICE_TYPE_LABELS[service.serviceType]}
-            </p>
-          </div>
-          <Badge variant={service.isActive ? "default" : "secondary"}>
-            {service.isActive ? "Ativo" : "Inativo"}
-          </Badge>
+    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0 space-y-0.5">
+          <p className="font-medium text-foreground">{service.name}</p>
+          <p className="text-xs text-muted-foreground">{SERVICE_TYPE_LABELS[service.serviceType]}</p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-2 text-sm sm:grid-cols-2">
-          <div>
-            <span className="text-xs text-muted-foreground">Preço base</span>
-            <p className="font-medium tabular-nums">
-              {formatServiceBasePrice(service)}
-            </p>
-          </div>
-          <div>
-            <span className="text-xs text-muted-foreground">Descrição</span>
-            <p className="text-muted-foreground">
-              {summarizeDescription(service.description)}
-            </p>
-          </div>
-        </div>
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-0.5 text-[0.65rem] font-medium ${
+            service.isActive
+              ? "bg-success/10 text-success"
+              : "bg-muted text-muted-foreground"
+          }`}
+        >
+          {service.isActive ? "Ativo" : "Pausado"}
+        </span>
+      </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => setEditing(true)}
-            disabled={isPending}
-          >
-            <Pencil className="size-3.5" />
-            Editar
-          </Button>
-          <Button
-            type="button"
-            variant={service.isActive ? "secondary" : "default"}
-            size="sm"
-            className="gap-1.5"
-            onClick={toggleActive}
-            disabled={isPending}
-          >
-            {service.isActive ? (
-              <>
-                <PowerOff className="size-3.5" />
-                Desativar
-              </>
-            ) : (
-              <>
-                <Power className="size-3.5" />
-                Ativar
-              </>
-            )}
-          </Button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <div>
+          <span className="text-xs text-muted-foreground">Preço base </span>
+          <span className="font-medium tabular-nums text-foreground">
+            {formatServiceBasePrice(service)}
+          </span>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+
+      {service.description && (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {summarizeDescription(service.description)}
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2 border-t border-border/70 pt-3">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          onClick={() => setEditing(true)}
+          disabled={isPending}
+        >
+          <Pencil className="size-3.5" />
+          Editar
+        </Button>
+        <Button
+          type="button"
+          variant={service.isActive ? "outline" : "default"}
+          size="sm"
+          className="gap-1.5"
+          onClick={toggleActive}
+          disabled={isPending}
+        >
+          {service.isActive ? (
+            <>
+              <PowerOff className="size-3.5" />
+              Pausar
+            </>
+          ) : (
+            <>
+              <Power className="size-3.5" />
+              Ativar
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
   )
 }

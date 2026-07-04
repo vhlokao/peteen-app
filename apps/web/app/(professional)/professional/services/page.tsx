@@ -1,12 +1,11 @@
 import type { Metadata } from "next"
 
-import { PageHeader } from "@/components/layout/page-header"
 import { requireProfessionalContext } from "@/modules/professional-crm/application/require-professional"
 import { getProfessionalServices } from "@/modules/professional-services/infrastructure/queries"
 import { ProfessionalServicesList } from "@/modules/professional-services/components/professional-services-list"
 
 export const metadata: Metadata = {
-  title: "Meus Serviços",
+  title: "Seus serviços",
 }
 
 export default async function ProfessionalServicesPage() {
@@ -15,10 +14,12 @@ export default async function ProfessionalServicesPage() {
 
   return (
     <div className="page-container space-y-6">
-      <PageHeader
-        title="Meus Serviços"
-        description="Gerencie os serviços que tutores podem solicitar no Discovery."
-      />
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Seus serviços</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Organize o que você oferece e como os tutores encontram seu trabalho.
+        </p>
+      </header>
       <ProfessionalServicesList services={services} />
     </div>
   )

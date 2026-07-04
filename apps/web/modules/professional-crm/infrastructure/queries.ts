@@ -528,7 +528,13 @@ export async function getProfessionalReviewsData(
       comment: true,
       createdAt: true,
       requestId: true,
-      tutor: { select: { displayName: true } },
+      tutor: { select: { id: true, displayName: true } },
+      request: {
+        select: {
+          serviceType: true,
+          pet: { select: { name: true } },
+        },
+      },
     },
   })
 
@@ -549,11 +555,14 @@ export async function getProfessionalReviewsData(
 
   const reviewRows: ProfessionalReviewRow[] = reviews.map((r) => ({
     id: r.id,
+    tutorId: r.tutor.id,
     tutorName: r.tutor.displayName,
     rating: r.rating,
     comment: r.comment,
     createdAt: r.createdAt,
     requestId: r.requestId,
+    serviceType: r.request?.serviceType ?? null,
+    petName: r.request?.pet?.name ?? null,
   }))
 
   return {

@@ -66,11 +66,14 @@ export type ProfessionalPetRow = {
 
 export type ProfessionalReviewRow = {
   id: string
+  tutorId: string
   tutorName: string
   rating: number
   comment: string | null
   createdAt: Date
   requestId: string
+  serviceType: string | null
+  petName: string | null
 }
 
 export type ProfessionalReviewsData = {

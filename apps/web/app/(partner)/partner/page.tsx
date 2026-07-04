@@ -1,48 +1,60 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 
-import { PageHeader } from "@/components/layout/page-header"
-import { buttonVariants } from "@/components/ui/button"
-import { buildPartnerPublicUrl } from "@/modules/partner-portal/domain/navigation"
 import { requirePartnerContext } from "@/modules/partner-portal/application/require-partner"
-import { getPartnerPortalData } from "@/modules/partner-portal/infrastructure/queries"
-import { PartnerStatsGrid } from "@/modules/partner-portal/components/partner-stats-grid"
+import {
+  getPartnerDashboardStats,
+  findRecentPartnerActivity,
+} from "@/modules/partner-portal/infrastructure/queries"
+import { PartnerAttentionCard } from "@/modules/partner-portal/components/partner-attention-card"
+import { PartnerQuickActions } from "@/modules/partner-portal/components/partner-quick-actions"
+import { PartnerSummary } from "@/modules/partner-portal/components/partner-summary"
+import { PartnerImpactCard } from "@/modules/partner-portal/components/partner-impact-card"
 import { PartnerRecentActivity } from "@/modules/partner-portal/components/partner-recent-activity"
-import { PartnerNextActions } from "@/modules/partner-portal/components/partner-next-actions"
 
 export const metadata: Metadata = {
   title: "Portal do parceiro",
 }
 
-export default async function PartnerDashboardPage() {
+/**
+ * /partner — hub leve de acompanhamento (UX 3.9).
+ *
+ * Ordem: atenção agora -> resumo -> ações rápidas -> impacto -> atividade.
+ * Não existe fluxo de "recomendação pendente de análise" no modelo — o
+ * sinal real de atenção é o status de verificação da organização
+ * (verificado antes de implementar, ver domain/status-display.ts).
+ */
+export default async function PartnerHomePage() {
   const { partner } = await requirePartnerContext()
-  const portal = await getPartnerPortalData(partner)
+
+  const [stats, recentActivity] = await Promise.all([
+    getPartnerDashboardStats(partner.id, partner.verificationStatus),
+    findRecentPartnerActivity(partner.id, partner.slug, 5),
+  ])
+
+  const firstName = partner.businessName.split(" ")[0] || partner.businessName
 
   return (
-    <div className="page-container space-y-8">
-      <PageHeader
-        title={`Olá, ${partner.businessName.split(" ")[0]}`}
-        description="Painel operacional — recomendações, conexões e impacto na rede."
-        action={
-          <Link
-            href={buildPartnerPublicUrl(partner.slug, "/partner")}
-            className={buttonVariants({ variant: "outline", size: "sm" })}
-          >
-            Ver perfil público
-          </Link>
-        }
-      />
+    <div className="page-container max-w-4xl space-y-6 pb-4">
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Olá, {firstName}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Acompanhe suas recomendações e ajude a fortalecer a rede.
+        </p>
+      </header>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Resumo
-        </h2>
-        <PartnerStatsGrid stats={portal.stats} />
-      </section>
+      <div className="flex flex-col gap-5">
+        <PartnerAttentionCard verificationStatus={stats.verificationStatus} />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <PartnerNextActions actions={portal.nextActions} />
-        <PartnerRecentActivity items={portal.recentActivity} />
+        <PartnerSummary stats={stats} />
+
+        <PartnerQuickActions />
+
+        <PartnerImpactCard
+          activeRecommendations={stats.activeRecommendations}
+          verifiedRecommended={stats.verifiedRecommended}
+        />
+
+        <PartnerRecentActivity items={recentActivity} />
       </div>
     </div>
   )

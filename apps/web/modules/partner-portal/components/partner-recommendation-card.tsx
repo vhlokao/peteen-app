@@ -13,9 +13,9 @@ import {
 } from "../application/recommendation-actions"
 import type { PartnerRecommendationRow } from "../domain/types"
 import { buildDiscoverUrl } from "../domain/navigation"
-import { Badge } from "@/components/ui/badge"
+import { PartnerStatusPill } from "./partner-status-pill"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button, buttonVariants } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 type Props = {
   recommendation: PartnerRecommendationRow
@@ -24,6 +24,13 @@ type Props = {
 
 export function PartnerRecommendationCard({ recommendation, onUpdated }: Props) {
   const [isPending, startTransition] = useTransition()
+
+  const initials = recommendation.displayName
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
 
   function toggleActive() {
     startTransition(async () => {
@@ -37,74 +44,68 @@ export function PartnerRecommendationCard({ recommendation, onUpdated }: Props) 
       }
 
       toast.success(
-        recommendation.isActive
-          ? "Recomendação desativada."
-          : "Recomendação reativada."
+        recommendation.isActive ? "Recomendação desativada." : "Recomendação reativada."
       )
       onUpdated()
     })
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <CardTitle className="text-base">{recommendation.displayName}</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              {recommendation.city} · {recommendation.specialty}
-            </p>
-          </div>
-          <Badge variant={recommendation.isActive ? "default" : "secondary"}>
-            {recommendation.statusLabel}
-          </Badge>
+    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
+      <div className="flex items-start gap-3">
+        <Avatar className="size-11 shrink-0 rounded-xl">
+          <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-semibold text-primary">
+            {initials}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-medium text-foreground">{recommendation.displayName}</p>
+          <p className="text-xs text-muted-foreground">
+            {recommendation.city} · {recommendation.specialty}
+          </p>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Recomendado em{" "}
-          <span className="font-medium text-foreground">
-            {format(recommendation.recommendedAt, "dd MMM yyyy", { locale: ptBR })}
-          </span>
-        </p>
+        <PartnerStatusPill isActive={recommendation.isActive} size="sm" />
+      </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Link
-            href={buildDiscoverUrl(recommendation.professionalId, {
-              from: "partner",
-              returnTo: "/partner/recommendations",
-            })}
-            className={buttonVariants({
-              variant: "outline",
-              size: "sm",
-              className: "gap-1.5",
-            })}
-          >
-            Perfil público
-            <ExternalLink className="size-3.5" />
-          </Link>
-          <Button
-            type="button"
-            variant={recommendation.isActive ? "secondary" : "default"}
-            size="sm"
-            className="gap-1.5"
-            onClick={toggleActive}
-            disabled={isPending}
-          >
-            {recommendation.isActive ? (
-              <>
-                <PowerOff className="size-3.5" />
-                Desativar recomendação
-              </>
-            ) : (
-              <>
-                <Power className="size-3.5" />
-                Reativar recomendação
-              </>
-            )}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      <p className="text-xs text-muted-foreground">
+        Recomendado em{" "}
+        <span className="font-medium text-foreground">
+          {format(recommendation.recommendedAt, "dd MMM yyyy", { locale: ptBR })}
+        </span>
+      </p>
+
+      <div className="flex flex-wrap gap-2 border-t border-border/70 pt-3">
+        <Link
+          href={buildDiscoverUrl(recommendation.professionalId, {
+            from: "partner",
+            returnTo: "/partner/recommendations",
+          })}
+          className={buttonVariants({ variant: "outline", size: "sm", className: "gap-1.5" })}
+        >
+          Perfil público
+          <ExternalLink className="size-3.5" />
+        </Link>
+        <Button
+          type="button"
+          variant={recommendation.isActive ? "outline" : "default"}
+          size="sm"
+          className="gap-1.5"
+          onClick={toggleActive}
+          disabled={isPending}
+        >
+          {recommendation.isActive ? (
+            <>
+              <PowerOff className="size-3.5" />
+              Desativar
+            </>
+          ) : (
+            <>
+              <Power className="size-3.5" />
+              Reativar
+            </>
+          )}
+        </Button>
+      </div>
+    </div>
   )
 }

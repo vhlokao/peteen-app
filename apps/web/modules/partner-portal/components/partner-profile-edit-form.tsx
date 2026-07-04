@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Loader2, AlertCircle, MapPin, Building2 } from "lucide-react"
+import { Loader2, AlertCircle, MapPin, Building2, Phone, FileText } from "lucide-react"
 import { toast } from "sonner"
 import { z } from "zod"
 
@@ -14,14 +14,12 @@ import type { PartnerPortalProfile } from "@/modules/partner-portal/domain/types
 import {
   PARTNER_CATEGORIES,
   PARTNER_CATEGORY_LABELS,
-  PARTNER_VERIFICATION_STATUS_LABELS,
 } from "@/modules/partners/domain/constants"
 import type { PartnerCategory } from "@/modules/partners/domain/types"
 import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
 
 type PartnerProfileEditFormProps = {
   partner: PartnerPortalProfile
@@ -90,16 +88,9 @@ export function PartnerProfileEditForm({ partner }: PartnerProfileEditFormProps)
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2">
-        <span className="text-sm text-muted-foreground">Verificação:</span>
-        <Badge variant={partner.isVerified ? "default" : "secondary"}>
-          {PARTNER_VERIFICATION_STATUS_LABELS[partner.verificationStatus]}
-        </Badge>
-      </div>
-
       <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         <Building2 className="size-3.5" />
-        Organização
+        Identidade
       </div>
 
       <FormField
@@ -133,6 +124,23 @@ export function PartnerProfileEditForm({ partner }: PartnerProfileEditFormProps)
         )}
       </FormField>
 
+      <FormField name="logoUrl" label="URL do logo" error={errors.logoUrl?.message}>
+        {(field) => (
+          <Input
+            id={field.id}
+            {...register("logoUrl")}
+            type="url"
+            placeholder="https://"
+            aria-invalid={field["aria-invalid"]}
+          />
+        )}
+      </FormField>
+
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <FileText className="size-3.5" />
+        Sobre
+      </div>
+
       <FormField
         name="description"
         label="Descrição"
@@ -149,6 +157,11 @@ export function PartnerProfileEditForm({ partner }: PartnerProfileEditFormProps)
         )}
       </FormField>
 
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <Phone className="size-3.5" />
+        Contato
+      </div>
+
       <FormField name="phone" label="Telefone" error={errors.phone?.message}>
         {(field) => (
           <Input id={field.id} {...register("phone")} type="tel" aria-invalid={field["aria-invalid"]} />
@@ -160,18 +173,6 @@ export function PartnerProfileEditForm({ partner }: PartnerProfileEditFormProps)
           <Input
             id={field.id}
             {...register("website")}
-            type="url"
-            placeholder="https://"
-            aria-invalid={field["aria-invalid"]}
-          />
-        )}
-      </FormField>
-
-      <FormField name="logoUrl" label="URL do logo" error={errors.logoUrl?.message}>
-        {(field) => (
-          <Input
-            id={field.id}
-            {...register("logoUrl")}
             type="url"
             placeholder="https://"
             aria-invalid={field["aria-invalid"]}

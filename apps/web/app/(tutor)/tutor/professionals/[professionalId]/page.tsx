@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
-import { ArrowLeft, RotateCcw, ShieldCheck, Star } from "lucide-react"
+import { ArrowLeft, RotateCcw, ShieldCheck } from "lucide-react"
 
 import { PageHeader } from "@/components/layout/page-header"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -88,10 +88,6 @@ export default async function TutorProfessionalHistoryPage({
               <p className="text-sm text-muted-foreground">{professional.city}</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary" className="gap-1">
-                <Star className="size-3 fill-amber-400 text-amber-400" />
-                Índice de Confiança {professional.trustScore.toFixed(1)}
-              </Badge>
               <Badge className={verificationStyle} variant="secondary">
                 <ShieldCheck className="mr-1 size-3" />
                 {verificationLabel}

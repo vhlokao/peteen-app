@@ -47,7 +47,7 @@ export function TutorRequestCard({
       href={`/tutor/requests/${request.id}`}
       className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
     >
-      <div className="flex items-start gap-3">
+      <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
         <Avatar className="size-11 shrink-0 rounded-xl">
           {pro.avatarUrl && <AvatarImage src={pro.avatarUrl} alt={pro.displayName} />}
           <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-semibold text-primary">
@@ -61,7 +61,7 @@ export function TutorRequestCard({
             <span className="truncate">{pro.city}</span>
           </div>
         </div>
-        <TutorRequestStatusPill status={request.status} size="sm" />
+        <TutorRequestStatusPill status={request.status} size="sm" className="shrink-0" />
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

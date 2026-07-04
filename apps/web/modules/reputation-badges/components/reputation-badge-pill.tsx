@@ -20,8 +20,9 @@ export function ReputationBadgePill({
     <span
       className={`inline-flex items-center rounded-full border font-medium ${meta.className} ${sizeClass}`}
       title={badge.description}
+      aria-label={`${badge.label} — ${badge.description}`}
     >
-      {badge.type === "verified" && <span className="mr-0.5">✓</span>}
+      {badge.type === "verified" && <span className="mr-0.5" aria-hidden="true">✓</span>}
       {badge.label}
     </span>
   )

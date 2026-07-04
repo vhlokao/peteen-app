@@ -338,7 +338,7 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
 
                   <p className="font-medium text-foreground">{pro.displayName}</p>
 
-                  <p className="text-xs text-muted-foreground">{pro.city} · Confiança {pro.trustScore.toFixed(0)}</p>
+                  <p className="text-xs text-muted-foreground">{pro.city} · Recomendado pela rede</p>
 
                 </div>
 

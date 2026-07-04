@@ -1,66 +1,89 @@
 import Link from "next/link"
-import { format } from "date-fns"
-import { ptBR } from "date-fns/locale"
-import { Users } from "lucide-react"
+import { CalendarDays, MapPin, PawPrint } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { RELATIONSHIP_LEVEL_ICONS } from "@/modules/relationship/domain/constants"
+import type { RelationshipLevel } from "@/modules/relationship/domain/types"
 import type { ProfessionalClientRow } from "../domain/types"
 
-export function ProfessionalClientsList({
-  clients,
-}: {
-  clients: ProfessionalClientRow[]
-}) {
-  const fmt = (d: Date | null) =>
-    d ? format(d, "dd/MM/yyyy", { locale: ptBR }) : "—"
+function formatDate(date: Date | null): string {
+  if (!date) return "—"
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(date))
+}
 
-  if (clients.length === 0) {
-    return (
-      <Card>
-        <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          Nenhum cliente ainda. Clientes aparecem após o primeiro serviço concluído.
-        </CardContent>
-      </Card>
-    )
-  }
+/**
+ * Cliente como relação, não registro de CRM — pill de nível já é o rótulo
+ * humano central (RELATIONSHIP_LEVEL_LABELS), sem score exposto.
+ */
+export function ProfessionalClientsList({ clients }: { clients: ProfessionalClientRow[] }) {
+  if (clients.length === 0) return null
 
   return (
-    <div className="space-y-3">
-      {clients.map((client) => (
-        <Card key={client.tutorId}>
-          <CardHeader className="pb-2">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Users className="size-4 text-muted-foreground" />
-                <CardTitle className="text-base">{client.tutorName}</CardTitle>
+    <div className="grid gap-3 sm:grid-cols-2">
+      {clients.map((client) => {
+        const level = client.relationshipLevel as RelationshipLevel
+        const initials = client.tutorName
+          .split(" ")
+          .slice(0, 2)
+          .map((w) => w[0])
+          .join("")
+          .toUpperCase()
+
+        return (
+          <Link
+            key={client.tutorId}
+            href={`/professional/clients/${client.tutorId}`}
+            className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+          >
+            <div className="flex items-start gap-3">
+              <Avatar className="size-11 shrink-0 rounded-xl">
+                <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-semibold text-primary">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium text-foreground">{client.tutorName}</p>
+                {client.city && (
+                  <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+                    <MapPin className="size-3 shrink-0" />
+                    <span className="truncate">{client.city}</span>
+                  </div>
+                )}
               </div>
-              <Badge variant="secondary">{client.relationshipLevelLabel}</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
-              <span>{client.city}</span>
-              <span>
-                {client.totalServices} atendimento
-                {client.totalServices !== 1 ? "s" : ""}
+              <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[0.65rem] font-medium text-primary">
+                <span aria-hidden>{RELATIONSHIP_LEVEL_ICONS[level]}</span>
+                {client.relationshipLevelLabel}
               </span>
-              <span>Último: {fmt(client.lastServiceAt)}</span>
             </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                {client.totalServices} atendimento{client.totalServices !== 1 ? "s" : ""}
+              </span>
+              <span className="text-border">·</span>
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="size-3 shrink-0" />
+                Último: {formatDate(client.lastServiceAt)}
+              </span>
+            </div>
+
             {client.petNames.length > 0 && (
-              <p className="text-xs text-muted-foreground">
-                Pets: {client.petNames.join(", ")}
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <PawPrint className="size-3 shrink-0" />
+                {client.petNames.join(", ")}
               </p>
             )}
-            <Link
-              href={`/professional/clients/${client.tutorId}`}
-              className="inline-block text-xs font-medium text-primary hover:underline"
-            >
+
+            <span className="mt-auto self-start text-xs font-medium text-primary">
               Ver histórico →
-            </Link>
-          </CardContent>
-        </Card>
-      ))}
+            </span>
+          </Link>
+        )
+      })}
     </div>
   )
 }

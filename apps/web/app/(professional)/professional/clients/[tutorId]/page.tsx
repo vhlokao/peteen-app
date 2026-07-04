@@ -2,8 +2,6 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
-import { PageHeader } from "@/components/layout/page-header"
-import { buttonVariants } from "@/components/ui/button"
 import { getProfessionalClientHistoryAction } from "@/modules/relationship-history/application/actions"
 import { RelationshipSummaryCard } from "@/modules/relationship-history/components/relationship-summary-card"
 import { RelationshipPetsList } from "@/modules/relationship-history/components/relationship-pets-list"
@@ -31,20 +29,22 @@ export default async function ProfessionalClientHistoryPage({
 
   return (
     <div className="page-container space-y-6">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/professional/clients"
-          className={buttonVariants({ variant: "ghost", size: "sm", className: "gap-1" })}
-        >
-          <ArrowLeft className="size-4" />
-          Clientes
-        </Link>
-      </div>
+      <Link
+        href="/professional/clients"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+      >
+        <ArrowLeft className="size-4" />
+        Voltar aos clientes
+      </Link>
 
-      <PageHeader
-        title={history.tutor.displayName}
-        description="Histórico completo do relacionamento com este tutor."
-      />
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+          {history.tutor.displayName}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Histórico completo do relacionamento com este tutor.
+        </p>
+      </header>
 
       <RelationshipSummaryCard
         summary={history.summary}

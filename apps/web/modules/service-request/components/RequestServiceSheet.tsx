@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sheet"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { createServiceRequestAction } from "@/modules/service-request/application/actions"
+import { parseCivilDateToStableInstant } from "@/lib/date/parse-civil-date"
 import type { PetData } from "@/modules/tutor/domain/types"
 import {
   type ServiceType,
@@ -40,7 +41,10 @@ const requestFormSchema = z.object({
     .string()
     .min(1, "Informe a data")
     .refine((d) => {
-      const date = new Date(d)
+      // Mesma conversão usada na submissão (ver onSubmit) — meio-dia UTC evita
+      // que a comparação de "data futura" seja afetada pelo deslocamento de
+      // fuso que `new Date("YYYY-MM-DD")` (meia-noite UTC) introduziria.
+      const date = parseCivilDateToStableInstant(d)
       return !isNaN(date.getTime()) && date > new Date()
     }, "A data deve ser no futuro"),
   notes: z.string().max(500, "Máximo 500 caracteres").optional(),
@@ -163,7 +167,7 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
         professionalId: professional.id,
         petId: values.petId,
         serviceType: selectedService.serviceType as ServiceType,
-        scheduledAt: new Date(values.scheduledAt),
+        scheduledAt: parseCivilDateToStableInstant(values.scheduledAt),
         notes: values.notes || undefined,
         isRecurring: false,
       })

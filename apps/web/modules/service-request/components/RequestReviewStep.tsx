@@ -3,6 +3,7 @@ import { AlertCircle, CalendarDays, PawPrint, User } from "lucide-react"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { formatPublicServicePrice } from "@/modules/professional/domain/format-service-price"
 import { SPECIES_LABELS, type PetData } from "@/modules/tutor/domain/types"
+import { parseCivilDateToStableInstant } from "@/lib/date/parse-civil-date"
 
 type ServiceOption = {
   id: string
@@ -23,12 +24,16 @@ type RequestReviewStepProps = {
 
 function formatDate(value: string): string {
   if (!value) return "—"
-  const date = new Date(`${value}T00:00:00`)
+  // Mesmo helper usado na submissão (RequestServiceSheet) — a revisão mostra
+  // exatamente o mesmo dia civil que será persistido, sem interpretação
+  // paralela de fuso horário.
+  const date = parseCivilDateToStableInstant(value)
   if (isNaN(date.getTime())) return "—"
   return new Intl.DateTimeFormat("pt-BR", {
     day: "2-digit",
     month: "long",
     year: "numeric",
+    timeZone: "UTC",
   }).format(date)
 }
 

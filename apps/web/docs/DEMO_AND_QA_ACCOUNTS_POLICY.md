@@ -56,6 +56,21 @@ Nenhuma credencial, e-mail pessoal, token ou segredo é listado aqui.
 - Qualquer role administrativa numa conta pessoal é uma decisão separada,
   avaliada caso a caso — não é removida automaticamente por esta política.
 
+## Sincronização Supabase Auth → banco da aplicação
+
+O projeto tem um trigger no Postgres (`on_auth_user_created`, `AFTER INSERT
+ON auth.users`, executando a função `handle_new_user()`) que sincroniza
+automaticamente `auth.users` → `public.users` assim que uma conta é criada
+no Supabase Auth — a linha criada é "bare" (sem `activePrimaryRole`, sem
+`onboardingCompletedAt`).
+
+Consequência prática: **qualquer script administrativo que crie usuários
+via Admin API deve gravar o `User` da aplicação com `upsert` por `authId`,
+nunca com `create` puro** — um `create` puro colide com a linha que o
+trigger já inseriu, mesmo que a criação do Auth user e a gravação do
+Prisma pareçam sequenciais no seu código (ver
+`scripts/create-isolated-admin.mjs`).
+
 ## Checklist antes de qualquer demonstração externa
 
 1. Confirmar que a conta usada não tem role ADMIN além da conta admin

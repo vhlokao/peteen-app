@@ -9,13 +9,13 @@
 
 import type { ReactNode } from "react"
 import { redirect } from "next/navigation"
-import Link from "next/link"
-import { LogOut, Shield } from "lucide-react"
+import { Shield } from "lucide-react"
 
 import { getAuthContext } from "@/modules/identity/application/get-session"
 import { getAdminNotificationCountAction } from "@/modules/notifications/application/actions"
 import { NotificationBell } from "@/modules/notifications/components/notification-bell"
 import { AdminNav } from "./AdminNav"
+import { AdminSignOutButton } from "./AdminSignOutButton"
 
 type AdminShellProps = {
   children: ReactNode
@@ -57,13 +57,7 @@ export async function AdminShell({ children }: AdminShellProps) {
         {/* Rodapé do sidebar */}
         <div className="border-t px-4 py-3">
           <p className="truncate text-[0.65rem] text-muted-foreground">{email}</p>
-          <Link
-            href="/api/auth/logout"
-            className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <LogOut className="size-3.5" />
-            Sair
-          </Link>
+          <AdminSignOutButton />
         </div>
       </aside>
 

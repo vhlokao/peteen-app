@@ -56,6 +56,15 @@ Nenhuma credencial, e-mail pessoal, token ou segredo é listado aqui.
 - Qualquer role administrativa numa conta pessoal é uma decisão separada,
   avaliada caso a caso — não é removida automaticamente por esta política.
 
+## Regra de privacidade em entidades demo/QA
+
+Contas e entidades demo não podem conter telefone, e-mail, domínio, rede
+social ou endereço pessoal de membros da equipe. Isso vale para qualquer
+entidade exibível (Partner, PartnerProfile, TutorProfile,
+ProfessionalProfile, etc.), não só para as contas de login — ver
+`docs/DEMO_DATASET_MANIFEST.md` para o histórico de correções desse tipo
+(Lote E.1).
+
 ## Sincronização Supabase Auth → banco da aplicação
 
 O projeto tem um trigger no Postgres (`on_auth_user_created`, `AFTER INSERT

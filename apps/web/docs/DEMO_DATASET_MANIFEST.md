@@ -12,7 +12,7 @@ aqui.
 |---|---|---|
 | Tutor demo | `testetutor@gmail.com` (Camila Ferreira) | única persona TUTOR, dados higienizados nos Lotes B/D |
 | Profissional demo | `testeprofissional@gmail.com` (Maria Eduarda) | única persona PROFESSIONAL desde o Lote A (antes tinha ADMIN embutido) |
-| Parceiro demo | `testeparceiro@gmail.com` (Love Pet) | ainda não higienizado (fora do escopo dos Lotes A–D); descrição do Partner ainda contém texto de teste ("testando parceiro onboarding") — backlog |
+| Parceiro demo | `testeparceiro@gmail.com` (Love Pet) | higienizado no Lote E — Partner renomeado para "Love Pet Shop", descrição reescrita, cidade acentuada |
 | Admin demo | `admin.demo@peteen.app` | criado no Lote A, isolado, sem nenhuma persona de negócio |
 | Contas QA | `testeprofissional2/3`, `testeprofessional4`, `indicaipro@gmail.com` | mantidas para exercitar cenários variados; **nunca usar em demo** |
 | Conta pessoal | e-mail do fundador (não listado aqui) | TUTOR + ADMIN; nunca usar em demo, screenshot ou apresentação |
@@ -46,6 +46,10 @@ aqui.
 - `cmqiy08zj000214schum0nj44` — 5 estrelas, "pontual"
 - `cmqnwpp5700013cscj112l7q4` — 3 estrelas, "Gostei, mas precisa melhorar um pouco."
 
+**Parceiro demo** (higienizado no Lote E):
+- `Partner cmqmmphxj0000kcscahv2xx5h` — "Love Pet Shop" (slug `love-pet`), Carapicuíba, verificado, ativo, vinculado a `PartnerProfile pp_test_love_pet`.
+- **Recomendação coerente para o roteiro:** `TrustConnection cmqmmrcwg0005kcscu9xk4x18` — Love Pet Shop → Maria Eduarda (profissional demo, verificada, 3 serviços ativos). É a única recomendação do parceiro demo que aponta para um profissional totalmente higienizado; as demais (MARIA LUIZA, Vitor hugo oliveira, Carlos delarosa, VAMOS LÁ GAROTAO) apontam para profissionais ainda não higienizados ou incompletos — ver "Registros QA" abaixo.
+
 ## Registros QA (preservados, fora do roteiro principal)
 
 - **Disputa `cmqvpqkx50001essci8c10o2y`** (request `cmqmifo940001l8sc3zjh9cry`, profissional MARIA LUIZA, status **OPEN**): criada organicamente pelo tutor em 26/06, testada pelo `admin.demo` durante a validação do Lote A.1 (`OPEN → UNDER_REVIEW`). A reversão de volta para `OPEN` foi feita via script direto de QA (não pela Server Action), então **não existe `AuditLog` registrando essa reversão** — o único `AuditLog` de `admin.demo` sobre esta disputa mostra `OPEN → UNDER_REVIEW`, e o estado atual no banco é `OPEN` novamente. Essa é uma inconsistência conhecida e documentada, não um bug de produto: serve para testar Admin/Tutor/Profissional, mas **não deve aparecer no roteiro de demonstração comum**.
@@ -54,6 +58,10 @@ aqui.
 - **Solicitações PENDING extra:** `cmr5s53ue000194scq22ugs8t` (com Vitor hugo oliveira) — redundante com a PENDING já escolhida para o roteiro.
 - **Solicitações HISTÓRICO** (textos corrigidos no Lote D, mas fora do roteiro principal): `cmqisoyyh0006t4scv5r5azwa` (tem a disputa RESOLVED), `cmqmifo940001l8sc3zjh9cry` (tem a disputa OPEN), `cmqivx7fd000364scmt4vo4oz`, `cmqixy09z000014scabtjm6x7`, `cmqkv09ud0003dgsc68izfkun`, `cmqwqeaes0004woscd3uo2ryw`.
 - **Conta multirole:** não existe hoje nenhuma conta TUTOR+PROFESSIONAL de fato; a única conta multirole real do ambiente é a conta pessoal do fundador (TUTOR+ADMIN), que nunca deve ser usada como referência de teste multirole de personas de negócio.
+- **Partner `cmqlyxkpf0000wosc2iqgecy9`** ("Pet Shop central carapicuiba", slug `petshopmoura`) — **QA/LEGADO**, ativo mas sem `PartnerProfile`/login (órfão), sem verificação. Cidade corrigida no Lote E ("carapicuiba"→"Carapicuíba") por estar tecnicamente acessível via `/partners/petshopmoura`, mas não deve ser usado no roteiro de demonstração. `website`/`instagram` deste registro contêm branding pessoal ("mourawdesign.com", "@vtomoura") — fora do escopo de campos permitidos nesta missão (só nome/slug/descrição/categoria/cidade/logo), sinalizado como **risco de privacidade a corrigir em lote futuro**.
+- **Partner `cmqmo00cm0002pkscua4mqzgs`** ("vitor moura", slug `vitor-moura`) — **QA/LEGADO**, onboarding abandonado (`IN_PROGRESS`), `isActive: false` (não aparece em nenhuma consulta pública, que sempre filtra `isActive: true`). Cidade ainda é o literal `"teste"` e o campo `phone` contém um número que corresponde ao telefone real do fundador — **não alterado nesta missão** (fora do roteiro de demo, sem visibilidade pública, e `phone` fora do escopo de campos permitidos). Risco de privacidade sinalizado para decisão futura (recomendação: mascarar ou remover o telefone caso este registro seja usado para qualquer exportação de dados).
+- **TrustConnections órfãs** (`sourcePartnerId: null`) — `cmqlxhqnn...` ("Pet Shop Moura", inativa) e `cmqlxk0s7...` ("Veterinário Vertigem", ativa, aponta para Maria Eduarda): são recomendações denormalizadas de uma época anterior ao modelo `Partner` real, sem nenhum parceiro de fato por trás. Não podem ser excluídas (regra da missão) nem viram `sourcePartnerId` nesta missão (mudar isso seria alterar mais do que o texto de exibição). Só o texto (`sourceName`) foi normalizado. Ambas ficam classificadas **QA/HISTÓRICO** — a ativa continua contribuindo para o badge "Recomendado" de Maria Eduarda mesmo sem um Partner real por trás, o que é uma fragilidade de modelagem pré-existente, não uma decisão desta missão.
+- **Recomendação para perfil incompleto:** `TrustConnection cmr5z2bs20001xosc5zb4tsdc` (Love Pet Shop → VAMOS LÁ GAROTAO) aponta para um profissional **sem nenhum serviço ativo**. Preservada (regra: não excluir TrustConnection), mas sinalizada — não deve aparecer em nenhum roteiro de demonstração do parceiro até o profissional ter ao menos 1 serviço ativo.
 
 ## Regras
 

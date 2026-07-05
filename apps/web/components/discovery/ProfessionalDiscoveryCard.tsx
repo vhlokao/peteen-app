@@ -13,6 +13,7 @@ import { TrustStateChip } from "@/components/shared/trust/TrustStateChip"
 import { ReputationBadgeList } from "@/modules/reputation-badges/components/reputation-badge-list"
 import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
 import type { PartnerEndorsement } from "@/modules/partners/domain/types"
+import { resolvePublicLocation } from "@/modules/location"
 
 type ProfessionalDiscoveryCardService = {
   id: string
@@ -129,7 +130,7 @@ export function ProfessionalDiscoveryCard({
           <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3 shrink-0" />
             <span className="truncate">
-              {city}, {state}
+              {resolvePublicLocation({ city, state }).label}
             </span>
           </div>
         </div>

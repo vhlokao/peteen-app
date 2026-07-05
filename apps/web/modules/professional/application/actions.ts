@@ -49,6 +49,7 @@ import {
   reactivateServiceRecord,
 } from "../infrastructure/repository"
 import { recordProfessionalProfileAudit } from "../infrastructure/audit"
+import { normalizeCityName, normalizeNeighborhoodName } from "@/modules/location"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROFESSIONAL PROFILE
@@ -236,7 +237,18 @@ export async function findProfessionalsAction(
       }
     }
 
-    const results = await findPublicProfessionals(parsed.data)
+    // Location Foundation V0 — normaliza os filtros textuais antes da query:
+    // "carapicuiba" vira "Carapicuíba" (dicionário), o match no banco continua
+    // case-insensitive. Sem dado estruturado falso, sem distância, sem geo.
+    const filters = {
+      ...parsed.data,
+      city: normalizeCityName(parsed.data.city) ?? parsed.data.city,
+      neighborhood: parsed.data.neighborhood
+        ? (normalizeNeighborhoodName(parsed.data.neighborhood) ?? undefined)
+        : undefined,
+    }
+
+    const results = await findPublicProfessionals(filters)
     return { success: true, data: results }
   } catch (err) {
     console.error("[findProfessionalsAction]", err)

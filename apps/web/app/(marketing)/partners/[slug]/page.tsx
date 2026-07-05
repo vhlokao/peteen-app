@@ -8,6 +8,7 @@ import { MapPin, Phone, Globe, ShieldCheck, Users, Link2, Sparkles } from "lucid
 
 import { getPartnerPublicProfileAction } from "@/modules/partners/application/actions"
 import { PublicPageBackLink } from "@/modules/partner-portal/components/public-page-back-link"
+import { resolvePublicLocation } from "@/modules/location"
 import {
   buildDiscoverUrl,
   normalizeReturnPath,
@@ -172,7 +173,7 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
 
             <MapPin className="size-3.5 shrink-0" />
 
-            {partner.city}, {partner.state}
+            {resolvePublicLocation({ city: partner.city, state: partner.state }).label}
 
           </div>
 

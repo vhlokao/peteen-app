@@ -8,6 +8,7 @@ import {
   TRUST_LEVEL_LABELS,
   type ProfessionalProfileData,
 } from "@/modules/professional/domain/types"
+import { resolvePublicLocation } from "@/modules/location"
 
 /**
  * Como o profissional aparece para o tutor — sem score bruto isolado, só
@@ -36,7 +37,9 @@ export function ProfessionalProfilePreview({ profile }: { profile: ProfessionalP
           <p className="truncate font-semibold text-foreground">{profile.displayName}</p>
           <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3 shrink-0" />
-            <span className="truncate">{profile.city}</span>
+            <span className="truncate">
+              {resolvePublicLocation({ city: profile.city, state: profile.state }).label}
+            </span>
           </div>
         </div>
       </div>

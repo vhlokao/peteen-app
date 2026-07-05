@@ -6,6 +6,7 @@ import { PARTNER_CATEGORY_LABELS, PARTNER_VERIFICATION_STATUS_LABELS } from "@/m
 import { buildPartnerPublicUrl } from "../domain/navigation"
 import { PARTNER_VERIFICATION_TONE, VERIFICATION_TONE_CLASS } from "../domain/status-display"
 import type { PartnerPortalProfile } from "../domain/types"
+import { resolvePublicLocation } from "@/modules/location"
 
 export function PartnerProfilePreview({ partner }: { partner: PartnerPortalProfile }) {
   const initials = partner.businessName
@@ -30,7 +31,9 @@ export function PartnerProfilePreview({ partner }: { partner: PartnerPortalProfi
           <p className="truncate font-semibold text-foreground">{partner.businessName}</p>
           <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3 shrink-0" />
-            <span className="truncate">{partner.city}</span>
+            <span className="truncate">
+              {resolvePublicLocation({ city: partner.city, state: partner.state }).label}
+            </span>
           </div>
         </div>
       </div>

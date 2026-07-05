@@ -195,6 +195,10 @@ export type UpdateServiceInput = z.infer<typeof UpdateServiceSchema>
 
 export const FindProfessionalsSchema = z.object({
   city: z.string().min(2, "Cidade é obrigatória"),
+  // Location Foundation V0 — filtro textual opcional por bairro. Comparação
+  // case-insensitive no banco; a normalização (acentos via dicionário de
+  // cidades, capitalização) acontece na action antes da query.
+  neighborhood: z.string().min(2).max(100).optional(),
   serviceType: z.enum(SERVICE_TYPES).optional(),
   // Campos reservados para o Ranking Engine (Fase 4)
   // petSpecies: z.enum(SPECIES).optional(),
@@ -294,7 +298,10 @@ export type ServiceData = {
  */
 export type ProfessionalPublicProfile = Omit<
   ProfessionalProfileData,
-  "userId" | "phone" | "planExpiresAt" | "deletedAt" | "updatedAt"
+  // lat/lng/serviceRadiusKm são dados internos — nunca entram na projeção
+  // pública (ver docs/LOCATION_PRIVACY_POLICY.md). Removidos do DTO antes de
+  // qualquer coleta real desses campos (pré-requisito da Location V1).
+  "userId" | "phone" | "planExpiresAt" | "deletedAt" | "updatedAt" | "lat" | "lng" | "serviceRadiusKm"
 > & {
   services: Pick<ServiceData, "id" | "name" | "serviceType" | "priceMin" | "priceMax">[]
   /** Contagem real de reviews visíveis e não-flagadas desta projeção. */

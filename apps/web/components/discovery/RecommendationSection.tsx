@@ -17,6 +17,7 @@ import type {
   RecommendationBlock,
   RecommendedProfessional,
 } from "@/modules/recommendation/domain/types"
+import { resolvePublicLocation } from "@/modules/location"
 
 const BLOCK_ICON: Record<string, ReactNode> = {
   for_you: <Sparkles className="size-4" />,
@@ -100,7 +101,9 @@ function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
               <ShieldCheck className="size-3 shrink-0 text-primary" aria-label="Verificado" />
             )}
           </div>
-          <p className="truncate text-[0.65rem] text-muted-foreground">{pro.city}</p>
+          <p className="truncate text-[0.65rem] text-muted-foreground">
+            {resolvePublicLocation({ city: pro.city, state: pro.state }).label}
+          </p>
         </div>
       </div>
 

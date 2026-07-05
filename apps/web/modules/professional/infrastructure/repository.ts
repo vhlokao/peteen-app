@@ -191,6 +191,14 @@ export async function findPublicProfessionals(
     where: {
       deletedAt: null,
       city: { equals: filters.city, mode: "insensitive" },
+      // Location Foundation V0 — filtro textual opcional por bairro.
+      // Case-insensitive no banco; accent-insensitive só via normalização do
+      // input na action (dicionário) — limitação documentada em
+      // docs/LOCATION_INTELLIGENCE_V1_PROPOSAL.md. Perfis sem bairro
+      // continuam aparecendo quando o filtro é só por cidade.
+      ...(filters.neighborhood
+        ? { neighborhood: { equals: filters.neighborhood, mode: "insensitive" } }
+        : {}),
       // Elegibilidade mínima para aparecer na busca pública: precisa ter ao
       // menos um serviço contratável. Perfis sem nenhum serviço ativo
       // continuam no banco (histórico preservado), só não são retornados
@@ -231,9 +239,6 @@ export async function findPublicProfessionals(
       neighborhood: r.neighborhood,
       city: r.city,
       state: r.state,
-      lat: r.lat,
-      lng: r.lng,
-      serviceRadiusKm: r.serviceRadiusKm,
       serviceTypes: r.serviceTypes as ServiceType[],
       specializations: r.specializations,
       trustScore: r.trustScore,
@@ -290,9 +295,6 @@ export async function findPublicProfessionalById(
     neighborhood: result.neighborhood,
     city: result.city,
     state: result.state,
-    lat: result.lat,
-    lng: result.lng,
-    serviceRadiusKm: result.serviceRadiusKm,
     serviceTypes: result.serviceTypes as ServiceType[],
     specializations: result.specializations,
     trustScore: result.trustScore,

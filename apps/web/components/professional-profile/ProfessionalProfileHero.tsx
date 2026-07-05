@@ -2,6 +2,7 @@ import { MapPin, ShieldCheck } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
+import { resolvePublicLocation } from "@/modules/location"
 
 type ProfessionalProfileHeroProps = {
   displayName: string
@@ -70,9 +71,7 @@ export function ProfessionalProfileHero({
           )}
           <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
             <MapPin className="size-3.5 shrink-0" />
-            <span>
-              {city}, {state}
-            </span>
+            <span>{resolvePublicLocation({ city, state }).label}</span>
           </div>
         </div>
       </div>

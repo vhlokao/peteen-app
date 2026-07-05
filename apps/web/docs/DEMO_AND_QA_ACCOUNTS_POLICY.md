@@ -89,3 +89,34 @@ Prisma pareçam sequenciais no seu código (ver
    já passaram pelo lote de saneamento correspondente.
 4. Confirmar que nenhuma tela acessível pela conta demo expõe dado de outra
    conta de QA por engano.
+
+## Prevenção de dados sensíveis em scripts e commits
+
+Regras válidas para qualquer script operacional (`scripts/demo-cleanup-*`,
+scripts administrativos futuros) e para qualquer commit neste repositório:
+
+1. **Scripts de limpeza não podem armazenar o valor sensível antigo em
+   texto puro**, mesmo só para uma checagem de igualdade — isso grava o
+   dado pessoal permanentemente no histórico do Git. Use um placeholder
+   claramente fictício como "estado anterior" quando o valor real for
+   sensível; a checagem de "já está no estado alvo" depende do valor
+   *depois*, não do valor *antes*, então essa troca não quebra
+   idempotência (ver `scripts/demo-cleanup-lote-b.ts` e
+   `scripts/demo-cleanup-lote-e1.ts` para o padrão).
+2. Usar sempre estado-alvo seguro (fictício ou `null`) e mascaramento no
+   console (últimos dígitos de telefone, domínio truncado) — nunca
+   imprimir o valor sensível completo, nem em dry-run.
+3. **Nunca** registrar telefone, e-mail pessoal, domínio ou handle real em
+   nenhum dado de demonstração/QA/seed — nem como valor "antes" em um
+   script, nem como exemplo em documentação.
+4. Backups lógicos (`PETEEN_BACKUPS` ou equivalente) podem conter dados
+   históricos sensíveis anteriores à limpeza — são estritamente privados,
+   nunca compartilhados, e vivem fora do repositório Git (ver o `README.md`
+   da própria pasta de backup).
+5. Antes de qualquer commit que toque scripts operacionais ou
+   documentação de dataset, rodar
+   `node --experimental-strip-types scripts/check-sensitive-data.ts` e
+   revisar qualquer achado `CRITICAL` ou `SUSPICIOUS` antes de prosseguir.
+6. `.env`, `.env.local`, backups e dumps de banco **nunca** entram no Git —
+   confirmar com `git ls-files | grep -i env` antes de um commit que
+   mexa em configuração de ambiente.

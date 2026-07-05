@@ -8,8 +8,10 @@
  * exibição — não toca em weight, isActive, connectionType ou targetId,
  * portanto não altera Trust Engine, Ranking, Recommendation Engine nem
  * peso reputacional). Não exclui nenhuma TrustConnection. Não toca no
- * Partner "vitor moura" (onboarding abandonado, já inativo, invisível ao
- * público pela própria regra de isActive) — classificado só em documentação.
+ * Partner com onboarding abandonado (já inativo, invisível ao público pela
+ * própria regra de isActive) — classificado só em documentação (ver
+ * docs/DEMO_DATASET_MANIFEST.md; nome/contatos pessoais desse registro
+ * foram tratados separadamente no Lote E.1).
  *
  * NÃO É executado automaticamente por nenhum build, deploy, seed ou CI —
  * requer invocação manual explícita.

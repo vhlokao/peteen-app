@@ -118,10 +118,15 @@ async function main() {
       (data) => (DRY_RUN ? Promise.resolve() : tx.tutorProfile.update({ where: { id: TUTOR_DEMO_ID }, data }))
     );
 
+    // Nota (Lote E.2): o valor "antes" original tinha prefixo suspeito,
+    // semelhante ao de um contato real conhecido. Substituído por um
+    // placeholder claramente fictício — o alvo já está aplicado no banco,
+    // então esta troca não afeta o comportamento idempotente do script
+    // (a checagem "já no estado alvo" depende só do valor "depois").
     await applyIfMatches(
       "TutorProfile.phone",
       tutor,
-      [{ field: "phone", expectedBefore: "1198067814444", after: "(11) 90000-0001" }],
+      [{ field: "phone", expectedBefore: "0000000000000", after: "(11) 90000-0001" }],
       (data) => (DRY_RUN ? Promise.resolve() : tx.tutorProfile.update({ where: { id: TUTOR_DEMO_ID }, data }))
     );
 
@@ -169,10 +174,13 @@ async function main() {
       (data) => (DRY_RUN ? Promise.resolve() : tx.professionalProfile.update({ where: { id: PROFESSIONAL_DEMO_ID }, data }))
     );
 
+    // Nota (Lote E.2): mesmo tratamento do TutorProfile.phone acima —
+    // valor "antes" trocado por placeholder fictício, sem afetar a
+    // idempotência (o alvo já está aplicado no banco).
     await applyIfMatches(
       "ProfessionalProfile.phone",
       pro,
-      [{ field: "phone", expectedBefore: "11980667766", after: "(11) 90000-0002" }],
+      [{ field: "phone", expectedBefore: "0000000000000", after: "(11) 90000-0002" }],
       (data) => (DRY_RUN ? Promise.resolve() : tx.professionalProfile.update({ where: { id: PROFESSIONAL_DEMO_ID }, data }))
     );
 

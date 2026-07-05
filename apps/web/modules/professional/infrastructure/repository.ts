@@ -191,6 +191,11 @@ export async function findPublicProfessionals(
     where: {
       deletedAt: null,
       city: { equals: filters.city, mode: "insensitive" },
+      // Elegibilidade mínima para aparecer na busca pública: precisa ter ao
+      // menos um serviço contratável. Perfis sem nenhum serviço ativo
+      // continuam no banco (histórico preservado), só não são retornados
+      // aqui — ver docs/DEMO_DATASET_MANIFEST.md.
+      services: { some: { isActive: true } },
       ...(filters.serviceType
         ? { serviceTypes: { has: filters.serviceType } }
         : {}),

@@ -62,7 +62,7 @@ export function resolveBadges(input: BadgeInput): BadgeResolverResult {
   // ── Selos de verificação ──────────────────────────────────────────────────
 
   const verifications: VerificationData[] = [
-    { type: "VERIFIED_PROFILE",  active: input.verifiedProfile && input.verifiedIdentity, ...VERIFICATION_METADATA.VERIFIED_PROFILE  },
+    { type: "VERIFIED_PROFILE",  active: input.verifiedProfile, ...VERIFICATION_METADATA.VERIFIED_PROFILE  },
     { type: "VERIFIED_IDENTITY", active: input.verifiedIdentity, ...VERIFICATION_METADATA.VERIFIED_IDENTITY },
     { type: "VERIFIED_PHONE",    active: input.verifiedPhone,    ...VERIFICATION_METADATA.VERIFIED_PHONE    },
     { type: "VERIFIED_PARTNER",  active: input.verifiedPartner,  ...VERIFICATION_METADATA.VERIFIED_PARTNER  },

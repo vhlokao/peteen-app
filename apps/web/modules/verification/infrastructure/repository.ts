@@ -5,6 +5,7 @@
 
 import { prisma } from "@/lib/prisma/client"
 import { Prisma } from "@prisma/client"
+import { isProfessionalVerificationActive } from "@/modules/verification/domain/verification-state"
 import type {
   VerificationRequest,
   VerificationAdminRow,
@@ -93,7 +94,7 @@ async function getEntityVerificationStates(
     })
     const approvedIds = await getApprovedEntityIds("PROFESSIONAL", entityIds)
     for (const pro of pros) {
-      const isVerified = pro.isVerified && pro.verifiedIdentity
+      const isVerified = isProfessionalVerificationActive(pro)
       const isSuspended = approvedIds.has(pro.id) && !isVerified
       result.set(pro.id, { isVerified, isSuspended })
     }
@@ -501,9 +502,7 @@ export async function getSuspendedProfessionalEntityIds(): Promise<Set<string>> 
     const suspended = await prisma.professionalProfile.findMany({
       where: {
         id: { in: ids },
-        NOT: {
-          AND: [{ isVerified: true }, { verifiedIdentity: true }],
-        },
+        NOT: { isVerified: true },
       },
       select: { id: true },
     })

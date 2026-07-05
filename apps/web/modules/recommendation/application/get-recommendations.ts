@@ -53,7 +53,14 @@ type ReviewStat = { count: number; avg: number | null }
 
 async function fetchAllProfessionals(): Promise<ProfRow[]> {
   const rows = await prisma.professionalProfile.findMany({
-    where: { deletedAt: null },
+    where: {
+      deletedAt: null,
+      // Mesma elegibilidade mínima do Discovery (findPublicProfessionals):
+      // não recomendar quem não tem nenhuma oferta contratável. Só filtra o
+      // pool de candidatos — não toca em computeRecommendationScore,
+      // resolveBadges ou buildEndorsementSummary.
+      services: { some: { isActive: true } },
+    },
     select: {
       id:               true,
       displayName:      true,

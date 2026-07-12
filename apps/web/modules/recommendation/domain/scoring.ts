@@ -59,7 +59,7 @@ export function computeRecommendationScore(input: RecommendationInput): Recommen
   if (badgePts > 0) {
     factors.push({
       key:    "badges",
-      label:  `${input.activeBadgeCount} badge${input.activeBadgeCount !== 1 ? "s" : ""}`,
+      label:  "Bem recomendado",
       points: badgePts,
     })
   }

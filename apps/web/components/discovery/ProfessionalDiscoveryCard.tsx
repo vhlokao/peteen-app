@@ -157,7 +157,9 @@ export function ProfessionalDiscoveryCard({
           </span>
         )}
 
-        {reputationBadges.length > 0 && <ReputationBadgeList badges={reputationBadges} />}
+        {reputationBadges.length > 0 && (
+          <ReputationBadgeList badges={reputationBadges.filter((b) => b.type !== "recommended")} />
+        )}
       </div>
 
       {/* Rodapé: avaliação + preço secundário + CTA */}

@@ -222,15 +222,6 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
         </div>
       )}
 
-      {/* Estado: sem cidade */}
-      {!hasCity && (
-        <EmptyState
-          icon={<Search className="size-7" />}
-          title="Onde seu pet mora?"
-          description="Digite sua cidade para encontrar profissionais confiáveis perto de você."
-        />
-      )}
-
       {/* Estado: com cidade, sem resultados */}
       {hasCity && professionals.length === 0 && (
         <EmptyState

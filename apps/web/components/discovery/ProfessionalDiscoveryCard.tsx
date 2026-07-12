@@ -10,7 +10,7 @@ import {
 import { formatPublicServicePrice } from "@/modules/professional/domain/format-service-price"
 import { getPublicTrustState } from "@/modules/trust-engine/domain/public-trust-display"
 import { TrustStateChip } from "@/components/shared/trust/TrustStateChip"
-import { ReputationBadgeList } from "@/modules/reputation-badges/components/reputation-badge-list"
+import { ReputationBadgePill } from "@/modules/reputation-badges/components/reputation-badge-pill"
 import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
 import type { PartnerEndorsement } from "@/modules/partners/domain/types"
 import { resolvePublicLocation } from "@/modules/location"
@@ -136,10 +136,21 @@ export function ProfessionalDiscoveryCard({
         </div>
       </div>
 
-      {/* Sinais de confiança — sempre antes do rodapé de avaliação/preço */}
+      {/* Sinais de confiança — máx 3 elementos, hierarquia clara */}
       <div className="relative flex flex-wrap items-center gap-1.5 px-4 pb-3">
+        {/* 1. Trust state — sempre */}
         <TrustStateChip trustState={trustState} trustLevel={trustLevel} size="sm" />
 
+        {/* 2. Partner endorsement OU primeiro badge de reputação */}
+        {partnerEndorsements.length > 0 ? (
+          <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[0.65rem] font-medium text-primary">
+            Recomendado
+          </span>
+        ) : reputationBadges.length > 0 && reputationBadges[0] ? (
+          <ReputationBadgePill badge={reputationBadges[0]} size="xs" />
+        ) : null}
+
+        {/* 3. Recorrência — pessoal OU clientes recorrentes */}
         {myCompletedServices != null && myCompletedServices > 0 ? (
           <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[0.65rem] font-medium text-primary">
             Você já contratou {myCompletedServices}×
@@ -150,16 +161,6 @@ export function ProfessionalDiscoveryCard({
             {recurringClientsCount === 1 ? "tutor voltou" : "tutores voltaram"}
           </span>
         ) : null}
-
-        {partnerEndorsements.length > 0 && (
-          <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[0.65rem] font-medium text-primary">
-            Recomendado
-          </span>
-        )}
-
-        {reputationBadges.length > 0 && (
-          <ReputationBadgeList badges={reputationBadges.filter((b) => b.type !== "recommended")} />
-        )}
       </div>
 
       {/* Rodapé: avaliação + preço secundário + CTA */}

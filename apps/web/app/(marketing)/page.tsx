@@ -51,14 +51,14 @@ export default function HomePage() {
         <div
           className="absolute inset-0 z-0"
           style={{
-            backgroundImage: "url('/images/home/mulher_abracada_com_cachorro_vertical.png')",
+            backgroundImage: "url('/images/home/familia_com_cachorro_horizontal.png')",
             backgroundSize: "cover",
-            backgroundPosition: "center top",
+            backgroundPosition: "right center",
           }}
         />
 
         {/* Overlay gradiente — texto legível à esquerda, foto visível à direita */}
-        <div className="absolute inset-0 z-10 bg-gradient-to-r from-[#16244F]/95 via-[#1D2F6F]/80 to-[#1D2F6F]/20" />
+        <div className="absolute inset-0 z-10 bg-gradient-to-r from-[#16244F]/90 via-[#1D2F6F]/70 to-transparent" />
 
         {/* Conteúdo */}
         <div className="relative z-20 mx-auto w-full max-w-6xl px-6 pb-20 pt-28 lg:px-20">

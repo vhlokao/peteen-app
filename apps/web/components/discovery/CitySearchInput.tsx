@@ -9,17 +9,15 @@ import { Input } from "@/components/ui/input"
 
 type CitySearchInputProps = {
   defaultValue?: string
-  defaultNeighborhood?: string
 }
 
 /**
- * Busca por cidade + bairro opcional (Location Foundation V0).
- * A URL continua sendo a única fonte de verdade dos filtros: cidade em
- * `city`, bairro em `neighborhood` (removido quando vazio).
+ * Busca por cidade (Location Foundation V0).
+ * A URL continua sendo a única fonte de verdade do filtro: cidade em `city`.
+ * Um eventual `neighborhood` legado na URL é removido no submit.
  */
 export function CitySearchInput({
   defaultValue = "",
-  defaultNeighborhood = "",
 }: CitySearchInputProps) {
   const router = useRouter()
   const searchParams = useSearchParams()

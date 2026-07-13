@@ -19,7 +19,7 @@ import { RecommendationSection } from "@/components/discovery/RecommendationSect
 import { EmptyState } from "@/components/shared/feedback/EmptyState"
 import { CitySearchInput } from "@/components/discovery/CitySearchInput"
 import { DiscoverServiceChips } from "@/components/discovery/DiscoverServiceChips"
-import { normalizeCityName, normalizeNeighborhoodName } from "@/modules/location"
+import { normalizeCityName } from "@/modules/location"
 
 export const metadata: Metadata = {
   title: "Descobrir profissionais",
@@ -28,7 +28,6 @@ export const metadata: Metadata = {
 type DiscoverPageProps = {
   searchParams: Promise<{
     city?: string
-    neighborhood?: string
     serviceType?: string
   }>
 }
@@ -51,19 +50,16 @@ type DiscoverPageProps = {
  *   A assinatura do componente não muda — apenas a fonte de dados.
  */
 export default async function DiscoverPage({ searchParams }: DiscoverPageProps) {
-  const { city, neighborhood, serviceType } = await searchParams
+  const { city, serviceType } = await searchParams
 
   const cleanCity = city?.trim() ?? ""
-  const cleanNeighborhood = neighborhood?.trim() ?? ""
   const cleanServiceType = serviceType?.trim() ?? ""
 
   // Location Foundation V0 — só para exibição do termo buscado (a query
   // normaliza por conta própria na action).
   const displayCity = normalizeCityName(cleanCity) ?? cleanCity
-  const displayNeighborhood = normalizeNeighborhoodName(cleanNeighborhood) ?? cleanNeighborhood
 
   const hasCity = cleanCity.length >= 2
-  const hasNeighborhood = cleanNeighborhood.length >= 2
   const hasServiceType = cleanServiceType.length > 0
   const hasActiveFilters = hasCity || hasServiceType
 
@@ -72,7 +68,6 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
     hasCity
       ? findProfessionalsAction({
           city: cleanCity,
-          neighborhood: hasNeighborhood ? cleanNeighborhood : undefined,
           serviceType: hasServiceType ? (cleanServiceType as ServiceType) : undefined,
           limit: 20,
           offset: 0,
@@ -155,7 +150,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
 
       {/* Busca principal — cidade + bairro opcional (Location Foundation V0) */}
       <div className="mb-4 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
-        <CitySearchInput defaultValue={cleanCity} defaultNeighborhood={cleanNeighborhood} />
+        <CitySearchInput defaultValue={cleanCity} />
       </div>
 
       {/* Chips de serviço — sempre visíveis, escrevem serviceType na URL */}
@@ -172,7 +167,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
                   <strong className="text-foreground">{professionals.length}</strong>{" "}
                   {professionals.length !== 1 ? "profissionais" : "profissional"} em{" "}
                   <strong className="text-foreground">
-                    {hasNeighborhood ? `${displayNeighborhood}, ${displayCity}` : displayCity}
+                    {displayCity}
                   </strong>
                   {hasServiceType && (
                     <>
@@ -188,7 +183,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
                 <>
                   Nenhum profissional encontrado em{" "}
                   <strong className="text-foreground">
-                    {hasNeighborhood ? `${displayNeighborhood}, ${displayCity}` : displayCity}
+                    {displayCity}
                   </strong>
                 </>
               )

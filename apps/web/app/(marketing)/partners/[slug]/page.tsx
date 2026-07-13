@@ -24,6 +24,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 import { PageHeader } from "@/components/layout/page-header"
 
+import { AppShell } from "@/components/layout/app-shell"
+
 
 
 type Props = {
@@ -94,6 +96,8 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
 
 
   return (
+
+    <AppShell variant="marketing">
 
     <div className="page-container max-w-2xl">
 
@@ -354,6 +358,8 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
       </section>
 
     </div>
+
+    </AppShell>
 
   )
 

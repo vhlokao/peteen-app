@@ -47,19 +47,49 @@ export default function HomePage() {
         aria-labelledby="hero-title"
         className="relative min-h-screen overflow-hidden flex items-center"
       >
-        {/* Foto como fundo completo */}
+        {/* Foto como fundo completo — mobile */}
         <div
-          className="absolute inset-0 z-0"
+          className="absolute inset-0 z-0 lg:hidden"
           style={{
-            backgroundImage: "url('/images/home/familia_com_cachorro_horizontal.png')",
-            backgroundSize: "150% auto",
+            backgroundImage: "url('/images/home/hero_mobile_background.webp')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          }}
+        />
+
+        {/* Foto como fundo completo — desktop */}
+        <div
+          className="absolute inset-0 z-0 hidden lg:block"
+          style={{
+            backgroundImage: "url('/images/home/hero_desktop_background.webp')",
+            backgroundSize: "cover",
             backgroundPosition: "right center",
-            backgroundRepeat: "no-repeat",
           }}
         />
 
         {/* Overlay gradiente — texto legível à esquerda, foto visível à direita */}
         <div className="absolute inset-0 z-10 bg-gradient-to-r from-[#16244F]/90 via-[#1D2F6F]/70 to-transparent" />
+
+        {/* Selo flutuante — apenas desktop, perto do lado direito */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute right-10 top-28 z-20 hidden lg:flex xl:right-20"
+        >
+          <div className="flex items-center gap-2 rounded-full bg-white/95 px-4 py-2.5 shadow-[0_8px_28px_rgba(0,0,0,0.18)] backdrop-blur-sm">
+            <span className="flex size-6 items-center justify-center rounded-full bg-[#40916C]/15">
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path
+                  d="M2 6.5l2.5 2.5 5-5.5"
+                  stroke="#40916C"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
+            <span className="text-sm font-bold tracking-tight text-[#1D2F6F]">100% confiança</span>
+          </div>
+        </div>
 
         {/* Conteúdo */}
         <div className="relative z-20 mx-auto w-full max-w-6xl px-6 pb-20 pt-28 lg:px-20">

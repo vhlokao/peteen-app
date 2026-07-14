@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { Search } from "lucide-react"
 
 import { findProfessionalsAction } from "@/modules/professional/application/actions"
@@ -7,6 +8,7 @@ import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/do
 import { rankProfessionals } from "@/modules/ranking/application/rank-professionals"
 import { getAuthContext } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
+import { countActivePetsByTutorId } from "@/modules/pets/infrastructure/repository"
 import { getMyRelationshipsForProfessionals } from "@/modules/relationship/infrastructure/repository"
 import { isProfessionalVerificationActive } from "@/modules/verification/domain/verification-state"
 import { getProfessionalReputationBadgesBatch } from "@/modules/reputation-badges/application/get-reputation"
@@ -89,6 +91,15 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
       : Promise.resolve([]),
     ctx.authenticated ? findTutorProfileByUserId(ctx.user.id) : Promise.resolve(null),
   ])
+
+  // Gate: tutor precisa de ao menos 1 pet cadastrado para acessar o Discovery.
+  // Reaproveita o tutorProfile já buscado — sem query extra de perfil.
+  if (tutorProfile) {
+    const petCount = await countActivePetsByTutorId(tutorProfile.id)
+    if (petCount === 0) {
+      redirect("/onboarding/tutor/pet")
+    }
+  }
 
   const professionalIds = professionals.map((p) => p.id)
 

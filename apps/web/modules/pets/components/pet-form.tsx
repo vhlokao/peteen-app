@@ -388,12 +388,15 @@ export function PetForm({
   )
 }
 
-/** Formulário simplificado para onboarding — reexporta PetForm com defaults. */
+/**
+ * Formulário de onboarding — pet é obrigatório para concluir o cadastro,
+ * então não expõe a opção de pular.
+ */
 export function OnboardingPetForm() {
   return (
     <PetForm
       redirectTo="/discover"
-      skipTo="/discover"
+      showSkip={false}
       submitLabel="Adicionar pet e continuar"
     />
   )

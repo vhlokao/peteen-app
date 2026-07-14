@@ -15,7 +15,8 @@ export const metadata: Metadata = { title: "Criar conta — Adicionar Pet" };
  *   - Não tem TutorProfile → precisa criar o perfil primeiro
  *   - Persona diferente de TUTOR → /dashboard
  *
- * O cadastro do pet é opcional. O botão "Pular" leva para /discover.
+ * O cadastro do primeiro pet é obrigatório para concluir o onboarding —
+ * sem ao menos um pet, o tutor não acessa o Discovery.
  * Múltiplos pets podem ser adicionados depois em /me/pets.
  */
 export default async function OnboardingPetPage() {
@@ -43,7 +44,8 @@ export default async function OnboardingPetPage() {
         </h1>
         <p className="text-sm text-muted-foreground">
           Quanto mais detalhes você fornecer, melhor os profissionais podem
-          preparar o atendimento. Você pode pular e adicionar depois.
+          preparar o atendimento. É necessário cadastrar ao menos um pet para
+          continuar.
         </p>
       </div>
 

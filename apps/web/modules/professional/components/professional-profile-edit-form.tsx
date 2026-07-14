@@ -12,7 +12,7 @@ import { updateProfessionalProfileAction } from "@/modules/professional/applicat
 import {
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
-  type CreateProfessionalProfileInput,
+  type UpdateProfessionalProfileInput,
   type ProfessionalProfileData,
   type ServiceType,
 } from "@/modules/professional/domain/types"
@@ -89,7 +89,7 @@ export function ProfessionalProfileEditForm({
   async function onSubmit(values: ProfessionalProfileEditValues) {
     setServerError(null)
 
-    const input: CreateProfessionalProfileInput = {
+    const input: UpdateProfessionalProfileInput = {
       ...values,
       state: values.state.toUpperCase(),
       avatarUrl: values.avatarUrl?.trim() || "",

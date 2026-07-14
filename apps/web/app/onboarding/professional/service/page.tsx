@@ -41,7 +41,7 @@ export default async function OnboardingProfessionalServicePage() {
         </p>
       </div>
 
-      <ServiceForm redirectTo="/requests" skipTo="/requests" />
+      <ServiceForm redirectTo="/requests" />
     </div>
   );
 }

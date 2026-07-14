@@ -23,7 +23,12 @@ export { formatPublicLocation, LOCATION_NOT_INFORMED_LABEL } from "./domain/form
 
 export { resolvePublicLocation, resolveLocationCompleteness } from "./domain/resolve"
 
-export { KNOWN_CITIES, BR_STATE_CODES } from "./domain/known-locations"
+export {
+  KNOWN_CITIES,
+  KNOWN_LOCATIONS,
+  findKnownCityState,
+  BR_STATE_CODES,
+} from "./domain/known-locations"
 
 export type {
   RawLocationText,

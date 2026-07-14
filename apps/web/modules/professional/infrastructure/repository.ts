@@ -355,6 +355,23 @@ export async function findServiceById(id: string): Promise<ServiceData | null> {
 }
 
 /**
+ * Conta serviços ativos COM preço definido — usado no gate de onboarding:
+ * um profissional só conclui o cadastro com ao menos um serviço contratável
+ * e precificado.
+ */
+export async function countActivePricedServicesByProfessionalId(
+  professionalId: string
+): Promise<number> {
+  return prisma.service.count({
+    where: {
+      professionalId,
+      isActive: true,
+      priceMin: { not: null },
+    },
+  })
+}
+
+/**
  * Busca serviço com validação de ownership embutida.
  * Retorna null se o serviço não pertence ao profissional.
  */

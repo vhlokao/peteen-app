@@ -14,6 +14,7 @@ import {
   type CreateProfessionalProfileInput,
   type ServiceType,
 } from "@/modules/professional/domain/types";
+import { KNOWN_LOCATIONS, findKnownCityState } from "@/modules/location";
 import { FormField } from "@/components/forms/form-field";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,10 @@ const professionalFormSchema = z.object({
     .string()
     .min(2, "Nome deve ter ao menos 2 caracteres")
     .max(100, "Nome muito longo"),
-  bio: z.string().max(1000, "Bio pode ter no máximo 1000 caracteres").optional(),
+  bio: z
+    .string()
+    .min(50, "A apresentação deve ter ao menos 50 caracteres")
+    .max(1000, "Bio pode ter no máximo 1000 caracteres"),
   phone: z
     .string()
     .regex(/^\+?[\d\s\-()]{8,20}$/, "Telefone inválido")
@@ -65,6 +69,8 @@ export function ProfessionalProfileForm({
     handleSubmit,
     control,
     setError,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<ProfessionalFormValues>({
     resolver: zodResolver(professionalFormSchema),
@@ -161,20 +167,35 @@ export function ProfessionalProfileForm({
 
       <FormField
         name="bio"
-        label="Apresentação (opcional)"
+        label="Apresentação *"
         error={errors.bio?.message}
-        description="Conte sua experiência, certificações e diferenciais."
+        description="Conte sua experiência, certificações e diferenciais. Mínimo 50 caracteres."
       >
-        {(field) => (
-          <Textarea
-            {...field}
-            {...register("bio")}
-            placeholder="Ex: Médico veterinário com 10 anos de experiência em pequenos animais..."
-            rows={4}
-            disabled={isSubmitting}
-            aria-invalid={field["aria-invalid"]}
-          />
-        )}
+        {(field) => {
+          const bioLength = (watch("bio") ?? "").length;
+          return (
+            <div className="space-y-1">
+              <Textarea
+                {...field}
+                {...register("bio")}
+                placeholder="Ex: Médico veterinário com 10 anos de experiência em pequenos animais..."
+                rows={4}
+                disabled={isSubmitting}
+                aria-invalid={field["aria-invalid"]}
+              />
+              <p
+                className={cn(
+                  "text-right text-xs tabular-nums",
+                  bioLength < 50 ? "text-muted-foreground" : "text-success"
+                )}
+              >
+                {bioLength < 50
+                  ? `Faltam ${50 - bioLength} caractere${50 - bioLength !== 1 ? "s" : ""}`
+                  : `${bioLength} caracteres`}
+              </p>
+            </div>
+          );
+        }}
       </FormField>
 
       {/* ── Localização ───────────────────────────────────────────────────── */}
@@ -183,41 +204,53 @@ export function ProfessionalProfileForm({
       <div className="grid grid-cols-[1fr_auto] gap-3">
         <FormField name="city" label="Cidade *" error={errors.city?.message}>
           {(field) => (
-            <Input
-              {...field}
-              {...register("city")}
-              placeholder="São Paulo"
-              disabled={isSubmitting}
+            <Controller
+              name="city"
+              control={control}
+              render={({ field: cityField }) => (
+                <select
+                  id={field.id}
+                  value={cityField.value}
+                  onChange={(e) => {
+                    const city = e.target.value;
+                    cityField.onChange(city);
+                    // UF derivada da cidade — mantém city e state consistentes.
+                    setValue("state", findKnownCityState(city) ?? "", {
+                      shouldValidate: true,
+                    });
+                  }}
+                  onBlur={cityField.onBlur}
+                  disabled={isSubmitting}
+                  aria-invalid={field["aria-invalid"]}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Selecione a cidade</option>
+                  {KNOWN_LOCATIONS.map((loc) => (
+                    <option key={loc.city} value={loc.city}>
+                      {loc.city}
+                    </option>
+                  ))}
+                </select>
+              )}
             />
           )}
         </FormField>
 
         <FormField
           name="state"
-          label="Estado *"
+          label="UF"
           error={errors.state?.message}
           className="w-20"
         >
           {(field) => (
-            <Controller
-              name="state"
-              control={control}
-              render={({ field: stateField }) => (
-                <Input
-                  {...field}
-                  value={stateField.value}
-                  onChange={(e) =>
-                    stateField.onChange(
-                      e.target.value.toUpperCase().slice(0, 2)
-                    )
-                  }
-                  onBlur={stateField.onBlur}
-                  placeholder="SP"
-                  maxLength={2}
-                  className="uppercase"
-                  disabled={isSubmitting}
-                />
-              )}
+            <Input
+              {...field}
+              value={watch("state")}
+              readOnly
+              tabIndex={-1}
+              placeholder="—"
+              aria-label="Estado (preenchido pela cidade)"
+              className="cursor-default bg-muted/40 text-center uppercase text-muted-foreground"
             />
           )}
         </FormField>

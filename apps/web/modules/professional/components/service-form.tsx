@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2, AlertCircle, SkipForward } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
 
 import { createServiceAction } from "@/modules/professional/application/actions";
 import {
@@ -39,7 +39,7 @@ const serviceFormSchema = z
     serviceType: z.enum(SERVICE_TYPES, {
       error: () => "Selecione um tipo de serviço",
     }),
-    priceMin: z.union([z.literal(""), z.string()]).optional(),
+    priceMin: z.string().min(1, "Informe o preço mínimo"),
     priceMax: z.union([z.literal(""), z.string()]).optional(),
   })
   .superRefine((data, ctx) => {
@@ -71,12 +71,10 @@ type ServiceFormValues = z.infer<typeof serviceFormSchema>;
 
 type ServiceFormProps = {
   redirectTo?: string;
-  skipTo?: string;
 };
 
 export function ServiceForm({
   redirectTo = "/requests",
-  skipTo = "/requests",
 }: ServiceFormProps) {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -239,16 +237,17 @@ export function ServiceForm({
       {/* ── Faixa de preço ────────────────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Faixa de preço (opcional)
+          Faixa de preço
         </div>
         <p className="text-xs text-muted-foreground">
-          Ajuda tutores a entenderem seu posicionamento. Preços exatos são combinados no chat.
+          O preço mínimo é obrigatório e ajuda tutores a entenderem seu
+          posicionamento. Preços exatos são combinados no chat.
         </p>
 
         <div className="grid grid-cols-2 gap-3">
           <FormField
             name="priceMin"
-            label="Mínimo (R$)"
+            label="Mínimo (R$) *"
             error={errors.priceMin?.message}
           >
             {(field) => (
@@ -313,21 +312,11 @@ export function ServiceForm({
             "Criar serviço e ir para a fila →"
           )}
         </Button>
-
-        <Button
-          type="button"
-          variant="ghost"
-          className="w-full gap-1.5 text-muted-foreground"
-          disabled={isSubmitting}
-          onClick={() => router.push(skipTo)}
-        >
-          <SkipForward className="size-4" />
-          Pular por agora
-        </Button>
       </div>
 
       <p className="text-center text-xs text-muted-foreground">
-        Você pode adicionar e editar serviços a qualquer momento no seu perfil.
+        Ao menos um serviço com preço é necessário para concluir seu cadastro.
+        Você pode adicionar e editar serviços a qualquer momento depois.
       </p>
     </form>
   );

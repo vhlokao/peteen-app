@@ -76,7 +76,10 @@ export const CreateProfessionalProfileSchema = z.object({
     .string()
     .min(2, "Nome deve ter ao menos 2 caracteres")
     .max(100, "Nome muito longo"),
-  bio: z.string().max(1000, "Bio pode ter no máximo 1000 caracteres").optional(),
+  bio: z
+    .string()
+    .min(50, "A apresentação deve ter ao menos 50 caracteres")
+    .max(1000, "Bio pode ter no máximo 1000 caracteres"),
   phone: z
     .string()
     .regex(/^\+?[\d\s\-()]{8,20}$/, "Telefone inválido")

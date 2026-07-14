@@ -170,7 +170,8 @@ export function LoginForm({ errorCode }: LoginFormProps) {
       <CardHeader>
         <CardTitle>Entrar no Peteen</CardTitle>
         <CardDescription>
-          Acesso seguro via Magic Link ou Google. Sem senha.
+          Digite seu email e enviaremos um link de acesso. Se você ainda não tem
+          conta, ela será criada automaticamente.
         </CardDescription>
       </CardHeader>
 
@@ -288,21 +289,21 @@ export function LoginForm({ errorCode }: LoginFormProps) {
             </>
           )}
 
-          {/* Divisor */}
+          {/* Divisor — escondido junto com o Google (login por Magic Link apenas) */}
           {!showPasswordSection && (
-            <div className="flex w-full items-center gap-3">
+            <div className="hidden w-full items-center gap-3">
               <span className="h-px flex-1 bg-border" />
               <span className="text-xs text-muted-foreground">ou</span>
               <span className="h-px flex-1 bg-border" />
             </div>
           )}
 
-          {/* Google OAuth */}
+          {/* Google OAuth — oculto por ora (apenas Magic Link no teste real) */}
           {!showPasswordSection && (
             <Button
               type="button"
               variant="outline"
-              className="w-full gap-2"
+              className="hidden w-full gap-2"
               onClick={handleGoogleSignIn}
               disabled={isLoading}
             >

@@ -15,6 +15,9 @@ import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
 import type { PartnerEndorsement } from "@/modules/partners/domain/types"
 import { resolvePublicLocation } from "@/modules/location"
 
+const NAVY = "#1D2F6F"
+const GREEN = "#40916C"
+
 type ProfessionalDiscoveryCardService = {
   id: string
   serviceType: ServiceType
@@ -98,17 +101,20 @@ export function ProfessionalDiscoveryCard({
       href={`/discover/${id}`}
       className="group relative flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
     >
-      {/* Faixa decorativa sutil no topo — gradiente azul quase imperceptível */}
+      {/* Faixa decorativa sutil no topo */}
       <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-primary/[0.06] to-transparent"
+        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#2C4893]/[0.06] to-transparent"
         aria-hidden
       />
 
       {/* Identidade */}
       <div className="relative flex items-start gap-3 p-4 pb-3">
-        <Avatar className="size-16 shrink-0 rounded-2xl ring-1 ring-border/60">
+        <Avatar
+          className="size-16 shrink-0 rounded-2xl ring-1 ring-border/60"
+          style={{ background: "linear-gradient(135deg,#E8EEF6,#D7E2F2)" }}
+        >
           {avatarUrl && <AvatarImage src={avatarUrl} alt={displayName} />}
-          <AvatarFallback className="rounded-2xl bg-primary/10 text-lg font-semibold text-primary">
+          <AvatarFallback className="rounded-2xl bg-transparent text-lg font-semibold" style={{ color: NAVY }}>
             {initials}
           </AvatarFallback>
         </Avatar>
@@ -119,7 +125,7 @@ export function ProfessionalDiscoveryCard({
               {displayName}
             </span>
             {isVerified && (
-              <ShieldCheck className="size-4 shrink-0 text-primary" aria-label="Verificado" />
+              <ShieldCheck className="size-4 shrink-0" style={{ color: GREEN }} aria-label="Verificado" />
             )}
           </div>
           {primaryService && (
@@ -186,7 +192,7 @@ export function ProfessionalDiscoveryCard({
           )}
         </div>
 
-        <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+        <span className="shrink-0 rounded-full bg-[#E8EEF6] px-2.5 py-1 text-xs font-bold text-[#1D2F6F] transition-colors group-hover:bg-[#1D2F6F] group-hover:text-white">
           Ver perfil →
         </span>
       </div>

@@ -7,6 +7,9 @@ import { Search, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
+const NAVY = "#1D2F6F"
+const NAVY_SOFT = "#2C4893"
+
 type CitySearchInputProps = {
   defaultValue?: string
 }
@@ -41,17 +44,26 @@ export function CitySearchInput({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2 sm:flex-row">
       <div className="relative flex-1">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search
+          className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2"
+          style={{ color: NAVY_SOFT }}
+        />
         <Input
           type="text"
           placeholder="Digite sua cidade…"
           value={city}
           onChange={(e) => setCity(e.target.value)}
-          className="pl-9"
+          className="h-11 rounded-[14px] border-[1.5px] pl-10 text-[14.5px] font-medium focus-visible:border-[#2C4893] focus-visible:ring-4 focus-visible:ring-[#2C4893]/10"
           aria-label="Cidade"
         />
       </div>
-      <Button type="submit" size="sm" disabled={isPending} className="sm:self-stretch">
+      <Button
+        type="submit"
+        size="sm"
+        disabled={isPending}
+        className="h-11 rounded-[14px] px-5 font-bold sm:self-stretch"
+        style={{ background: NAVY }}
+      >
         {isPending ? <Loader2 className="size-4 animate-spin" /> : "Buscar"}
       </Button>
     </form>

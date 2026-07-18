@@ -151,11 +151,11 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
     <div className="page-container pb-4">
       {/* Header */}
       <header className="mb-5">
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
+        <h1 className="text-[22px] font-extrabold tracking-[-0.02em] text-foreground">
           Encontre cuidado confiável
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Busque profissionais para cuidar do seu pet com mais segurança.
+        <p className="mt-1 text-[13px] text-muted-foreground">
+          Profissionais próximos, com confiança de verdade.
         </p>
       </header>
 

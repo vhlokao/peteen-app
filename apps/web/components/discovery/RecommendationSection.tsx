@@ -19,11 +19,25 @@ import type {
 } from "@/modules/recommendation/domain/types"
 import { resolvePublicLocation } from "@/modules/location"
 
+const NAVY = "#1D2F6F"
+const NAVY_SOFT = "#2C4893"
+const CORAL = "#E07A5F"
+const GREEN = "#40916C"
+
 const BLOCK_ICON: Record<string, ReactNode> = {
   for_you: <Sparkles className="size-4" />,
   top_rated: <Star className="size-4" />,
   recurring: <RefreshCw className="size-4" />,
   verified: <ShieldCheck className="size-4" />,
+}
+
+/** Tonalidade por tipo de bloco — puramente decorativa, mesma ordem de prioridade real. */
+const DEFAULT_TONE = { bg: "#E8EEF6", fg: NAVY_SOFT }
+const BLOCK_TONE: Record<string, { bg: string; fg: string }> = {
+  for_you: { bg: "#FBEDE8", fg: CORAL },
+  top_rated: { bg: "#FCF3DC", fg: "#C58A1E" },
+  recurring: { bg: "#E7F1EC", fg: GREEN },
+  verified: DEFAULT_TONE,
 }
 
 // ── Wrapper dos blocos ────────────────────────────────────────────────────────
@@ -48,10 +62,16 @@ export function RecommendationSection({ blocks }: SectionProps) {
 // ── Bloco individual ─────────────────────────────────────────────────────────
 
 function RecommendationBlockRow({ block }: { block: RecommendationBlock }) {
+  const tone = BLOCK_TONE[block.id] ?? DEFAULT_TONE
+
   return (
     <section>
       <div className="mb-3 flex items-center gap-2.5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary" aria-hidden>
+        <span
+          className="flex size-8 shrink-0 items-center justify-center rounded-xl"
+          style={{ background: tone.bg, color: tone.fg }}
+          aria-hidden
+        >
           {BLOCK_ICON[block.id] ?? <Sparkles className="size-4" />}
         </span>
         <div>
@@ -62,7 +82,7 @@ function RecommendationBlockRow({ block }: { block: RecommendationBlock }) {
 
       <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
         {block.professionals.map((pro) => (
-          <RecommendedCard key={pro.professionalId} pro={pro} />
+          <RecommendedCard key={pro.professionalId} pro={pro} tone={tone} />
         ))}
       </div>
     </section>
@@ -71,7 +91,13 @@ function RecommendationBlockRow({ block }: { block: RecommendationBlock }) {
 
 // ── Card compacto ─────────────────────────────────────────────────────────────
 
-function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
+function RecommendedCard({
+  pro,
+  tone,
+}: {
+  pro: RecommendedProfessional
+  tone: { bg: string; fg: string }
+}) {
   const initials = pro.displayName
     .split(" ")
     .slice(0, 2)
@@ -85,9 +111,12 @@ function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
       className="flex w-[10.5rem] shrink-0 flex-col gap-2.5 rounded-2xl border border-border/70 bg-card p-3.5 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
     >
       <div className="flex items-center gap-2">
-        <Avatar className="size-10 shrink-0 rounded-xl ring-1 ring-border/60">
+        <Avatar
+          className="size-10 shrink-0 rounded-xl ring-1 ring-border/60"
+          style={{ background: "#E8EEF6" }}
+        >
           {pro.avatarUrl && <AvatarImage src={pro.avatarUrl} alt={pro.displayName} />}
-          <AvatarFallback className="rounded-xl bg-primary/10 text-xs font-medium text-primary">
+          <AvatarFallback className="rounded-xl bg-transparent text-xs font-bold" style={{ color: NAVY }}>
             {initials}
           </AvatarFallback>
         </Avatar>
@@ -98,7 +127,7 @@ function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
               {pro.displayName}
             </span>
             {pro.isVerified && (
-              <ShieldCheck className="size-3 shrink-0 text-primary" aria-label="Verificado" />
+              <ShieldCheck className="size-3 shrink-0" style={{ color: GREEN }} aria-label="Verificado" />
             )}
           </div>
           <p className="truncate text-[0.65rem] text-muted-foreground">
@@ -117,7 +146,10 @@ function RecommendedCard({ pro }: { pro: RecommendedProfessional }) {
         </div>
       )}
 
-      <span className="w-fit truncate rounded-md bg-primary/8 px-1.5 py-0.5 text-[0.65rem] font-medium text-primary">
+      <span
+        className="w-fit truncate rounded-md px-1.5 py-0.5 text-[0.65rem] font-bold"
+        style={{ background: tone.bg, color: tone.fg }}
+      >
         {pro.score.mainReason}
       </span>
     </Link>

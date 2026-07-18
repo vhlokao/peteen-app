@@ -17,6 +17,9 @@ export function TutorHeroCard({ firstName, greeting }: TutorHeroCardProps) {
       <p className="text-[22px] font-extrabold tracking-[-0.02em] text-foreground">
         {firstName}
       </p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        Encontre quem cuida do seu pet com confiança.
+      </p>
     </div>
   )
 }

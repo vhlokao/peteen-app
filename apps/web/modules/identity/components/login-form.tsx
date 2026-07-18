@@ -208,7 +208,7 @@ export function LoginForm({ errorCode }: LoginFormProps) {
                 disabled={isLoading}
                 aria-invalid={!!errors.email}
                 {...register("email")}
-                className="h-[52px] rounded-[15px] border-[1.5px] bg-white pl-11 text-[15px] font-medium focus-visible:border-[#2C4893] focus-visible:ring-4 focus-visible:ring-[#2C4893]/10 aria-[invalid=true]:border-[#E07A5F] aria-[invalid=true]:ring-0"
+                className="h-[52px] rounded-[15px] border-[1.5px] bg-white pl-11 text-[15px] font-medium text-[#1A1A1A] focus-visible:border-[#2C4893] focus-visible:ring-4 focus-visible:ring-[#2C4893]/10 aria-[invalid=true]:border-[#E07A5F] aria-[invalid=true]:ring-0"
               />
             </div>
 
@@ -248,7 +248,7 @@ export function LoginForm({ errorCode }: LoginFormProps) {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={isLoading}
-                    className="h-[52px] rounded-[15px] border-[1.5px] bg-white pl-11 text-[15px] font-medium focus-visible:border-[#2C4893] focus-visible:ring-4 focus-visible:ring-[#2C4893]/10"
+                    className="h-[52px] rounded-[15px] border-[1.5px] bg-white pl-11 text-[15px] font-medium text-[#1A1A1A] focus-visible:border-[#2C4893] focus-visible:ring-4 focus-visible:ring-[#2C4893]/10"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();

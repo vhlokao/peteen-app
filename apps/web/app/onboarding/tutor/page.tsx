@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 
 import { getAuthContext } from "@/modules/identity/application/get-session";
-import { OnboardingSteps } from "../_components/onboarding-steps";
+import { TutorStepBar } from "../_components/tutor-step-bar";
 import { TutorProfileForm } from "@/modules/tutor/components/tutor-profile-form";
 
 export const metadata: Metadata = { title: "Criar conta — Perfil de Tutor" };
@@ -31,19 +33,24 @@ export default async function OnboardingTutorPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <OnboardingSteps current={2} />
-
-      <div className="space-y-1">
-        <h1 className="font-heading text-2xl font-bold text-foreground">
-          Crie seu perfil de tutor
+    <section className="overflow-hidden rounded-[44px] border border-black/5 bg-[#FAFAF8] shadow-[0_30px_60px_-24px_rgba(29,47,111,.30)]">
+      <header className="bg-white px-6 pb-4 pt-5">
+        <div className="mb-4 flex items-center gap-3">
+          <Link href="/onboarding" aria-label="Voltar" className="text-[#1A1A1A]">
+            <ChevronLeft className="size-5" />
+          </Link>
+          <TutorStepBar total={2} current={1} />
+          <span className="text-xs font-bold text-[#8A897F]">1/2</span>
+        </div>
+        <h1 className="text-[20px] font-extrabold tracking-[-0.02em] text-[#1A1A1A]">
+          Como podemos te chamar?
         </h1>
-        <p className="text-sm text-muted-foreground">
-          Suas informações ajudam profissionais locais a te conhecer antes do primeiro contato.
+        <p className="text-[12.5px] text-[#8A897F]">
+          Só o essencial para começar.
         </p>
-      </div>
+      </header>
 
       <TutorProfileForm redirectTo="/onboarding/tutor/pet" />
-    </div>
+    </section>
   );
 }

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Loader2, AlertCircle, PawPrint } from "lucide-react"
+import { Loader2, AlertCircle, PawPrint, Check, Plus } from "lucide-react"
 
 import {
   createPetAction,
@@ -388,17 +388,258 @@ export function PetForm({
   )
 }
 
+// ── Onboarding: implementação própria (visual dedicado) ────────────────────
+//
+// Não reaproveita o JSX de PetForm acima — aquele componente também é usado
+// em /me/pets/new e /me/pets/[id] (fora do onboarding) e deve continuar com
+// o visual atual, intocado. OnboardingPetForm usa a mesma validação Zod,
+// o mesmo createPetAction e a mesma regra de negócio (pet obrigatório, sem
+// botão de pular), só que com o layout do redesign do onboarding de tutor.
+
+const NAVY = "#1D2F6F"
+const CORAL = "#E07A5F"
+const GREEN = "#40916C"
+
+const onboardingPetSchema = z.object({
+  name: z.string().min(1, "Nome do pet é obrigatório").max(100, "Nome muito longo"),
+  species: z.enum(SPECIES, { error: () => "Selecione uma espécie válida" }),
+  breed: z.string().max(100, "Raça muito longa").optional(),
+  avatarUrl: z.string().optional(),
+})
+
+type OnboardingPetFormValues = z.infer<typeof onboardingPetSchema>
+
+type OnboardingPetFormProps = {
+  /** Primeiro nome do tutor, usado na mensagem de sucesso. */
+  firstName?: string
+}
+
 /**
  * Formulário de onboarding — pet é obrigatório para concluir o cadastro,
- * então não expõe a opção de pular.
+ * então não expõe a opção de pular. Ao concluir, mostra uma tela de sucesso
+ * antes de seguir para o Discovery.
  */
-export function OnboardingPetForm() {
+export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
+  const router = useRouter()
+  const [serverError, setServerError] = useState<string | null>(null)
+  const [showAvatarField, setShowAvatarField] = useState(false)
+  const [justCompleted, setJustCompleted] = useState(false)
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    setError,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<OnboardingPetFormValues>({
+    resolver: zodResolver(onboardingPetSchema),
+    defaultValues: { name: "", breed: "", avatarUrl: "" },
+  })
+
+  const petName = watch("name")
+
+  async function onSubmit(values: OnboardingPetFormValues) {
+    setServerError(null)
+
+    const input: CreatePetInput = {
+      name: values.name,
+      species: values.species,
+      breed: values.breed || undefined,
+      avatarUrl: values.avatarUrl?.trim() || undefined,
+      hasSpecialNeeds: false,
+    }
+
+    const result = await createPetAction(input)
+
+    if (!result.success) {
+      if (result.fieldErrors) {
+        for (const [field, messages] of Object.entries(result.fieldErrors)) {
+          setError(field as keyof OnboardingPetFormValues, { message: messages[0] })
+        }
+      } else {
+        setServerError(result.error)
+      }
+      return
+    }
+
+    // Sucesso — mostra a tela de conclusão antes de ir para o Discovery.
+    setJustCompleted(true)
+  }
+
+  if (justCompleted) {
+    return (
+      <div className="rounded-b-[44px] bg-[#FAFAF8] p-9 text-center">
+        <span
+          className="mb-4 inline-grid size-16 place-items-center rounded-[20px] bg-[#E7F1EC]"
+          style={{ color: GREEN }}
+        >
+          <Check className="size-[30px]" strokeWidth={2.4} />
+        </span>
+        <h2 className="mb-2 text-[19px] font-extrabold text-[#1A1A1A]">
+          Prontinho{firstName ? `, ${firstName}` : ""}!
+        </h2>
+        <p className="mx-auto mb-5 max-w-[26ch] text-[13px] leading-relaxed text-[#6B6B63]">
+          {petName || "Seu pet"} já está no seu perfil. Vamos encontrar quem
+          cuida dele com confiança?
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            router.push("/discover")
+            router.refresh()
+          }}
+          className="w-full rounded-[14px] py-[15px] text-[14.5px] font-bold text-white transition active:scale-[.99]"
+          style={{ background: NAVY }}
+        >
+          Encontrar profissional
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <PetForm
-      redirectTo="/discover"
-      showSkip={false}
-      submitLabel="Adicionar pet e continuar"
-    />
+    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+      <div className="px-6 pb-6 pt-5">
+        {serverError ? (
+          <div
+            role="alert"
+            className="mb-4 flex items-center gap-2 rounded-lg border border-[#E07A5F]/30 bg-[#E07A5F]/5 px-3 py-2.5 text-sm text-[#C15A3F]"
+          >
+            <AlertCircle className="size-4 shrink-0" />
+            <span>{serverError}</span>
+          </div>
+        ) : null}
+
+        {/* Foto — decorativa, revela o campo real de URL ao clicar (sem upload de arquivo disponível) */}
+        <div className="mb-5 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowAvatarField((v) => !v)}
+            className="relative grid size-[88px] place-items-center rounded-[28px]"
+            style={{ background: "#FBEDE8", color: CORAL }}
+            aria-label="Adicionar foto do pet"
+            aria-pressed={showAvatarField}
+          >
+            <PawPrint className="size-11" />
+            <span
+              className="absolute -bottom-1 -right-1 grid size-[30px] place-items-center rounded-full border-[3px] border-[#FAFAF8]"
+              style={{ background: NAVY }}
+            >
+              <Plus className="size-[15px] text-white" />
+            </span>
+          </button>
+        </div>
+
+        {showAvatarField && (
+          <>
+            <Field label="Link da foto (opcional)" error={errors.avatarUrl?.message}>
+              <input
+                {...register("avatarUrl")}
+                type="url"
+                placeholder="https://..."
+                disabled={isSubmitting}
+                className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+              />
+            </Field>
+            <div className="h-[18px]" />
+          </>
+        )}
+
+        <Field label="Nome do pet *" error={errors.name?.message}>
+          <input
+            {...register("name")}
+            placeholder="Nome do pet"
+            autoFocus
+            disabled={isSubmitting}
+            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+          />
+        </Field>
+
+        <div className="h-[18px]" />
+
+        <p className="mb-2 text-xs font-bold text-[#1A1A1A]">Espécie *</p>
+        <Controller
+          name="species"
+          control={control}
+          render={({ field }) => (
+            <div className="flex flex-wrap gap-2.5">
+              {SPECIES.map((s) => {
+                const active = field.value === s
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() => field.onChange(s)}
+                    aria-pressed={active}
+                    className={cn(
+                      "flex-1 basis-[30%] rounded-[13px] px-3 py-3 text-[13px] font-bold transition disabled:pointer-events-none disabled:opacity-50",
+                      active
+                        ? "text-white"
+                        : "border-[1.5px] border-black/10 bg-white font-semibold text-[#57564E]"
+                    )}
+                    style={active ? { background: NAVY } : undefined}
+                  >
+                    {SPECIES_EMOJI[s]} {SPECIES_LABELS[s]}
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        />
+        {errors.species?.message ? (
+          <p className="mt-1.5 text-[12px] font-medium text-[#C15A3F]">
+            {errors.species.message}
+          </p>
+        ) : null}
+
+        <div className="h-[18px]" />
+
+        <Field label="Raça (opcional)" error={errors.breed?.message}>
+          <input
+            {...register("breed")}
+            placeholder="Ex: SRD, Golden Retriever"
+            disabled={isSubmitting}
+            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+          />
+        </Field>
+      </div>
+
+      <footer className="border-t border-black/[.07] bg-white px-6 pb-6 pt-3.5">
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full rounded-[14px] py-[15px] text-[14.5px] font-bold text-white transition active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-40"
+          style={{ background: NAVY }}
+        >
+          {isSubmitting ? "Salvando…" : "Concluir"}
+        </button>
+      </footer>
+    </form>
+  )
+}
+
+function Field({
+  label,
+  error,
+  children,
+}: {
+  label: string
+  error?: string
+  children: React.ReactNode
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-bold text-[#1A1A1A]">{label}</span>
+      {children}
+      {error ? (
+        <span className="mt-1.5 flex items-center gap-1.5 text-[12px] font-medium text-[#C15A3F]">
+          <AlertCircle className="size-3.5 shrink-0" />
+          {error}
+        </span>
+      ) : null}
+    </label>
   )
 }
 

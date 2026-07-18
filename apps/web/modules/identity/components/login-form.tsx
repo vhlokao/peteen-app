@@ -4,23 +4,22 @@ import { useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Mail, CheckCircle2, AlertCircle, Loader2, Lock, ChevronDown } from "lucide-react";
+import {
+  Mail,
+  ShieldCheck,
+  PawPrint,
+  AlertCircle,
+  ArrowRight,
+  Lock,
+  ChevronDown,
+} from "lucide-react";
 
 import {
   signInWithMagicLink,
   signInWithGoogle,
   signInWithPassword,
 } from "@/modules/identity/infrastructure/auth-actions";
-import { FormField } from "@/components/forms/form-field";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -129,232 +128,245 @@ export function LoginForm({ errorCode }: LoginFormProps) {
 
   if (emailSent) {
     return (
-      <Card>
-        <CardHeader className="items-center space-y-3 pb-4 text-center">
-          <div className="flex size-14 items-center justify-center rounded-full bg-trust/10">
-            <CheckCircle2 className="size-7 text-trust" />
+      <main className="flex min-h-dvh items-center justify-center bg-[#EDE9E1] p-4">
+        <div className="w-full max-w-[420px] overflow-hidden rounded-[32px] border border-[#1D2F6F]/[0.06] bg-white shadow-[0_34px_70px_-24px_rgba(29,47,111,0.32),0_10px_28px_rgba(29,47,111,0.08)]">
+          <div className="bg-[#FAFAF8] px-7 py-10 text-center">
+            <span className="inline-grid size-14 place-items-center rounded-2xl bg-[#E8EEF6]">
+              <Mail className="size-6 text-[#2C4893]" />
+            </span>
+            <h2 className="mt-4 text-[17px] font-bold text-[#1A1A1A]">
+              Confira seu e-mail
+            </h2>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-[#6B6B63]">
+              Enviamos um link seguro para <br />
+              <strong className="text-[#1A1A1A]">{getValues("email")}</strong>.
+            </p>
+
+            <p className="mt-6 text-xs text-[#8A897F]">
+              Não recebeu? Verifique a pasta de spam ou lixo eletrônico.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setEmailSent(false);
+                setServerError(null);
+              }}
+              className="mt-3 text-[13px] font-semibold text-[#2C4893] hover:text-[#1D2F6F]"
+            >
+              Usar outro e-mail
+            </button>
           </div>
-          <CardTitle>Link enviado!</CardTitle>
-          <CardDescription>
-            Enviamos um link seguro para{" "}
-            <strong className="font-semibold text-foreground">
-              {getValues("email")}
-            </strong>
-            . Clique no link para entrar.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter className="flex flex-col gap-2 pt-0">
-          <p className="text-center text-xs text-muted-foreground">
-            Não recebeu? Verifique a pasta de spam ou lixo eletrônico.
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setEmailSent(false);
-              setServerError(null);
-            }}
-            className="w-full"
-          >
-            Usar outro e-mail
-          </Button>
-        </CardFooter>
-      </Card>
+        </div>
+      </main>
     );
   }
 
   // ── Estado: formulário ─────────────────────────────────────────────────────
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Entrar no Peteen</CardTitle>
-        <CardDescription>
-          Digite seu email e enviaremos um link de acesso. Se você ainda não tem
-          conta, ela será criada automaticamente.
-        </CardDescription>
-      </CardHeader>
-
-      {displayError ? (
-        <div
-          role="alert"
-          className="mx-6 mb-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive"
-        >
-          <AlertCircle className="size-4 shrink-0" />
-          <span>{displayError}</span>
+    <main className="flex min-h-dvh items-center justify-center bg-[#EDE9E1] p-4">
+      <div className="w-full max-w-[420px] overflow-hidden rounded-[32px] border border-[#1D2F6F]/[0.06] bg-white shadow-[0_34px_70px_-24px_rgba(29,47,111,0.32),0_10px_28px_rgba(29,47,111,0.08)]">
+        {/* Header acolhedor */}
+        <div className="relative h-[230px] overflow-hidden bg-gradient-to-b from-[#2C4893] to-[#1D2F6F]">
+          <div className="absolute -right-[70px] -top-[90px] size-[260px] rounded-full bg-[#6EC6FF]/[0.18]" />
+          <div className="absolute -left-10 -bottom-[70px] size-[180px] rounded-full bg-[#E07A5F]/20" />
+          <PawPrint className="absolute left-[52px] top-16 size-9 text-white/50" />
+          <div className="absolute inset-x-9 bottom-9">
+            <span className="grid size-[52px] place-items-center rounded-2xl bg-white text-2xl font-extrabold text-[#1D2F6F] shadow-lg">
+              P
+            </span>
+            <h1 className="mt-[18px] text-[26px] font-extrabold leading-tight tracking-tight text-white">
+              Bem-vindo ao Peteen
+            </h1>
+          </div>
         </div>
-      ) : null}
 
-      <form onSubmit={handleSubmit(onSubmitMagicLink)} noValidate>
-        <CardContent className="space-y-4">
-          {/* E-mail — compartilhado por todos os métodos */}
-          <FormField
-            name="email"
-            label="E-mail"
-            error={errors.email?.message}
-          >
-            {(field) => (
+        {/* Corpo */}
+        <div className="bg-[#FAFAF8] px-7 pb-9 pt-6">
+          <p className="mb-5 text-[14.5px] leading-relaxed text-[#57564E]">
+            Encontre quem cuida do seu pet com{" "}
+            <strong className="text-[#1A1A1A]">confiança de verdade</strong>.
+            Entre ou crie sua conta no mesmo lugar.
+          </p>
+
+          <form onSubmit={handleSubmit(onSubmitMagicLink)} noValidate>
+            <label
+              htmlFor="email"
+              className="mb-2 block text-[12.5px] font-bold text-[#1A1A1A]"
+            >
+              Seu e-mail
+            </label>
+            <div className="relative">
+              <Mail className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-[#2C4893]" />
               <Input
-                {...field}
-                {...register("email")}
+                id="email"
                 type="email"
-                placeholder="seu@email.com"
+                inputMode="email"
                 autoComplete="email"
                 autoFocus
+                placeholder="voce@email.com"
                 disabled={isLoading}
+                aria-invalid={!!errors.email}
+                {...register("email")}
+                className="h-[52px] rounded-[15px] border-[1.5px] bg-white pl-11 text-[15px] font-medium focus-visible:border-[#2C4893] focus-visible:ring-4 focus-visible:ring-[#2C4893]/10 aria-[invalid=true]:border-[#E07A5F] aria-[invalid=true]:ring-0"
               />
-            )}
-          </FormField>
-
-          {/* Campo de senha — visível somente quando expandido */}
-          {showPasswordSection && (
-            <div className="space-y-1.5">
-              <label
-                htmlFor="password-input"
-                className="text-sm font-medium text-foreground"
-              >
-                Senha
-              </label>
-              <div className="relative">
-                <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="password-input"
-                  type="password"
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={isLoading}
-                  className="pl-9"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handlePasswordSignIn();
-                    }
-                  }}
-                />
-              </div>
             </div>
-          )}
-        </CardContent>
 
-        <CardFooter className="flex flex-col gap-3">
-          {/* Magic Link — botão primário */}
-          {!showPasswordSection && (
-            <Button
-              type="submit"
-              className="w-full gap-2"
-              disabled={isLoading}
-            >
-              {isSubmitting ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Mail className="size-4" />
-              )}
-              {isSubmitting ? "Enviando link..." : "Continuar com e-mail"}
-            </Button>
-          )}
+            {errors.email?.message ? (
+              <p className="mt-2.5 flex items-center gap-1.5 text-[12.5px] font-semibold text-[#C15A3F]">
+                <AlertCircle className="size-[15px]" />
+                {errors.email.message}
+              </p>
+            ) : null}
 
-          {/* Senha — botão visível apenas quando expandido */}
-          {showPasswordSection && (
-            <>
-              <Button
-                type="button"
-                className="w-full gap-2"
-                onClick={handlePasswordSignIn}
-                disabled={isLoading}
+            {displayError ? (
+              <div
+                role="alert"
+                className="mt-2.5 flex items-center gap-1.5 text-[12.5px] font-semibold text-[#C15A3F]"
               >
-                {isPendingPassword ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Lock className="size-4" />
-                )}
-                {isPendingPassword ? "Entrando..." : "Entrar com senha"}
-              </Button>
+                <AlertCircle className="size-[15px] shrink-0" />
+                <span>{displayError}</span>
+              </div>
+            ) : null}
 
+            {/* Campo de senha — visível somente quando expandido */}
+            {showPasswordSection && (
+              <div className="mt-4 space-y-1.5">
+                <label
+                  htmlFor="password-input"
+                  className="block text-[12.5px] font-bold text-[#1A1A1A]"
+                >
+                  Senha
+                </label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-4 top-1/2 size-[18px] -translate-y-1/2 text-[#2C4893]" />
+                  <Input
+                    id="password-input"
+                    type="password"
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    disabled={isLoading}
+                    className="h-[52px] rounded-[15px] border-[1.5px] bg-white pl-11 text-[15px] font-medium focus-visible:border-[#2C4893] focus-visible:ring-4 focus-visible:ring-[#2C4893]/10"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handlePasswordSignIn();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Magic Link — botão primário */}
+            {!showPasswordSection && (
               <Button
+                type="submit"
+                disabled={isLoading}
+                className="mt-4 h-auto w-full gap-2 rounded-[15px] bg-[#1D2F6F] py-4 text-[15.5px] font-bold text-white shadow-[0_12px_24px_-8px_rgba(29,47,111,0.55)] hover:bg-[#182860]"
+              >
+                {isSubmitting ? "Enviando…" : "Continuar"}
+                {!isSubmitting && <ArrowRight className="size-[18px]" />}
+              </Button>
+            )}
+
+            {/* Senha — botão visível apenas quando expandido */}
+            {showPasswordSection && (
+              <div className="mt-4 space-y-2">
+                <Button
+                  type="button"
+                  onClick={handlePasswordSignIn}
+                  disabled={isLoading}
+                  className="h-auto w-full gap-2 rounded-[15px] bg-[#1D2F6F] py-4 text-[15.5px] font-bold text-white shadow-[0_12px_24px_-8px_rgba(29,47,111,0.55)] hover:bg-[#182860]"
+                >
+                  {isPendingPassword ? "Entrando…" : "Entrar com senha"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPasswordSection(false);
+                    setPassword("");
+                    setServerError(null);
+                  }}
+                  disabled={isLoading}
+                  className="w-full text-center text-[12.5px] font-medium text-[#8A897F] hover:text-[#57564E] disabled:cursor-not-allowed"
+                >
+                  ← Voltar para Magic Link
+                </button>
+              </div>
+            )}
+          </form>
+
+          {!showPasswordSection && (
+            <>
+              <div className="mt-4 flex items-start gap-2.5 rounded-[13px] bg-[#E8EEF6] px-3.5 py-3">
+                <ShieldCheck className="mt-0.5 size-[17px] shrink-0 text-[#2C4893]" />
+                <p className="text-[12.5px] leading-snug text-[#2C4893]">
+                  <strong>Sem senha para lembrar.</strong> Enviamos um link
+                  seguro para seu e-mail — é só tocar e entrar.
+                </p>
+              </div>
+
+              {/* Google OAuth — oculto por ora (apenas Magic Link no teste real) */}
+              <div className="hidden">
+                <div className="my-5 flex items-center gap-3.5">
+                  <span className="h-px flex-1 bg-[#1D2F6F]/10" />
+                  <span className="text-xs font-semibold text-[#8A897F]">
+                    ou
+                  </span>
+                  <span className="h-px flex-1 bg-[#1D2F6F]/10" />
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGoogleSignIn}
+                  disabled={isLoading}
+                  className="h-auto w-full gap-2.5 rounded-[15px] border-[1.5px] border-[#1D2F6F]/[0.14] bg-white py-3.5 text-[14.5px] font-bold text-[#1A1A1A] hover:bg-[#FAFAF8]"
+                >
+                  <GoogleLogoIcon />
+                  {isPendingGoogle ? "Redirecionando…" : "Continuar com Google"}
+                </Button>
+              </div>
+
+              <p className="mt-5 text-center text-[12.5px] text-[#8A897F]">
+                Ao continuar, você concorda com os{" "}
+                <a
+                  href="/termos"
+                  className="font-semibold text-[#2C4893] hover:text-[#1D2F6F]"
+                >
+                  termos de uso
+                </a>{" "}
+                e{" "}
+                <a
+                  href="/privacidade"
+                  className="font-semibold text-[#2C4893] hover:text-[#1D2F6F]"
+                >
+                  privacidade
+                </a>
+                .
+              </p>
+
+              {/* Toggle senha — discreto, no rodapé */}
+              <button
                 type="button"
-                variant="ghost"
-                size="sm"
-                className="w-full"
                 onClick={() => {
-                  setShowPasswordSection(false);
-                  setPassword("");
+                  setShowPasswordSection(true);
                   setServerError(null);
                 }}
                 disabled={isLoading}
+                className="mx-auto mt-3 flex items-center gap-1 text-[11.5px] text-[#A9A79C] transition-colors hover:text-[#8A897F] disabled:cursor-not-allowed"
               >
-                ← Voltar para Magic Link
-              </Button>
+                <ChevronDown className="size-3" />
+                Entrar com senha
+              </button>
             </>
           )}
-
-          {/* Divisor — escondido junto com o Google (login por Magic Link apenas) */}
-          {!showPasswordSection && (
-            <div className="hidden w-full items-center gap-3">
-              <span className="h-px flex-1 bg-border" />
-              <span className="text-xs text-muted-foreground">ou</span>
-              <span className="h-px flex-1 bg-border" />
-            </div>
-          )}
-
-          {/* Google OAuth — oculto por ora (apenas Magic Link no teste real) */}
-          {!showPasswordSection && (
-            <Button
-              type="button"
-              variant="outline"
-              className="hidden w-full gap-2"
-              onClick={handleGoogleSignIn}
-              disabled={isLoading}
-            >
-              {isPendingGoogle ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <GoogleLogoIcon />
-              )}
-              {isPendingGoogle ? "Redirecionando..." : "Continuar com Google"}
-            </Button>
-          )}
-
-          {/* Termos */}
-          {!showPasswordSection && (
-            <p className="text-center text-xs text-muted-foreground">
-              Ao continuar, você concorda com os{" "}
-              <a
-                href="/termos"
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                termos de uso
-              </a>{" "}
-              e{" "}
-              <a
-                href="/privacidade"
-                className="underline underline-offset-2 hover:text-foreground"
-              >
-                privacidade
-              </a>
-              .
-            </p>
-          )}
-
-          {/* Toggle senha — discreto, no rodapé */}
-          {!showPasswordSection && (
-            <button
-              type="button"
-              onClick={() => {
-                setShowPasswordSection(true);
-                setServerError(null);
-              }}
-              disabled={isLoading}
-              className="flex items-center gap-1 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground disabled:cursor-not-allowed"
-            >
-              <ChevronDown className="size-3" />
-              Entrar com senha
-            </button>
-          )}
-        </CardFooter>
-      </form>
-    </Card>
+        </div>
+      </div>
+    </main>
   );
 }
 
@@ -364,7 +376,7 @@ function GoogleLogoIcon({ className }: { className?: string }) {
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      className={cn("size-4", className)}
+      className={cn("size-[18px]", className)}
       xmlns="http://www.w3.org/2000/svg"
     >
       <path

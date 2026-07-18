@@ -1,6 +1,8 @@
 import Link from "next/link"
 import type { LucideIcon } from "lucide-react"
 
+const NAVY_SOFT = "#2C4893"
+
 type TutorCareCategoryCardProps = {
   label: string
   href: string
@@ -11,12 +13,15 @@ export function TutorCareCategoryCard({ label, href, icon: Icon }: TutorCareCate
   return (
     <Link
       href={href}
-      className="flex w-24 shrink-0 flex-col items-center gap-2 rounded-2xl border border-border bg-card p-3 text-center shadow-sm transition-shadow hover:border-primary/30 hover:shadow-md"
+      className="flex w-24 shrink-0 flex-col items-center gap-2 rounded-[18px] border border-border bg-card p-3.5 text-center transition-colors hover:border-primary/30"
     >
-      <span className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+      <span
+        className="flex size-10 items-center justify-center rounded-[13px]"
+        style={{ background: "#E8EEF6", color: NAVY_SOFT }}
+      >
         <Icon className="size-5" />
       </span>
-      <span className="text-[0.7rem] font-medium leading-tight text-foreground">{label}</span>
+      <span className="text-[11.5px] font-semibold leading-tight text-foreground">{label}</span>
     </Link>
   )
 }

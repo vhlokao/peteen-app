@@ -7,8 +7,7 @@ import {
   GraduationCap,
   HeartHandshake,
   House,
-  PawPrint,
-  PlusCircle,
+  Search,
 } from "lucide-react"
 
 import { requireAuth } from "@/modules/identity/application/get-session"
@@ -18,19 +17,21 @@ import { findRecentPetsByTutorId } from "@/modules/pets/infrastructure/repositor
 import { getMyRequestsAsTutorAction } from "@/modules/service-request/application/actions"
 import { REQUEST_STATUS_LABELS } from "@/modules/service-request/domain/types"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
-import { buttonVariants } from "@/components/ui/button"
 import { TutorHeroCard } from "@/components/tutor/TutorHeroCard"
 import {
   TutorActiveRequestCard,
+  TutorEmptyActiveRequestCard,
   type TutorActiveRequestSummary,
 } from "@/components/tutor/TutorActiveRequestCard"
-import { TutorPetPreview } from "@/components/tutor/TutorPetPreview"
+import { TutorPetPreview, TutorAddPetTile } from "@/components/tutor/TutorPetPreview"
 import { TutorCareCategoryCard } from "@/components/tutor/TutorCareCategoryCard"
 import { TutorTrustNetworkCard } from "@/components/tutor/TutorTrustNetworkCard"
 
 export const metadata: Metadata = {
   title: "Portal do tutor",
 }
+
+const NAVY_SOFT = "#2C4893"
 
 const OPEN_STATUSES = new Set(["PENDING", "ACCEPTED", "IN_PROGRESS"])
 
@@ -53,8 +54,15 @@ const CARE_CATEGORIES: { type: ServiceType; icon: typeof Footprints }[] = [
   { type: "HOME_CARE", icon: HeartHandshake },
 ]
 
+/** Saudação por horário — apresentação pura, sem query nova. */
+function greetingForHour(hour: number): string {
+  if (hour < 12) return "Bom dia"
+  if (hour < 18) return "Boa tarde"
+  return "Boa noite"
+}
+
 /**
- * /tutor — Home mobile-first do tutor (UX 3.3).
+ * /tutor — Home mobile-first do tutor (UX 3.3, reskin visual).
  *
  * Responde "o que eu posso fazer agora para cuidar do meu pet?" — não é
  * dashboard. Todo bloco usa dado real já disponível via infraestrutura
@@ -95,62 +103,56 @@ export default async function TutorDashboardPage() {
     : null
 
   const firstName = tutorProfile.displayName.split(" ")[0] || "tutor"
+  const greeting = greetingForHour(new Date().getHours())
 
   return (
-    <div className="page-container space-y-8 pb-4">
-      <TutorHeroCard firstName={firstName} />
-
-      {activeRequest && <TutorActiveRequestCard request={activeRequest} />}
+    <div className="page-container space-y-7 pb-4">
+      <TutorHeroCard firstName={firstName} greeting={greeting} />
 
       <section>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-foreground">Meus pets</h2>
-          <Link href="/me/pets" className="text-xs font-medium text-primary hover:underline">
-            Gerenciar pets
-          </Link>
-        </div>
-
-        {pets.length > 0 ? (
-          <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-            {pets.map((pet) => (
-              <TutorPetPreview
-                key={pet.id}
-                id={pet.id}
-                name={pet.name}
-                species={pet.species}
-                breed={pet.breed}
-                avatarUrl={pet.avatarUrl}
-              />
-            ))}
-          </div>
+        <p className="mb-2.5 text-xs font-extrabold tracking-[.05em] text-muted-foreground">
+          PRÓXIMO ATENDIMENTO
+        </p>
+        {activeRequest ? (
+          <TutorActiveRequestCard request={activeRequest} />
         ) : (
-          <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border p-4">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-              <PawPrint className="size-5" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium text-foreground">Nenhum pet cadastrado</p>
-              <p className="text-xs text-muted-foreground">
-                Cadastre seu pet para pedir cuidados.
-              </p>
-            </div>
-            <Link
-              href="/me/pets/new"
-              className={buttonVariants({
-                size: "sm",
-                variant: "outline",
-                className: "shrink-0 gap-1",
-              })}
-            >
-              <PlusCircle className="size-3.5" />
-              Adicionar
-            </Link>
-          </div>
+          <TutorEmptyActiveRequestCard />
         )}
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Tipos de cuidado</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-[15.5px] font-extrabold tracking-[-0.01em] text-foreground">
+            Meus pets
+          </h2>
+          <Link
+            href="/me/pets"
+            className="text-[12.5px] font-bold"
+            style={{ color: NAVY_SOFT }}
+          >
+            Gerenciar
+          </Link>
+        </div>
+
+        <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
+          {pets.map((pet) => (
+            <TutorPetPreview
+              key={pet.id}
+              id={pet.id}
+              name={pet.name}
+              species={pet.species}
+              breed={pet.breed}
+              avatarUrl={pet.avatarUrl}
+            />
+          ))}
+          <TutorAddPetTile />
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-[15.5px] font-extrabold tracking-[-0.01em] text-foreground">
+          Tipos de cuidado
+        </h2>
         <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
           {CARE_CATEGORIES.map((category) => (
             <TutorCareCategoryCard
@@ -163,7 +165,35 @@ export default async function TutorDashboardPage() {
         </div>
       </section>
 
-      <TutorTrustNetworkCard professionals={hiredProfessionals} />
+      {hiredProfessionals.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-[15.5px] font-extrabold tracking-[-0.01em] text-foreground">
+            Sua rede de confiança
+          </h2>
+          <TutorTrustNetworkCard professionals={hiredProfessionals} />
+        </section>
+      )}
+      {hiredProfessionals.length === 0 && (
+        <TutorTrustNetworkCard professionals={hiredProfessionals} />
+      )}
+
+      <Link
+        href="/discover"
+        className="flex w-full items-center gap-3.5 rounded-[20px] p-5 text-left transition-transform active:scale-[.99]"
+        style={{ background: "linear-gradient(135deg,#E8EEF6,#F6EEEA)" }}
+      >
+        <span className="grid size-[46px] shrink-0 place-items-center rounded-[14px] bg-white shadow-[0_6px_14px_rgba(29,47,111,.10)]">
+          <Search className="size-[22px]" style={{ color: NAVY_SOFT }} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-[14.5px] font-bold leading-tight text-foreground">
+            Precisa de ajuda com seu pet?
+          </span>
+          <span className="block text-[12.5px] text-muted-foreground">
+            Encontre profissionais confiáveis perto de você.
+          </span>
+        </span>
+      </Link>
     </div>
   )
 }

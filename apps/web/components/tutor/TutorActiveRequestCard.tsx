@@ -1,8 +1,8 @@
 import Link from "next/link"
-import { Clock } from "lucide-react"
+import { ChevronRight, PawPrint } from "lucide-react"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { cn } from "@/lib/utils"
+const NAVY = "#1D2F6F"
+const CORAL = "#E07A5F"
 
 export type TutorActiveRequestSummary = {
   id: string
@@ -15,16 +15,20 @@ export type TutorActiveRequestSummary = {
   petName: string | null
 }
 
-const STATUS_TONE_CLASS: Record<TutorActiveRequestSummary["statusTone"], string> = {
-  pending: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  accepted: "bg-primary/10 text-primary",
-  in_progress: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
+const STATUS_TONE: Record<
+  TutorActiveRequestSummary["statusTone"],
+  { dot: string; bg: string; fg: string }
+> = {
+  accepted: { dot: "#5AD293", bg: "rgba(64,145,108,.22)", fg: "#8FE3B8" },
+  pending: { dot: "#F0B84C", bg: "rgba(240,184,76,.22)", fg: "#F5CE86" },
+  in_progress: { dot: "#8FB0E8", bg: "rgba(110,198,255,.20)", fg: "#B7D9F5" },
 }
 
 /**
- * Card de solicitação em andamento — só renderiza se houver dado real
- * (filtrado em app/(tutor)/tutor/page.tsx a partir de getMyRequestsAsTutorAction,
- * Server Action já existente). Nunca inventa estado.
+ * Card de solicitação em andamento — só renderiza com dado real (filtrado
+ * em app/(tutor)/tutor/page.tsx a partir de getMyRequestsAsTutorAction,
+ * Server Action já existente). Nunca inventa estado; statusLabel vem do
+ * servidor (REQUEST_STATUS_LABELS), só a cor é derivada de statusTone.
  */
 export function TutorActiveRequestCard({
   request,
@@ -38,47 +42,85 @@ export function TutorActiveRequestCard({
     .join("")
     .toUpperCase()
 
-  return (
-    <section>
-      <h2 className="mb-3 text-sm font-semibold text-foreground">Em andamento</h2>
-      <Link
-        href={`/tutor/requests/${request.id}`}
-        className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
-      >
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium",
-              STATUS_TONE_CLASS[request.statusTone]
-            )}
-          >
-            <Clock className="size-3" />
-            {request.statusLabel}
-          </span>
-          <span className="text-xs text-muted-foreground">{request.serviceLabel}</span>
-        </div>
+  const tone = STATUS_TONE[request.statusTone]
 
-        <div className="flex items-center gap-3">
-          <Avatar size="lg">
-            {request.professionalAvatarUrl && (
-              <AvatarImage src={request.professionalAvatarUrl} alt={request.professionalName} />
-            )}
-            <AvatarFallback className="bg-primary/10 text-primary">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">
-              {request.professionalName}
-            </p>
-            <p className="truncate text-xs text-muted-foreground">
-              {request.petName ? `Para ${request.petName} · ` : ""}
-              {request.professionalCity}
-            </p>
-          </div>
-          <span className="shrink-0 text-sm font-medium text-primary">Acompanhar →</span>
+  return (
+    <Link
+      href={`/tutor/requests/${request.id}`}
+      className="relative block overflow-hidden rounded-[22px] p-5 shadow-[0_18px_34px_-16px_rgba(29,47,111,.6)]"
+      style={{ background: NAVY }}
+    >
+      <span
+        className="pointer-events-none absolute -top-[60px] -right-[40px] size-[150px] rounded-full bg-[#6EC6FF]/[.14]"
+        aria-hidden
+      />
+
+      <div className="relative mb-4 flex items-center justify-between gap-2">
+        <span
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-[5px] text-[11.5px] font-bold"
+          style={{ background: tone.bg, color: tone.fg }}
+        >
+          <span className="size-1.5 rounded-full" style={{ background: tone.dot }} />
+          {request.statusLabel}
+        </span>
+        <span className="text-[12.5px] font-semibold text-white/70">
+          {request.serviceLabel}
+        </span>
+      </div>
+
+      <div className="relative flex items-center gap-3.5">
+        <span
+          className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-[#E8EEF6] text-[15px] font-bold"
+          style={{ color: NAVY }}
+        >
+          {initials}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[15.5px] font-bold text-white">
+            {request.professionalName}
+          </p>
+          <p className="truncate text-[13px] text-white/70">
+            {request.petName ? `Para ${request.petName} · ` : ""}
+            {request.professionalCity}
+          </p>
         </div>
-      </Link>
-    </section>
+      </div>
+
+      <span
+        className="relative mt-4 block w-full rounded-[13px] bg-white py-3 text-center text-[13.5px] font-bold"
+        style={{ color: NAVY }}
+      >
+        Ver detalhes
+      </span>
+    </Link>
+  )
+}
+
+/**
+ * Estado vazio — sem solicitação ativa. Não inventa dado, só convida a
+ * agendar o primeiro atendimento.
+ */
+export function TutorEmptyActiveRequestCard() {
+  return (
+    <Link
+      href="/discover"
+      className="flex w-full items-center gap-3.5 rounded-[22px] border-[1.5px] border-dashed border-border bg-card p-5 text-left"
+    >
+      <span
+        className="grid size-[46px] shrink-0 place-items-center rounded-[14px]"
+        style={{ background: "#FBEDE8", color: CORAL }}
+      >
+        <PawPrint className="size-6" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[14.5px] font-bold text-foreground">
+          Que tal agendar o primeiro passeio?
+        </span>
+        <span className="block text-[12.5px] text-muted-foreground">
+          Encontre alguém de confiança para começar.
+        </span>
+      </span>
+      <ChevronRight className="size-[18px] shrink-0 text-muted-foreground" />
+    </Link>
   )
 }

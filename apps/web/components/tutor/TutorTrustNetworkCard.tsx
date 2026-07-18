@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { RotateCcw, Sparkles } from "lucide-react"
+import { Heart, Sparkles } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { buttonVariants } from "@/components/ui/button"
@@ -7,10 +7,16 @@ import { SERVICE_TYPE_LABELS } from "@/modules/professional/domain/types"
 import { buildDiscoverUrl } from "@/modules/partner-portal/domain/navigation"
 import type { HiredProfessionalSummary } from "@/modules/tutor-portal/domain/types"
 
+const NAVY = "#1D2F6F"
+const GREEN = "#40916C"
+const CORAL = "#E07A5F"
+
 /**
  * Rede de confiança do tutor — profissionais já contratados (dado real,
  * já existente em findHiredProfessionalsByTutorId). "Cliente recorrente" é
  * derivado de totalServices >= 2, um sinal humano, nunca o trust score bruto.
+ * Sem selo de "verificado" aqui — HiredProfessionalSummary não carrega esse
+ * campo e checá-lo exigiria uma query nova por profissional.
  *
  * Sem dado real ainda: bloco educativo, sem inventar profissionais.
  */
@@ -45,51 +51,58 @@ export function TutorTrustNetworkCard({
   }
 
   return (
-    <section>
-      <h2 className="mb-3 text-sm font-semibold text-foreground">Sua rede de confiança</h2>
-      <div className="no-scrollbar -mx-4 flex gap-3 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-        {professionals.slice(0, 6).map((pro) => {
-          const initials = pro.displayName
-            .split(" ")
-            .slice(0, 2)
-            .map((w) => w[0])
-            .join("")
-            .toUpperCase()
+    <div className="overflow-hidden rounded-[18px] border border-border bg-card p-1.5">
+      {professionals.slice(0, 6).map((pro) => {
+        const initials = pro.displayName
+          .split(" ")
+          .slice(0, 2)
+          .map((w) => w[0])
+          .join("")
+          .toUpperCase()
 
-          return (
-            <Link
-              key={pro.professionalId}
-              href={buildDiscoverUrl(pro.professionalId, { from: "tutor", returnTo: "/tutor" })}
-              className="flex w-40 shrink-0 flex-col gap-2.5 rounded-2xl border border-border bg-card p-3 shadow-sm transition-shadow hover:shadow-md"
+        const recurring = pro.totalServices >= 2
+
+        return (
+          <Link
+            key={pro.professionalId}
+            href={buildDiscoverUrl(pro.professionalId, { from: "tutor", returnTo: "/tutor" })}
+            className="flex w-full items-center gap-3 rounded-[14px] p-3 text-left transition-colors hover:bg-muted/50"
+          >
+            <Avatar
+              className="size-[42px] shrink-0"
+              style={{ background: "#E8EEF6" }}
             >
-              <div className="flex items-center gap-2">
-                <Avatar size="sm">
-                  {pro.avatarUrl && <AvatarImage src={pro.avatarUrl} alt={pro.displayName} />}
-                  <AvatarFallback className="bg-primary/10 text-primary">
-                    {initials}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-semibold text-foreground">
-                    {pro.displayName}
-                  </p>
-                  <p className="truncate text-[0.65rem] text-muted-foreground">{pro.city}</p>
-                </div>
-              </div>
-              {pro.totalServices >= 2 ? (
-                <span className="inline-flex w-fit items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[0.6rem] font-medium text-primary">
-                  <RotateCcw className="size-2.5" />
-                  Cliente recorrente
-                </span>
+              {pro.avatarUrl && <AvatarImage src={pro.avatarUrl} alt={pro.displayName} />}
+              <AvatarFallback className="bg-transparent text-[13px] font-bold" style={{ color: NAVY }}>
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[14px] font-bold text-foreground">{pro.displayName}</p>
+              {recurring ? (
+                <p className="truncate text-[12px] font-semibold" style={{ color: GREEN }}>
+                  Você já contratou {pro.totalServices}×
+                </p>
               ) : (
-                <span className="truncate text-[0.65rem] text-muted-foreground">
+                <p className="truncate text-[12px] text-muted-foreground">
                   {SERVICE_TYPE_LABELS[pro.lastServiceType]}
-                </span>
+                </p>
               )}
-            </Link>
-          )
-        })}
-      </div>
-    </section>
+            </div>
+
+            {recurring && (
+              <span
+                className="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-[5px] text-[11px] font-bold"
+                style={{ background: "#FBEDE8", color: CORAL }}
+              >
+                <Heart className="size-3" fill="currentColor" />
+                Recorrente
+              </span>
+            )}
+          </Link>
+        )
+      })}
+    </div>
   )
 }

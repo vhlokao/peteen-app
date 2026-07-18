@@ -1,11 +1,12 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Loader2, AlertCircle, PawPrint, Check, Plus } from "lucide-react"
+import { Loader2, AlertCircle, PawPrint, Check, Plus, ChevronLeft } from "lucide-react"
 
 import {
   createPetAction,
@@ -29,6 +30,7 @@ import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { TutorStepBar } from "@/modules/tutor/components/tutor-step-bar"
 import { cn } from "@/lib/utils"
 
 const petFormSchema = z.object({
@@ -467,9 +469,11 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
     setJustCompleted(true)
   }
 
+  // Tela de sucesso — seção própria (raio/sombra diferentes da etapa de
+  // formulário), sem header/voltar/step-bar da etapa anterior.
   if (justCompleted) {
     return (
-      <div className="rounded-b-[44px] bg-[#FAFAF8] p-9 text-center">
+      <section className="rounded-[32px] border border-black/[.08] bg-white p-9 text-center shadow-[0_20px_40px_-22px_rgba(29,47,111,.25)]">
         <span
           className="mb-4 inline-grid size-16 place-items-center rounded-[20px] bg-[#E7F1EC]"
           style={{ color: GREEN }}
@@ -494,12 +498,29 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
         >
           Encontrar profissional
         </button>
-      </div>
+      </section>
     )
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} noValidate>
+    <section className="overflow-hidden rounded-[44px] border border-black/5 bg-[#FAFAF8] shadow-[0_30px_60px_-24px_rgba(29,47,111,.30)]">
+      <header className="bg-white px-6 pb-4 pt-5">
+        <div className="mb-4 flex items-center gap-3">
+          <Link href="/onboarding/tutor" aria-label="Voltar" className="text-[#1A1A1A]">
+            <ChevronLeft className="size-5" />
+          </Link>
+          <TutorStepBar total={2} current={2} />
+          <span className="text-xs font-bold text-[#8A897F]">2/2</span>
+        </div>
+        <h1 className="text-[20px] font-extrabold tracking-[-0.02em] text-[#1A1A1A]">
+          Quem é seu melhor amigo?
+        </h1>
+        <p className="text-[12.5px] text-[#8A897F]">
+          Vamos conhecer seu pet. É necessário cadastrar ao menos um para continuar.
+        </p>
+      </header>
+
+      <form onSubmit={handleSubmit(onSubmit)} noValidate>
       <div className="px-6 pb-6 pt-5">
         {serverError ? (
           <div
@@ -616,7 +637,8 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
           {isSubmitting ? "Salvando…" : "Concluir"}
         </button>
       </footer>
-    </form>
+      </form>
+    </section>
   )
 }
 

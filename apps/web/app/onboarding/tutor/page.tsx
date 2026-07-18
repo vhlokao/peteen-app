@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 
 import { getAuthContext } from "@/modules/identity/application/get-session";
-import { TutorStepBar } from "../_components/tutor-step-bar";
+import { TutorStepBar } from "@/modules/tutor/components/tutor-step-bar";
 import { TutorProfileForm } from "@/modules/tutor/components/tutor-profile-form";
 
 export const metadata: Metadata = { title: "Criar conta — Perfil de Tutor" };

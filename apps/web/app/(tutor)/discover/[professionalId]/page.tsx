@@ -140,7 +140,7 @@ export default async function ProfessionalProfilePage({
 
               <div className="relative mb-5 flex items-center justify-between">
                 <BackButton searchParams={query} fallbackHref="/discover" />
-                <ShareButton />
+                <ShareButton professionalName={profile.displayName} />
               </div>
 
               <div className="relative">

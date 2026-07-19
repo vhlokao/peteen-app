@@ -92,6 +92,7 @@ export function ProfessionalProfileTrustCard({
         viewerRelationshipCompletedServices={viewerRelationshipCompletedServices}
         max={6}
         className="mt-3"
+        tone={isCover ? "dark" : "light"}
       />
 
       {partnerEndorsements.length > 0 && (

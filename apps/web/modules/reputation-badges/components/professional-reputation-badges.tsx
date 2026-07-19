@@ -10,6 +10,8 @@ type ProfessionalReputationBadgesProps = {
   /** Visão tutor: completedServices do relacionamento pessoal */
   viewerRelationshipCompletedServices?: number
   className?: string
+  /** "dark" — versão clara sobre fundo escuro. Default "light" preserva o visual atual. */
+  tone?: "light" | "dark"
 }
 
 export async function ProfessionalReputationBadges({
@@ -18,6 +20,7 @@ export async function ProfessionalReputationBadges({
   max = 4,
   viewerRelationshipCompletedServices,
   className,
+  tone = "light",
 }: ProfessionalReputationBadgesProps) {
   const badges =
     preloaded ??
@@ -31,7 +34,7 @@ export async function ProfessionalReputationBadges({
   return (
     <div className={`flex flex-wrap gap-1.5 ${className ?? ""}`}>
       {badges.map((badge) => (
-        <ReputationBadgePill key={badge.type} badge={badge} />
+        <ReputationBadgePill key={badge.type} badge={badge} tone={tone} />
       ))}
     </div>
   )

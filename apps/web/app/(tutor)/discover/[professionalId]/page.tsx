@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Share2, Check } from "lucide-react"
+import { Check } from "lucide-react"
 import { notFound } from "next/navigation"
 
 import { getProfessionalPublicProfileAction } from "@/modules/professional/application/actions"
@@ -28,6 +28,7 @@ import { ProfessionalServicesList } from "@/components/professional-profile/Prof
 import { ProfessionalHistorySummary } from "@/components/professional-profile/ProfessionalHistorySummary"
 import { ProfessionalStickyCTA } from "@/components/professional-profile/ProfessionalStickyCTA"
 import { BackButton } from "./BackButton"
+import { ShareButton } from "./ShareButton"
 
 const NAVY = "#1D2F6F"
 const GREEN = "#40916C"
@@ -139,14 +140,7 @@ export default async function ProfessionalProfilePage({
 
               <div className="relative mb-5 flex items-center justify-between">
                 <BackButton searchParams={query} fallbackHref="/discover" />
-                <button
-                  type="button"
-                  aria-label="Compartilhar"
-                  onClick={() => {}}
-                  className="grid size-[38px] shrink-0 place-items-center rounded-xl bg-white/[.12] text-white transition-colors hover:bg-white/[.18]"
-                >
-                  <Share2 className="size-[18px]" />
-                </button>
+                <ShareButton />
               </div>
 
               <div className="relative">

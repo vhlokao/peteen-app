@@ -11,7 +11,7 @@ export function PublicAvailabilityCard({ days }: Props) {
   const hasAvailability = days.length > 0
 
   return (
-    <section className="mb-6 rounded-2xl border border-border bg-card p-5">
+    <section className="mb-6 rounded-[15px] border border-border/70 bg-card p-5">
       <div className="mb-3 flex items-center gap-2">
         <CalendarClock className="size-4 text-muted-foreground" />
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

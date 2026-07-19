@@ -7,6 +7,10 @@ import {
 } from "@/modules/relationship/domain/constants"
 import type { RelationshipLevel } from "@/modules/relationship/domain/types"
 
+const NAVY_SOFT = "#2C4893"
+const CORAL = "#E07A5F"
+const GREEN = "#40916C"
+
 type MyRelationship = {
   completedServices: number
   relationshipLevel: RelationshipLevel
@@ -43,15 +47,21 @@ export function ProfessionalHistorySummary({
   return (
     <section className="mb-5 space-y-3">
       {hasMyRelationship && myRelationship && (
-        <div className="flex items-center gap-3 rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/8 to-primary/[0.03] px-4 py-3.5 shadow-[var(--shadow-card)]">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-lg" aria-hidden>
+        <div
+          className="flex items-center gap-3 rounded-2xl px-4 py-3.5"
+          style={{ background: "#FBEDE8" }}
+        >
+          <span
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white text-lg"
+            aria-hidden
+          >
             {RELATIONSHIP_LEVEL_ICONS[myRelationship.relationshipLevel]}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">
+            <p className="text-sm font-bold text-foreground">
               {formatRelationshipSummary(displayName, myRelationship.completedServices)}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs" style={{ color: CORAL }}>
               {RELATIONSHIP_LEVEL_LABELS[myRelationship.relationshipLevel]}
               {myRelationship.lastServiceAt && (
                 <>
@@ -69,38 +79,32 @@ export function ProfessionalHistorySummary({
 
       {hasAnalytics && analytics && (
         <div className="grid grid-cols-3 gap-2.5">
-          <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/30 p-3 text-center">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
-              <Users className="size-3.5 text-primary" />
-            </span>
-            <span className="text-base font-bold tabular-nums text-foreground">
+          <div className="rounded-[15px] border border-border/70 bg-card p-3 text-center">
+            <div className="text-[20px] font-extrabold leading-none" style={{ color: NAVY_SOFT }}>
               {analytics.totalRelationships}
-            </span>
-            <span className="text-[0.6rem] leading-tight text-muted-foreground">
+            </div>
+            <div className="mt-1.5 flex items-center justify-center gap-1 text-[10.5px] font-semibold leading-tight text-muted-foreground">
+              <Users className="size-3" />
               tutores atendidos
-            </span>
+            </div>
           </div>
-          <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/30 p-3 text-center">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
-              <Repeat2 className="size-3.5 text-primary" />
-            </span>
-            <span className="text-base font-bold tabular-nums text-foreground">
+          <div className="rounded-[15px] border border-border/70 bg-card p-3 text-center">
+            <div className="text-[20px] font-extrabold leading-none" style={{ color: CORAL }}>
               {analytics.recurringClients}
-            </span>
-            <span className="text-[0.6rem] leading-tight text-muted-foreground">
+            </div>
+            <div className="mt-1.5 flex items-center justify-center gap-1 text-[10.5px] font-semibold leading-tight text-muted-foreground">
+              <Repeat2 className="size-3" />
               voltaram 3+ vezes
-            </span>
+            </div>
           </div>
-          <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-border/60 bg-muted/30 p-3 text-center">
-            <span className="flex size-7 items-center justify-center rounded-lg bg-primary/10">
-              <Heart className="size-3.5 text-primary" />
-            </span>
-            <span className="text-base font-bold tabular-nums text-foreground">
+          <div className="rounded-[15px] border border-border/70 bg-card p-3 text-center">
+            <div className="text-[20px] font-extrabold leading-none" style={{ color: GREEN }}>
               {analytics.trustedClients}
-            </span>
-            <span className="text-[0.6rem] leading-tight text-muted-foreground">
+            </div>
+            <div className="mt-1.5 flex items-center justify-center gap-1 text-[10.5px] font-semibold leading-tight text-muted-foreground">
+              <Heart className="size-3" />
               relações confiáveis
-            </span>
+            </div>
           </div>
         </div>
       )}

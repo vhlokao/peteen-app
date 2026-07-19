@@ -7,6 +7,8 @@
 
 import type { BadgeData, VerificationData } from "@/modules/badges/domain/types"
 
+const NAVY_SOFT = "#2C4893"
+
 type Props = {
   badges:        BadgeData[]
   verifications: VerificationData[]
@@ -69,7 +71,8 @@ export function BadgeList({ badges, verifications }: Props) {
             {activeVerifications.map((v) => (
               <span
                 key={v.type}
-                className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/8 px-2.5 py-1 text-xs font-medium text-primary"
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold"
+                style={{ color: NAVY_SOFT, background: "#E8EEF6" }}
                 title={v.description}
               >
                 <span aria-hidden>{v.emoji}</span>

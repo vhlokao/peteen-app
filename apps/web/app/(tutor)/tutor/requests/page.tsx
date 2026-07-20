@@ -45,14 +45,17 @@ export default async function TutorRequestsPage() {
   const requests = result.success ? result.data : []
   const { active, previous } = groupRequests(requests)
 
+  const activeSubtitle =
+    active.length === 0
+      ? "Nenhum atendimento ativo"
+      : `${active.length} atendimento${active.length > 1 ? "s" : ""} ativo${active.length > 1 ? "s" : ""}`
+
   return (
     <div className="page-container space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Seus pedidos</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Acompanhe cada cuidado do início ao fim.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Meus pedidos</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{activeSubtitle}</p>
         </div>
         <Link href="/discover" className={buttonVariants({ size: "sm" })}>
           Nova solicitação
@@ -72,7 +75,7 @@ export default async function TutorRequestsPage() {
           previousCount={previous.length}
           activeContent={
             active.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-3">
                 {active.map((req) => (
                   <TutorRequestCard key={req.id} request={req} />
                 ))}
@@ -80,14 +83,15 @@ export default async function TutorRequestsPage() {
             ) : (
               <EmptyState
                 icon={<Search className="size-7" />}
-                title="Você não tem pedidos em andamento"
-                action={{ label: "Buscar profissionais", href: "/discover" }}
+                title="Nenhum atendimento ativo"
+                description="Quando você solicitar um atendimento, ele aparece aqui."
+                action={{ label: "Encontrar profissional", href: "/discover" }}
               />
             )
           }
           previousContent={
             previous.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-col gap-3">
                 {previous.map((req) => (
                   <TutorRequestCard key={req.id} request={req} />
                 ))}
@@ -95,7 +99,8 @@ export default async function TutorRequestsPage() {
             ) : (
               <EmptyState
                 icon={<ClipboardList className="size-7" />}
-                title="Seus atendimentos concluídos aparecerão aqui"
+                title="Nada por aqui ainda"
+                description="Seus atendimentos anteriores vão ficar guardados aqui."
               />
             )
           }

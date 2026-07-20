@@ -93,3 +93,23 @@ export const REQUEST_STATUS_TONE_CLASS: Record<RequestStatusTone, string> = {
 export function isActiveRequestStatus(status: RequestStatus): boolean {
   return REQUEST_STATUS_META[status].isActive
 }
+
+/**
+ * Cores do badge de status (reskin visual) — keyed por status, não por tone.
+ * Separado de REQUEST_STATUS_TONE_CLASS porque o agrupamento visual novo não
+ * bate 1:1 com os tones existentes (ex.: CANCELLED_BY_TUTOR e EXPIRED
+ * compartilhavam o tone "neutral" mas agora têm cores diferentes).
+ */
+export const REQUEST_STATUS_COLORS: Record<
+  RequestStatus,
+  { bg: string; fg: string; dot: string }
+> = {
+  PENDING: { bg: "#FBF1DC", fg: "#9A6F16", dot: "#E0A93B" },
+  ACCEPTED: { bg: "#E7F1EC", fg: "#2F6B4F", dot: "#40916C" },
+  IN_PROGRESS: { bg: "#E8EEF6", fg: "#243B7A", dot: "#2C4893" },
+  COMPLETED: { bg: "#F0EEE8", fg: "#6B6B63", dot: "#8A897F" },
+  CANCELLED_BY_TUTOR: { bg: "#FBEDE8", fg: "#B4523F", dot: "#C7756A" },
+  CANCELLED_BY_PROFESSIONAL: { bg: "#FBEDE8", fg: "#B4523F", dot: "#C7756A" },
+  DISPUTED: { bg: "#FBF1DC", fg: "#9A6F16", dot: "#E0A93B" },
+  EXPIRED: { bg: "#F0EEE8", fg: "#6B6B63", dot: "#8A897F" },
+}

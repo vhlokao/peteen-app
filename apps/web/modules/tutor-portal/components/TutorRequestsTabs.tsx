@@ -4,6 +4,8 @@ import { useState, type ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
+const NAVY = "#1D2F6F"
+
 type TutorRequestsTabsProps = {
   activeCount: number
   previousCount: number
@@ -27,20 +29,26 @@ export function TutorRequestsTabs({
 
   const tabClass = (isActive: boolean) =>
     cn(
-      "flex-1 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
-      isActive ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+      "flex-1 rounded-full px-4 py-1.5 text-sm font-bold transition-colors",
+      isActive ? "text-white shadow-sm" : "text-muted-foreground"
     )
 
   return (
     <div>
-      <div className="mb-4 inline-flex w-full gap-1 rounded-full border border-border/70 bg-muted/40 p-1 sm:w-auto">
-        <button type="button" onClick={() => setTab("active")} className={tabClass(tab === "active")}>
+      <div className="mb-4 inline-flex w-full gap-1 rounded-full bg-muted/50 p-1 sm:w-auto">
+        <button
+          type="button"
+          onClick={() => setTab("active")}
+          className={tabClass(tab === "active")}
+          style={tab === "active" ? { background: NAVY } : undefined}
+        >
           Ativos{activeCount > 0 ? ` (${activeCount})` : ""}
         </button>
         <button
           type="button"
           onClick={() => setTab("previous")}
           className={tabClass(tab === "previous")}
+          style={tab === "previous" ? { background: NAVY } : undefined}
         >
           Anteriores{previousCount > 0 ? ` (${previousCount})` : ""}
         </button>

@@ -4,6 +4,8 @@ import { Bell, CheckCircle2 } from "lucide-react"
 import { buttonVariants } from "@/components/ui/button"
 import type { PartnerVerificationStatus } from "@/modules/partners/domain/types"
 
+const CORAL = "#E07A5F"
+
 type PartnerAttentionCardProps = {
   verificationStatus: PartnerVerificationStatus
 }
@@ -16,13 +18,19 @@ type PartnerAttentionCardProps = {
 export function PartnerAttentionCard({ verificationStatus }: PartnerAttentionCardProps) {
   if (verificationStatus === "PENDING_VERIFICATION") {
     return (
-      <section className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 to-primary/[0.02] p-5 shadow-[var(--shadow-card)]">
+      <section
+        className="rounded-2xl border p-5 shadow-[var(--shadow-card)]"
+        style={{ borderColor: `${CORAL}33`, background: `linear-gradient(135deg, ${CORAL}14, ${CORAL}03)` }}
+      >
         <div className="flex items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+          <span
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: `${CORAL}22`, color: CORAL }}
+          >
             <Bell className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: CORAL }}>
               Atenção agora
             </p>
             <p className="mt-0.5 text-base font-semibold text-foreground">
@@ -39,13 +47,19 @@ export function PartnerAttentionCard({ verificationStatus }: PartnerAttentionCar
 
   if (verificationStatus === "NONE") {
     return (
-      <section className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 to-primary/[0.02] p-5 shadow-[var(--shadow-card)]">
+      <section
+        className="rounded-2xl border p-5 shadow-[var(--shadow-card)]"
+        style={{ borderColor: `${CORAL}33`, background: `linear-gradient(135deg, ${CORAL}14, ${CORAL}03)` }}
+      >
         <div className="flex items-start gap-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+          <span
+            className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+            style={{ background: `${CORAL}22`, color: CORAL }}
+          >
             <Bell className="size-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+            <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: CORAL }}>
               Atenção agora
             </p>
             <p className="mt-0.5 text-base font-semibold text-foreground">
@@ -56,7 +70,11 @@ export function PartnerAttentionCard({ verificationStatus }: PartnerAttentionCar
             </p>
           </div>
         </div>
-        <Link href="/partner/profile" className={buttonVariants({ size: "sm", className: "mt-4 w-full" })}>
+        <Link
+          href="/partner/profile"
+          className={buttonVariants({ size: "sm", className: "mt-4 w-full" })}
+          style={{ background: CORAL }}
+        >
           Solicitar verificação
         </Link>
       </section>

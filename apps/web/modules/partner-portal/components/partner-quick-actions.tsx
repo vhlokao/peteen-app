@@ -2,6 +2,8 @@ import Link from "next/link"
 import { BarChart3, ThumbsUp, User } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
+const NAVY = "#1D2F6F"
+
 const ACTIONS: { label: string; href: string; icon: LucideIcon }[] = [
   { label: "Recomendar", href: "/partner/recommendations", icon: ThumbsUp },
   { label: "Métricas", href: "/partner/metrics", icon: BarChart3 },
@@ -24,7 +26,10 @@ export function PartnerQuickActions() {
             href={href}
             className="flex flex-col items-center gap-2 rounded-2xl border border-border/70 bg-card p-4 text-center shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
           >
-            <span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <span
+              className="flex size-10 items-center justify-center rounded-xl"
+              style={{ background: `${NAVY}14`, color: NAVY }}
+            >
               <Icon className="size-5" />
             </span>
             <span className="text-sm font-medium text-foreground">{label}</span>

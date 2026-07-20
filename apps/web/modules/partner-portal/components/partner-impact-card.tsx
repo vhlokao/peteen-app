@@ -1,5 +1,7 @@
 import { Network } from "lucide-react"
 
+const NAVY = "#1D2F6F"
+
 type PartnerImpactCardProps = {
   activeRecommendations: number
   verifiedRecommended: number
@@ -18,7 +20,10 @@ export function PartnerImpactCard({
   return (
     <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
       <div className="flex items-center gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <span
+          className="flex size-10 shrink-0 items-center justify-center rounded-xl"
+          style={{ background: `${NAVY}14`, color: NAVY }}
+        >
           <Network className="size-5" />
         </span>
         <div className="min-w-0 flex-1">

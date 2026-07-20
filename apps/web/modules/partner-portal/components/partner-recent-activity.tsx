@@ -14,6 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { buttonVariants } from "@/components/ui/button"
 import type { PartnerActivityItem, PartnerActivityType } from "../domain/types"
 
+const NAVY = "#1D2F6F"
+
 const ACTIVITY_ICONS: Record<PartnerActivityType, typeof ThumbsUp> = {
   "recommendation.created": ThumbsUp,
   "recommendation.removed": ThumbsDown,
@@ -52,8 +54,11 @@ export function PartnerRecentActivity({
               const Icon = ACTIVITY_ICONS[item.type]
               const content = (
                 <>
-                  <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-muted">
-                    <Icon className="size-4 text-muted-foreground" />
+                  <span
+                    className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full"
+                    style={{ background: `${NAVY}14`, color: NAVY }}
+                  >
+                    <Icon className="size-4" />
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-foreground">

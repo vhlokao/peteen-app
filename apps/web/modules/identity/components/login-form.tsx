@@ -103,8 +103,11 @@ export function LoginForm({ errorCode }: LoginFormProps) {
     setServerError(null);
     startPasswordTransition(async () => {
       try {
-        await signInWithPassword(email, password);
-        // signInWithPassword chama redirect() internamente
+        const result = await signInWithPassword(email, password);
+        if (!result.success) {
+          setServerError(result.error);
+        }
+        // se success, signInWithPassword chama redirect() internamente
       } catch (err) {
         const message = err instanceof Error ? err.message : "";
         if (!message.includes("NEXT_REDIRECT")) {

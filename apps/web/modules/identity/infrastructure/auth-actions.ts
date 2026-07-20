@@ -52,9 +52,18 @@ export async function signInWithGoogle() {
  * Uso: ambiente de desenvolvimento com usuários criados manualmente no Supabase Auth.
  * Fluxo: credenciais → sessão imediata → sync Prisma → /dashboard.
  *
+ * Credenciais inválidas são um caso esperado (usuário errou a senha), não uma
+ * exceção — por isso retorna um resultado tipado em vez de throw. Um throw
+ * não-tratado numa Server Action vira, em produção, o erro genérico "An error
+ * occurred in the Server Components render" no client (Next sanitiza a
+ * mensagem real), escondendo o motivo de verdade do usuário.
+ *
  * Não use em produção sem revisão de segurança (rate limiting, lockout, etc.).
  */
-export async function signInWithPassword(email: string, password: string) {
+export async function signInWithPassword(
+  email: string,
+  password: string
+): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -62,8 +71,12 @@ export async function signInWithPassword(email: string, password: string) {
     password,
   });
 
-  if (error || !data.user) {
-    throw new Error(error?.message ?? "Credenciais inválidas.");
+  if (error) {
+    return { success: false, error: "E-mail ou senha incorretos. Tente novamente." };
+  }
+
+  if (!data.user) {
+    return { success: false, error: "Não foi possível autenticar. Tente novamente." };
   }
 
   // Sincroniza com Prisma — idempotente, mesmo padrão do callback OAuth

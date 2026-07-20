@@ -21,6 +21,8 @@ import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { AvatarUploadButton } from "./AvatarUploadButton"
 import { cn } from "@/lib/utils"
 
 const NAVY = "#1D2F6F"
@@ -121,6 +123,13 @@ export function ProfessionalProfileEditForm({
   // Gate do botão Salvar — mesma regra de validade do schema Zod (>= 10 dígitos).
   const isPhoneValid = (watch("phone") ?? "").replace(/\D/g, "").length >= 10
 
+  const initials = profile.displayName
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+
   if (!editing) {
     return (
       <div className="flex items-start justify-between gap-3">
@@ -163,6 +172,25 @@ export function ProfessionalProfileEditForm({
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-6">
+      <div className="flex items-center gap-4">
+        <div className="relative shrink-0">
+          <Avatar className="size-16 rounded-2xl">
+            {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.displayName} />}
+            <AvatarFallback className="rounded-2xl bg-primary/10 text-lg font-extrabold text-primary">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <AvatarUploadButton
+            professionalId={profile.id}
+            userId={profile.userId}
+            className="absolute -bottom-1 -right-1"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Foto de perfil. JPEG, PNG, WEBP ou GIF, até 5MB.
+        </p>
+      </div>
+
       {serverError ? (
         <div
           role="alert"

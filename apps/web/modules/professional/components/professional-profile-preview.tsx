@@ -8,7 +8,7 @@ import {
   type ProfessionalProfileData,
 } from "@/modules/professional/domain/types"
 import { resolvePublicLocation } from "@/modules/location"
-import { ProfessionalAvatarCameraButton } from "./professional-avatar-camera-button"
+import { AvatarUploadButton } from "./AvatarUploadButton"
 
 const NAVY = "#1D2F6F"
 
@@ -19,8 +19,8 @@ const NAVY = "#1D2F6F"
  *
  * "Ver como tutor" reaproveita exatamente o mesmo link/target que antes era
  * "Ver perfil público" (buildDiscoverUrl, nova aba) — só o rótulo/visual
- * mudou. Botão de câmera é decorativo (upload de foto é funcionalidade
- * futura) — onClick vazio proposital.
+ * mudou. Botão de câmera agora é funcional (AvatarUploadButton) — upload
+ * real via Supabase Storage.
  */
 export function ProfessionalProfilePreview({ profile }: { profile: ProfessionalProfileData }) {
   const initials = profile.displayName
@@ -62,7 +62,11 @@ export function ProfessionalProfilePreview({ profile }: { profile: ProfessionalP
               {initials}
             </AvatarFallback>
           </Avatar>
-          <ProfessionalAvatarCameraButton />
+          <AvatarUploadButton
+            professionalId={profile.id}
+            userId={profile.userId}
+            className="absolute -bottom-1 -right-1"
+          />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-lg font-extrabold text-white">{profile.displayName}</p>

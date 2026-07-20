@@ -25,7 +25,15 @@ import type {
 type RequestActionsProps = {
   requestId: string
   currentStatus: RequestStatus
+  /** Data agendada do serviço — bloqueia "Iniciar atendimento" antes dela. */
+  scheduledAt: Date | null
 }
+
+const SCHEDULED_DATE_FORMAT = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mensagens de sucesso por transição
@@ -45,9 +53,17 @@ const SUCCESS_MESSAGES: Partial<Record<RequestStatus, string>> = {
 export function RequestActions({
   requestId,
   currentStatus,
+  scheduledAt,
 }: RequestActionsProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+
+  // Bloqueio de "Iniciar atendimento" antes da data agendada (comparação por dia).
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const scheduled = scheduledAt ? new Date(scheduledAt) : null
+  if (scheduled) scheduled.setHours(0, 0, 0, 0)
+  const beforeDate = scheduled ? today < scheduled : false
 
   function handleAction(
     action: () => Promise<ActionResult<ServiceRequestData>>,
@@ -118,23 +134,30 @@ export function RequestActions({
 
   if (currentStatus === "ACCEPTED") {
     return (
-      <Button
-        className="w-full gap-2"
-        onClick={() =>
-          handleAction(
-            () => startServiceRequestAction(requestId),
-            "IN_PROGRESS"
-          )
-        }
-        disabled={isPending}
-      >
-        {isPending ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <Play className="size-4" />
+      <div className="flex flex-col gap-1.5">
+        <Button
+          className="w-full gap-2"
+          onClick={() =>
+            handleAction(
+              () => startServiceRequestAction(requestId),
+              "IN_PROGRESS"
+            )
+          }
+          disabled={isPending || beforeDate}
+        >
+          {isPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Play className="size-4" />
+          )}
+          Iniciar atendimento
+        </Button>
+        {beforeDate && scheduled && (
+          <p className="text-center text-xs text-muted-foreground">
+            Disponível em {SCHEDULED_DATE_FORMAT.format(scheduled)}
+          </p>
         )}
-        Iniciar atendimento
-      </Button>
+      </div>
     )
   }
 

@@ -109,7 +109,11 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
             <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Ações
             </h2>
-            <RequestActions requestId={id} currentStatus={request.status} />
+            <RequestActions
+              requestId={id}
+              currentStatus={request.status}
+              scheduledAt={request.scheduledAt}
+            />
           </section>
         )}
 

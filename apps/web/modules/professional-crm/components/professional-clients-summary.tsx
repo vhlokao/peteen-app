@@ -1,20 +1,24 @@
 import Link from "next/link"
-import { PawPrint, Repeat2, Users } from "lucide-react"
+import { CheckCircle2, Repeat2, Users } from "lucide-react"
+
+const CORAL = "#E07A5F"
+const NAVY = "#1D2F6F"
+const GREEN = "#40916C"
 
 type ProfessionalClientsSummaryProps = {
   uniqueClients: number
   recurringClients: number
-  petsAttended: number
+  completedServices: number
 }
 
 /**
- * Resumo humano de clientes/recorrência — só números diretos, sem
- * expor peso de recorrência, fórmula ou ranking técnico.
+ * "Reputação humana" — três números reais (sem expor peso de recorrência,
+ * fórmula ou ranking técnico), coral/navy/green como no restante do reskin.
  */
 export function ProfessionalClientsSummary({
   uniqueClients,
   recurringClients,
-  petsAttended,
+  completedServices,
 }: ProfessionalClientsSummaryProps) {
   if (uniqueClients === 0) return null
 
@@ -24,29 +28,25 @@ export function ProfessionalClientsSummary({
       className="block rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
     >
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-        Clientes e recorrência
+        Reputação humana
       </p>
       <div className="flex flex-col gap-2.5 text-sm text-foreground">
         <p className="flex items-center gap-2">
-          <Users className="size-4 shrink-0 text-primary" />
-          {uniqueClients === 1
-            ? "1 tutor já contratou você"
-            : `${uniqueClients} tutores já contrataram você`}
+          <Repeat2 className="size-4 shrink-0" style={{ color: CORAL }} />
+          {recurringClients === 1
+            ? "1 tutor voltou a contratar você"
+            : `${recurringClients} tutores voltaram a contratar você`}
         </p>
-        {recurringClients > 0 && (
-          <p className="flex items-center gap-2">
-            <Repeat2 className="size-4 shrink-0 text-primary" />
-            {recurringClients === 1
-              ? "1 tutor voltou a contratar você"
-              : `${recurringClients} tutores voltaram a contratar você`}
-          </p>
-        )}
-        {petsAttended > 0 && (
-          <p className="flex items-center gap-2">
-            <PawPrint className="size-4 shrink-0 text-primary" />
-            {petsAttended === 1 ? "1 pet já foi atendido" : `${petsAttended} pets já foram atendidos`}
-          </p>
-        )}
+        <p className="flex items-center gap-2">
+          <CheckCircle2 className="size-4 shrink-0" style={{ color: NAVY }} />
+          {completedServices === 1
+            ? "1 atendimento concluído"
+            : `${completedServices} atendimentos concluídos`}
+        </p>
+        <p className="flex items-center gap-2">
+          <Users className="size-4 shrink-0" style={{ color: GREEN }} />
+          {uniqueClients === 1 ? "1 cliente único" : `${uniqueClients} clientes únicos`}
+        </p>
       </div>
     </Link>
   )

@@ -1,22 +1,19 @@
 import Link from "next/link"
-import { BarChart3, CalendarClock, Inbox, Star, Users, Wrench } from "lucide-react"
+import { User, Wrench } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
-const PRIMARY_ACTIONS: { label: string; href: string; icon: LucideIcon }[] = [
-  { label: "Solicitações", href: "/requests", icon: Inbox },
-  { label: "Agenda", href: "/professional/agenda", icon: CalendarClock },
-  { label: "Clientes", href: "/professional/clients", icon: Users },
-  { label: "Serviços", href: "/professional/services", icon: Wrench },
-]
+const NAVY = "#1D2F6F"
 
-const SECONDARY_ACTIONS: { label: string; href: string; icon: LucideIcon }[] = [
-  { label: "Avaliações", href: "/professional/reviews", icon: Star },
-  { label: "Métricas", href: "/professional/metricas", icon: BarChart3 },
+const ACTIONS: { label: string; href: string; icon: LucideIcon }[] = [
+  { label: "Meus serviços", href: "/professional/services", icon: Wrench },
+  { label: "Meu perfil", href: "/professional/profile", icon: User },
 ]
 
 /**
- * Grid 2x2 de atalhos operacionais — visíveis sem abrir o AvatarMenu.
- * Rotas reais já existentes no projeto, nenhuma nova.
+ * Atalhos da Home — reskin: reduzido aos dois destinos pedidos no design
+ * (serviços e perfil). As demais rotas (solicitações, agenda, clientes,
+ * avaliações, métricas) continuam acessíveis por outros pontos de
+ * navegação, só não ficam mais atalhadas aqui.
  */
 export function ProfessionalQuickActions() {
   return (
@@ -25,28 +22,16 @@ export function ProfessionalQuickActions() {
         Ações rápidas
       </p>
       <div className="grid grid-cols-2 gap-3">
-        {PRIMARY_ACTIONS.map(({ label, href, icon: Icon }) => (
+        {ACTIONS.map(({ label, href, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             className="flex flex-col items-center gap-2 rounded-2xl border border-border/70 bg-card p-4 text-center shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
           >
-            <span className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <span className="flex size-10 items-center justify-center rounded-xl" style={{ background: `${NAVY}14`, color: NAVY }}>
               <Icon className="size-5" />
             </span>
             <span className="text-sm font-medium text-foreground">{label}</span>
-          </Link>
-        ))}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {SECONDARY_ACTIONS.map(({ label, href, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/25 hover:text-primary"
-          >
-            <Icon className="size-3.5 shrink-0" />
-            {label}
           </Link>
         ))}
       </div>

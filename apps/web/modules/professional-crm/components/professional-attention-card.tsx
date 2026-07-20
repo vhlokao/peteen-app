@@ -6,6 +6,8 @@ import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/do
 import { SPECIES_LABELS } from "@/modules/tutor/domain/types"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
 
+const CORAL = "#E07A5F"
+
 type ProfessionalAttentionCardProps = {
   pendingRequests: ServiceRequestWithParticipants[]
 }
@@ -26,7 +28,7 @@ export function ProfessionalAttentionCard({ pendingRequests }: ProfessionalAtten
             <Bell className="size-5" />
           </span>
           <p className="text-sm font-medium text-foreground">
-            Nenhuma solicitação aguardando resposta.
+            Nenhuma solicitação nova. Quando alguém pedir um atendimento, aparece aqui.
           </p>
         </div>
       </section>
@@ -37,13 +39,19 @@ export function ProfessionalAttentionCard({ pendingRequests }: ProfessionalAtten
   const serviceLabel = SERVICE_TYPE_LABELS[first.serviceType as ServiceType]
 
   return (
-    <section className="rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/10 to-primary/[0.02] p-5 shadow-[var(--shadow-card)]">
+    <section
+      className="rounded-2xl border p-5 shadow-[var(--shadow-card)]"
+      style={{ borderColor: `${CORAL}33`, background: `linear-gradient(135deg, ${CORAL}14, ${CORAL}03)` }}
+    >
       <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+        <span
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+          style={{ background: `${CORAL}22`, color: CORAL }}
+        >
           <Bell className="size-5" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-widest text-primary">
+          <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: CORAL }}>
             Atenção agora
           </p>
           <p className="mt-0.5 text-base font-semibold text-foreground">
@@ -61,6 +69,7 @@ export function ProfessionalAttentionCard({ pendingRequests }: ProfessionalAtten
       <Link
         href="/requests"
         className={buttonVariants({ size: "sm", className: "mt-4 w-full" })}
+        style={{ background: CORAL }}
       >
         Ver solicitações
       </Link>

@@ -1,4 +1,6 @@
 import type { Metadata } from "next"
+import Link from "next/link"
+import { Bell } from "lucide-react"
 
 import { requireProfessionalContext } from "@/modules/professional-crm/application/require-professional"
 import {
@@ -20,6 +22,8 @@ import { ProfessionalPublicProfileCTA } from "@/modules/professional-crm/compone
 export const metadata: Metadata = {
   title: "Portal do profissional",
 }
+
+const NAVY = "#1D2F6F"
 
 const OPEN_APPOINTMENT_STATUSES = new Set(["ACCEPTED", "IN_PROGRESS"])
 
@@ -65,15 +69,38 @@ export default async function ProfessionalHomePage() {
   const nextAppointment = pickNextAppointment(requests)
 
   const firstName = profile.displayName.split(" ")[0] || profile.displayName
+  const initials = profile.displayName
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
 
   return (
     <div className="page-container max-w-4xl space-y-6 pb-4">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Olá, {firstName}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Veja o que precisa da sua atenção hoje.
-        </p>
-      </header>
+      <section
+        className="relative overflow-hidden rounded-[24px] p-5"
+        style={{ background: NAVY }}
+      >
+        <span className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-white/[.08]" />
+        <div className="relative flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-sm font-extrabold" style={{ color: NAVY }}>
+              {initials}
+            </span>
+            <div>
+              <p className="text-xs text-white/70">Olá,</p>
+              <p className="text-lg font-extrabold text-white">{firstName}</p>
+            </div>
+          </div>
+          <Link
+            href="/professional/notifications"
+            className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/[.12] text-white transition-colors hover:bg-white/[.18]"
+          >
+            <Bell className="size-5" />
+          </Link>
+        </div>
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-start">
         <div className="flex flex-col gap-5">
@@ -87,7 +114,7 @@ export default async function ProfessionalHomePage() {
           <ProfessionalClientsSummary
             uniqueClients={stats.uniqueClients}
             recurringClients={trustSummary?.recurringClientsCount ?? 0}
-            petsAttended={stats.petsAttended}
+            completedServices={stats.completedServices}
           />
 
           <ProfessionalMetricsRow

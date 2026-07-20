@@ -31,7 +31,16 @@ export function ProfessionalNextAppointmentCard({
 }: {
   appointment: ServiceRequestWithParticipants | null
 }) {
-  if (!appointment) return null
+  if (!appointment) {
+    return (
+      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          Próximo atendimento
+        </p>
+        <p className="text-sm font-medium text-foreground">Nada agendado para hoje. 🐾</p>
+      </section>
+    )
+  }
 
   const tone = PROFESSIONAL_REQUEST_STATUS_TONE[appointment.status]
   const initials = appointment.tutor.displayName

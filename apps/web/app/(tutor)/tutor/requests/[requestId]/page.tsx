@@ -1,11 +1,12 @@
 import type { Metadata } from "next"
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, CheckCircle2, Star } from "lucide-react"
+import { ArrowLeft, CheckCircle2, MessageCircle, Star } from "lucide-react"
 
 import { requireAuth } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { getServiceRequestDetailAction } from "@/modules/service-request/application/actions"
+import { getProfessionalPhoneByRequestId } from "@/modules/service-request/infrastructure/repository"
 import { getReviewForRequestAction } from "@/modules/review/application/actions"
 import { getMyRelationshipWithProfessional } from "@/modules/relationship/application/actions"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
@@ -44,6 +45,21 @@ function formatDateShort(date: Date): string {
     month: "short",
     year: "numeric",
   }).format(new Date(date))
+}
+
+/**
+ * Monta a URL do WhatsApp a partir do telefone cadastrado.
+ *
+ * O DDI 55 só é prefixado quando o número ainda não o tem. O onboarding
+ * sugere o formato "+55 11 9 9999-9999", então boa parte dos telefones já
+ * chega com o DDI — prefixar cegamente geraria "5555..." e link quebrado.
+ * A checagem é por comprimento (nacional com DDD = 10-11 dígitos; com DDI
+ * = 12-13), e não por "começa com 55", porque 55 também é o DDD do RS.
+ */
+function buildWhatsAppUrl(phone: string): string {
+  const digits = phone.replace(/\D/g, "")
+  const withCountryCode = digits.length >= 12 ? digits : `55${digits}`
+  return `https://wa.me/${withCountryCode}`
 }
 
 function SubmittedReview({
@@ -132,11 +148,19 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
   ])
   const canOpenDispute = !blockedDisputeStatuses.has(request.status)
 
-  const [existingReviewResult, myRelationship, dispute] = await Promise.all([
-    isCompleted && hasReview ? getReviewForRequestAction(requestId) : null,
-    getMyRelationshipWithProfessional(request.professional.id),
-    findDisputeByRequestId(requestId),
-  ])
+  const isAccepted = request.status === "ACCEPTED"
+
+  const [existingReviewResult, myRelationship, dispute, professionalPhone] =
+    await Promise.all([
+      isCompleted && hasReview ? getReviewForRequestAction(requestId) : null,
+      getMyRelationshipWithProfessional(request.professional.id),
+      findDisputeByRequestId(requestId),
+      // Contato só é buscado quando o profissional já aceitou — ownership
+      // validado dentro da própria query (tutorId).
+      isAccepted
+        ? getProfessionalPhoneByRequestId(requestId, tutorProfile.id)
+        : Promise.resolve(null),
+    ])
 
   const existingReview = existingReviewResult?.success ? existingReviewResult.data : null
 
@@ -166,6 +190,24 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
 
       <div className="flex flex-col gap-5">
         <TutorRequestNextStep status={request.status} hasReview={hasReview} />
+
+        {isAccepted && professionalPhone ? (
+          <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
+            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Contato
+            </h2>
+            <a
+              href={buildWhatsAppUrl(professionalPhone)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
+              style={{ backgroundColor: "#25D366" }}
+            >
+              <MessageCircle className="size-4" />
+              Chamar no WhatsApp
+            </a>
+          </section>
+        ) : null}
 
         <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
           <h2 className="mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">

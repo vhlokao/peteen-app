@@ -78,6 +78,30 @@ export async function findServiceRequestById(
 }
 
 /**
+ * Telefone do profissional vinculado a uma solicitação — consulta isolada.
+ *
+ * Existe separada (em vez de entrar em ServiceRequestWithParticipants) porque
+ * é um dado de contato sensível: só deve sair do banco quando o tutor dono da
+ * solicitação realmente precisa dele (ex.: contato por WhatsApp após o aceite).
+ * O filtro por `tutorId` na própria query garante o ownership — um tutor nunca
+ * recebe o telefone de uma solicitação que não é dele.
+ *
+ * Retorna null se a solicitação não existir, não pertencer ao tutor, ou se o
+ * profissional não tiver telefone cadastrado.
+ */
+export async function getProfessionalPhoneByRequestId(
+  requestId: string,
+  tutorId: string
+): Promise<string | null> {
+  const result = await prisma.serviceRequest.findFirst({
+    where: { id: requestId, tutorId },
+    select: { professional: { select: { phone: true } } },
+  })
+
+  return result?.professional.phone ?? null
+}
+
+/**
  * Busca request com dados dos participantes para exibição em listas e detalhes.
  * Inclui review associada para verificar se já foi avaliado.
  *

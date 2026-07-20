@@ -42,16 +42,6 @@ const professionalProfileEditSchema = z.object({
   neighborhood: z.string().max(100).optional(),
   city: z.string().min(2, "Cidade é obrigatória").max(100),
   state: z.string().length(2, "Use a sigla do estado (ex: SP)"),
-  avatarUrl: z
-    .string()
-    .url("Informe uma URL válida")
-    .max(500, "URL muito longa")
-    .optional()
-    .or(z.literal("")),
-  serviceRadiusKm: z
-    .number()
-    .min(1, "Raio mínimo de 1 km")
-    .max(200, "Raio máximo de 200 km"),
   serviceTypes: z
     .array(z.enum(SERVICE_TYPES))
     .min(1, "Selecione ao menos um tipo de serviço"),
@@ -84,8 +74,6 @@ export function ProfessionalProfileEditForm({
       neighborhood: profile.neighborhood ?? "",
       city: profile.city,
       state: profile.state,
-      avatarUrl: profile.avatarUrl ?? "",
-      serviceRadiusKm: profile.serviceRadiusKm ?? 10,
       serviceTypes: profile.serviceTypes,
       specializations: profile.specializations,
     },
@@ -97,7 +85,6 @@ export function ProfessionalProfileEditForm({
     const input: UpdateProfessionalProfileInput = {
       ...values,
       state: values.state.toUpperCase(),
-      avatarUrl: values.avatarUrl?.trim() || "",
       specializations: values.specializations,
     }
 
@@ -197,23 +184,6 @@ export function ProfessionalProfileEditForm({
         )}
       </FormField>
 
-      <FormField
-        name="avatarUrl"
-        label="URL da foto (opcional)"
-        error={errors.avatarUrl?.message}
-        description="Cole o link de uma imagem — upload direto não está disponível nesta versão."
-      >
-        {(field) => (
-          <Input
-            {...field}
-            {...register("avatarUrl")}
-            type="url"
-            placeholder="https://..."
-            disabled={isSubmitting}
-          />
-        )}
-      </FormField>
-
       <SectionLabel icon={<User className="size-3.5" />} label="Sobre você" />
 
       <FormField name="bio" label="Bio (opcional)" error={errors.bio?.message}>
@@ -299,25 +269,6 @@ export function ProfessionalProfileEditForm({
           <Input
             {...field}
             {...register("neighborhood")}
-            disabled={isSubmitting}
-          />
-        )}
-      </FormField>
-
-      <FormField
-        name="serviceRadiusKm"
-        label="Raio de atendimento (km)"
-        error={errors.serviceRadiusKm?.message}
-        description="Distância máxima que você atende a partir da sua localização."
-      >
-        {(field) => (
-          <Input
-            {...field}
-            {...register("serviceRadiusKm", { valueAsNumber: true })}
-            type="number"
-            min={1}
-            max={200}
-            step={1}
             disabled={isSubmitting}
           />
         )}

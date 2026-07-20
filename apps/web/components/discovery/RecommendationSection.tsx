@@ -46,8 +46,17 @@ type SectionProps = {
   blocks: RecommendationBlock[]
 }
 
+/** Mínimo de profissionais distintos para a seção valer a pena aparecer. */
+const MIN_DISTINCT_PROFESSIONALS = 3
+
+function countDistinctProfessionals(block: RecommendationBlock): number {
+  return new Set(block.professionals.map((p) => p.professionalId)).size
+}
+
 export function RecommendationSection({ blocks }: SectionProps) {
-  const active = blocks.filter((b) => b.professionals.length > 0)
+  const active = blocks.filter(
+    (b) => countDistinctProfessionals(b) >= MIN_DISTINCT_PROFESSIONALS
+  )
   if (active.length === 0) return null
 
   return (

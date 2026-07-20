@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Loader2, AlertCircle, MapPin, User, Briefcase, Phone, X } from "lucide-react"
+import { Loader2, AlertCircle, MapPin, User, Briefcase, Phone, Pencil, X } from "lucide-react"
 import { toast } from "sonner"
 
 import { updateProfessionalProfileAction } from "@/modules/professional/application/actions"
@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+
+const NAVY = "#1D2F6F"
 
 type ProfessionalProfileEditFormProps = {
   profile: ProfessionalProfileData
@@ -63,12 +65,15 @@ export function ProfessionalProfileEditForm({
 }: ProfessionalProfileEditFormProps) {
   const router = useRouter()
   const [serverError, setServerError] = useState<string | null>(null)
+  const [editing, setEditing] = useState(false)
 
   const {
     register,
     handleSubmit,
     control,
     setError,
+    reset,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<ProfessionalProfileEditValues>({
     resolver: zodResolver(professionalProfileEditSchema),
@@ -113,6 +118,55 @@ export function ProfessionalProfileEditForm({
 
     toast.success("Perfil atualizado com sucesso.")
     router.refresh()
+    setEditing(false)
+  }
+
+  function handleCancel() {
+    reset()
+    setServerError(null)
+    setEditing(false)
+  }
+
+  const bioLength = (watch("bio") ?? "").length
+
+  if (!editing) {
+    return (
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-1.5 text-sm">
+          <p>
+            <span className="text-muted-foreground">Nome: </span>
+            <span className="font-medium text-foreground">{profile.displayName}</span>
+          </p>
+          <p>
+            <span className="text-muted-foreground">Telefone: </span>
+            <span className="font-medium text-foreground">{profile.phone || "—"}</span>
+          </p>
+          <p>
+            <span className="text-muted-foreground">Local: </span>
+            <span className="font-medium text-foreground">
+              {profile.city}/{profile.state}
+            </span>
+          </p>
+          <p className="text-muted-foreground">
+            {profile.bio
+              ? profile.bio.length > 140
+                ? `${profile.bio.slice(0, 140)}…`
+                : profile.bio
+              : "Nenhuma bio adicionada."}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 gap-1.5"
+          onClick={() => setEditing(true)}
+        >
+          <Pencil className="size-3.5" />
+          Editar
+        </Button>
+      </div>
+    )
   }
 
   return (
@@ -164,12 +218,18 @@ export function ProfessionalProfileEditForm({
 
       <FormField name="bio" label="Bio (opcional)" error={errors.bio?.message}>
         {(field) => (
-          <Textarea
-            {...field}
-            {...register("bio")}
-            rows={4}
-            disabled={isSubmitting}
-          />
+          <div className="space-y-1">
+            <Textarea
+              {...field}
+              {...register("bio")}
+              rows={4}
+              disabled={isSubmitting}
+              className="focus-visible:border-[#1D2F6F] focus-visible:ring-[#1D2F6F]/20"
+            />
+            <p className="text-right text-xs tabular-nums text-muted-foreground">
+              {bioLength}/1000 caracteres
+            </p>
+          </div>
         )}
       </FormField>
 
@@ -328,16 +388,27 @@ export function ProfessionalProfileEditForm({
         />
       </div>
 
-      <Button type="submit" className="w-full gap-2" disabled={isSubmitting}>
-        {isSubmitting ? (
-          <>
-            <Loader2 className="size-4 animate-spin" />
-            Salvando...
-          </>
-        ) : (
-          "Salvar alterações"
-        )}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="flex-1"
+          onClick={handleCancel}
+          disabled={isSubmitting}
+        >
+          Cancelar
+        </Button>
+        <Button type="submit" className="flex-1 gap-2" style={{ background: NAVY }} disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="size-4 animate-spin" />
+              Salvando...
+            </>
+          ) : (
+            "Salvar"
+          )}
+        </Button>
+      </div>
     </form>
   )
 }

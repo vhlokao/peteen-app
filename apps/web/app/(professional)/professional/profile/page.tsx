@@ -8,6 +8,7 @@ import { ProfessionalProfileEditForm } from "@/modules/professional/components/p
 import { ProfessionalProfilePreview } from "@/modules/professional/components/professional-profile-preview"
 import { ProfessionalProfileChecklist } from "@/modules/professional/components/professional-profile-checklist"
 import { ProfessionalProfileTrustBlock } from "@/modules/professional/components/professional-profile-trust-block"
+import { ProfessionalProfileSignOutButton } from "@/modules/professional/components/professional-profile-sign-out-button"
 
 export const metadata: Metadata = {
   title: "Seu perfil profissional",
@@ -40,21 +41,16 @@ export default async function ProfessionalProfilePage() {
 
   return (
     <div className="page-container max-w-2xl space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">
-          Seu perfil profissional
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Cuide das informações que ajudam os tutores a conhecer e confiar em você.
-        </p>
-      </header>
-
       <ProfessionalProfilePreview profile={profile} />
 
       <ProfessionalProfileChecklist items={checklistItems} />
 
       {trustSummary && (
-        <ProfessionalProfileTrustBlock trustLevel={profile.trustLevel} summary={trustSummary} />
+        <ProfessionalProfileTrustBlock
+          trustLevel={profile.trustLevel}
+          summary={trustSummary}
+          isVerified={profile.isVerified}
+        />
       )}
 
       <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
@@ -63,6 +59,8 @@ export default async function ProfessionalProfilePage() {
         </h2>
         <ProfessionalProfileEditForm profile={profile} />
       </section>
+
+      <ProfessionalProfileSignOutButton />
     </div>
   )
 }

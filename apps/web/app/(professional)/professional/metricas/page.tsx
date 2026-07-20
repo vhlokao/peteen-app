@@ -77,7 +77,11 @@ export default async function ProfessionalMetricsPage() {
           />
 
           {trustSummary && (
-            <ProfessionalProfileTrustBlock trustLevel={metrics.trustLevel} summary={trustSummary} />
+            <ProfessionalProfileTrustBlock
+              trustLevel={metrics.trustLevel}
+              summary={trustSummary}
+              isVerified={profile.isVerified}
+            />
           )}
 
           <ProfessionalRecentActivity items={recentActivity} />

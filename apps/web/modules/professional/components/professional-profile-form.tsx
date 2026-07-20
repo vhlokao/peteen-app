@@ -40,9 +40,10 @@ const professionalFormSchema = z.object({
     .max(1000, "Bio pode ter no máximo 1000 caracteres"),
   phone: z
     .string()
-    .regex(/^\+?[\d\s\-()]{8,20}$/, "Telefone inválido")
-    .optional()
-    .or(z.literal("")),
+    .regex(/^\+?[\d\s\-()]+$/, "Informe seu WhatsApp para receber solicitações")
+    .refine((val) => val.replace(/\D/g, "").length >= 10, {
+      message: "Informe seu WhatsApp para receber solicitações",
+    }),
   neighborhood: z.string().max(100).optional(),
   city: z.string().min(2, "Cidade é obrigatória").max(100),
   state: z.string().length(2, "Use a sigla do estado (ex: SP)"),
@@ -85,6 +86,9 @@ export function ProfessionalProfileForm({
       specializations: [],
     },
   });
+
+  // Gate do botão de submit — mesma regra de validade do schema Zod (>= 10 dígitos).
+  const isPhoneValid = (watch("phone") ?? "").replace(/\D/g, "").length >= 10;
 
   async function onSubmit(values: ProfessionalFormValues) {
     setServerError(null);
@@ -149,7 +153,7 @@ export function ProfessionalProfileForm({
 
       <FormField
         name="phone"
-        label="WhatsApp (opcional)"
+        label="WhatsApp *"
         error={errors.phone?.message}
         description="Para tutores confirmarem agendamentos."
       >
@@ -382,7 +386,7 @@ export function ProfessionalProfileForm({
       <Button
         type="submit"
         className="w-full gap-2"
-        disabled={isSubmitting}
+        disabled={isSubmitting || !isPhoneValid}
         size="lg"
       >
         {isSubmitting ? (

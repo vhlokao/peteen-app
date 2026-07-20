@@ -16,6 +16,7 @@ import {
   type ProfessionalProfileData,
   type ServiceType,
 } from "@/modules/professional/domain/types"
+import { KNOWN_LOCATIONS, findKnownCityState } from "@/modules/location"
 import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,9 +37,10 @@ const professionalProfileEditSchema = z.object({
   bio: z.string().max(1000, "Bio pode ter no máximo 1000 caracteres").optional(),
   phone: z
     .string()
-    .regex(/^\+?[\d\s\-()]{8,20}$/, "Telefone inválido")
-    .optional()
-    .or(z.literal("")),
+    .regex(/^\+?[\d\s\-()]+$/, "Informe seu WhatsApp para receber solicitações")
+    .refine((val) => val.replace(/\D/g, "").length >= 10, {
+      message: "Informe seu WhatsApp para receber solicitações",
+    }),
   neighborhood: z.string().max(100).optional(),
   city: z.string().min(2, "Cidade é obrigatória").max(100),
   state: z.string().length(2, "Use a sigla do estado (ex: SP)"),
@@ -62,6 +64,7 @@ export function ProfessionalProfileEditForm({
     handleSubmit,
     control,
     setError,
+    setValue,
     reset,
     watch,
     formState: { errors, isSubmitting },
@@ -115,6 +118,8 @@ export function ProfessionalProfileEditForm({
   }
 
   const bioLength = (watch("bio") ?? "").length
+  // Gate do botão Salvar — mesma regra de validade do schema Zod (>= 10 dígitos).
+  const isPhoneValid = (watch("phone") ?? "").replace(/\D/g, "").length >= 10
 
   if (!editing) {
     return (
@@ -207,7 +212,7 @@ export function ProfessionalProfileEditForm({
 
       <FormField
         name="phone"
-        label="Telefone (opcional)"
+        label="WhatsApp *"
         error={errors.phone?.message}
       >
         {(field) => (
@@ -226,35 +231,53 @@ export function ProfessionalProfileEditForm({
       <div className="grid grid-cols-[1fr_auto] gap-3">
         <FormField name="city" label="Cidade *" error={errors.city?.message}>
           {(field) => (
-            <Input {...field} {...register("city")} disabled={isSubmitting} />
+            <Controller
+              name="city"
+              control={control}
+              render={({ field: cityField }) => (
+                <select
+                  id={field.id}
+                  value={cityField.value}
+                  onChange={(e) => {
+                    const city = e.target.value
+                    cityField.onChange(city)
+                    // UF derivada da cidade — mantém city e state consistentes.
+                    setValue("state", findKnownCityState(city) ?? "", {
+                      shouldValidate: true,
+                    })
+                  }}
+                  onBlur={cityField.onBlur}
+                  disabled={isSubmitting}
+                  aria-invalid={field["aria-invalid"]}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Selecione a cidade</option>
+                  {KNOWN_LOCATIONS.map((loc) => (
+                    <option key={loc.city} value={loc.city}>
+                      {loc.city} — {loc.state}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
           )}
         </FormField>
 
         <FormField
           name="state"
-          label="Estado *"
+          label="UF"
           error={errors.state?.message}
           className="w-20"
         >
           {(field) => (
-            <Controller
-              name="state"
-              control={control}
-              render={({ field: stateField }) => (
-                <Input
-                  {...field}
-                  value={stateField.value ?? ""}
-                  onChange={(e) =>
-                    stateField.onChange(
-                      e.target.value.toUpperCase().slice(0, 2)
-                    )
-                  }
-                  onBlur={stateField.onBlur}
-                  maxLength={2}
-                  className="uppercase"
-                  disabled={isSubmitting}
-                />
-              )}
+            <Input
+              {...field}
+              value={watch("state")}
+              readOnly
+              tabIndex={-1}
+              placeholder="—"
+              aria-label="Estado (preenchido pela cidade)"
+              className="cursor-default bg-muted/40 text-center uppercase text-muted-foreground"
             />
           )}
         </FormField>
@@ -349,7 +372,12 @@ export function ProfessionalProfileEditForm({
         >
           Cancelar
         </Button>
-        <Button type="submit" className="flex-1 gap-2" style={{ background: NAVY }} disabled={isSubmitting}>
+        <Button
+          type="submit"
+          className="flex-1 gap-2"
+          style={{ background: NAVY }}
+          disabled={isSubmitting || !isPhoneValid}
+        >
           {isSubmitting ? (
             <>
               <Loader2 className="size-4 animate-spin" />

@@ -15,7 +15,7 @@ export default async function ProfessionalServicesPage() {
   return (
     <div className="page-container space-y-6">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Seus serviços</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Meus serviços</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Organize o que você oferece e como os tutores encontram seu trabalho.
         </p>

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Loader2, AlertCircle } from "lucide-react"
+import { Loader2, AlertCircle, Info, Wrench } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
+
+const NAVY = "#1D2F6F"
 
 const formSchema = z
   .object({
@@ -160,9 +162,19 @@ export function ProfessionalServiceForm({
 
   return (
     <div className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-primary/10">
-      <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-        {mode === "create" ? "Adicionar serviço" : "Editar serviço"}
-      </h2>
+      <div className="mb-4 flex items-center gap-2.5">
+        <span
+          className="grid size-8 shrink-0 place-items-center rounded-lg"
+          style={{ background: `${NAVY}14`, color: NAVY }}
+        >
+          <Wrench className="size-4" />
+        </span>
+        <h2 className="text-sm font-bold text-foreground">
+          {mode === "create"
+            ? "Adicionar serviço"
+            : `Editar · ${service?.name ?? "serviço"}`}
+        </h2>
+      </div>
       <div>
         <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
           {serverError ? (
@@ -288,8 +300,13 @@ export function ProfessionalServiceForm({
             )}
           </FormField>
 
+          <div className="flex items-start gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs text-sky-800 dark:border-sky-900/40 dark:bg-sky-950/30 dark:text-sky-300">
+            <Info className="mt-0.5 size-3.5 shrink-0" />
+            <span>Tutores veem essa faixa. O valor exato vocês combinam na conversa.</span>
+          </div>
+
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting} style={{ background: NAVY }}>
               {isSubmitting ? (
                 <>
                   <Loader2 className="mr-2 size-4 animate-spin" />

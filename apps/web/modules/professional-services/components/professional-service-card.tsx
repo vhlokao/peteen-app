@@ -1,7 +1,19 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Pencil, Power, PowerOff } from "lucide-react"
+import {
+  Pencil,
+  Footprints,
+  House,
+  Building2,
+  Scissors,
+  GraduationCap,
+  Stethoscope,
+  Sun,
+  HeartHandshake,
+  PawPrint,
+} from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -13,9 +25,25 @@ import {
   summarizeDescription,
   type ProfessionalServiceRow,
 } from "../domain/types"
-import { SERVICE_TYPE_LABELS } from "@/modules/professional/domain/types"
+import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { Button } from "@/components/ui/button"
 import { ProfessionalServiceForm } from "./professional-service-form"
+
+const NAVY = "#1D2F6F"
+const GREEN = "#40916C"
+const GRAY = "#D6D3C9"
+
+const SERVICE_TYPE_ICONS: Record<ServiceType, LucideIcon> = {
+  DOG_WALK: Footprints,
+  PET_SITTING: House,
+  BOARDING: Building2,
+  GROOMING: Scissors,
+  TRAINING: GraduationCap,
+  VET_ACCOMPANY: Stethoscope,
+  DAY_CARE: Sun,
+  HOME_CARE: HeartHandshake,
+  OTHER: PawPrint,
+}
 
 type Props = {
   service: ProfessionalServiceRow
@@ -60,27 +88,36 @@ export function ProfessionalServiceCard({ service, onEditDone }: Props) {
     )
   }
 
+  const Icon = SERVICE_TYPE_ICONS[service.serviceType]
+
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
+    <div
+      className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] transition-opacity"
+      style={!service.isActive ? { opacity: 0.6 } : undefined}
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 space-y-0.5">
-          <p className="font-medium text-foreground">{service.name}</p>
-          <p className="text-xs text-muted-foreground">{SERVICE_TYPE_LABELS[service.serviceType]}</p>
+        <div className="flex min-w-0 items-start gap-3">
+          <span
+            className="grid size-9 shrink-0 place-items-center rounded-xl"
+            style={{ background: `${NAVY}14`, color: NAVY }}
+          >
+            <Icon className="size-4" />
+          </span>
+          <div className="min-w-0 space-y-0.5">
+            <p className="font-medium text-foreground">{service.name}</p>
+            <p className="text-xs text-muted-foreground">{SERVICE_TYPE_LABELS[service.serviceType]}</p>
+          </div>
         </div>
-        <span
-          className={`shrink-0 rounded-full px-2.5 py-0.5 text-[0.65rem] font-medium ${
-            service.isActive
-              ? "bg-success/10 text-success"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {service.isActive ? "Ativo" : "Pausado"}
-        </span>
+        {!service.isActive && (
+          <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[0.65rem] font-medium text-muted-foreground">
+            Pausado
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         <div>
-          <span className="text-xs text-muted-foreground">Preço base </span>
+          <span className="text-xs text-muted-foreground">Preço </span>
           <span className="font-medium tabular-nums text-foreground">
             {formatServiceBasePrice(service)}
           </span>
@@ -93,7 +130,7 @@ export function ProfessionalServiceCard({ service, onEditDone }: Props) {
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2 border-t border-border/70 pt-3">
+      <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-3">
         <Button
           type="button"
           variant="outline"
@@ -105,26 +142,30 @@ export function ProfessionalServiceCard({ service, onEditDone }: Props) {
           <Pencil className="size-3.5" />
           Editar
         </Button>
-        <Button
+
+        <button
           type="button"
-          variant={service.isActive ? "outline" : "default"}
-          size="sm"
-          className="gap-1.5"
+          role="switch"
+          aria-checked={service.isActive}
+          aria-label={service.isActive ? "Pausar serviço" : "Ativar serviço"}
           onClick={toggleActive}
           disabled={isPending}
+          className="relative shrink-0 rounded-full transition-colors disabled:pointer-events-none disabled:opacity-50"
+          style={{
+            width: 50,
+            height: 28,
+            background: service.isActive ? GREEN : GRAY,
+          }}
         >
-          {service.isActive ? (
-            <>
-              <PowerOff className="size-3.5" />
-              Pausar
-            </>
-          ) : (
-            <>
-              <Power className="size-3.5" />
-              Ativar
-            </>
-          )}
-        </Button>
+          <span
+            className="absolute top-[3px] rounded-full bg-white shadow-sm transition-all"
+            style={{
+              width: 22,
+              height: 22,
+              left: service.isActive ? 25 : 3,
+            }}
+          />
+        </button>
       </div>
     </div>
   )

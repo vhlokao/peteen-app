@@ -1,7 +1,9 @@
 import { CheckCircle2, Compass } from "lucide-react"
 
 import type { RequestStatus } from "@/modules/service-request/domain/types"
-import { REQUEST_STATUS_META } from "../domain/request-status-display"
+import { REQUEST_STATUS_META, REQUEST_STATUS_COLORS } from "../domain/request-status-display"
+
+const GREEN = "#40916C"
 
 type TutorRequestNextStepProps = {
   status: RequestStatus
@@ -12,13 +14,20 @@ type TutorRequestNextStepProps = {
 /**
  * Bloco de "próximo passo" — o elemento mais importante do detalhe
  * (pedido explícito da missão). Usa só o texto humano já mapeado em
- * REQUEST_STATUS_META; nenhuma ação nova é sugerida aqui.
+ * REQUEST_STATUS_META; nenhuma ação nova é sugerida aqui. Cores reaproveitam
+ * REQUEST_STATUS_COLORS (mesma fonte do pill de status).
  */
 export function TutorRequestNextStep({ status, hasReview }: TutorRequestNextStepProps) {
   if (status === "COMPLETED" && hasReview) {
     return (
-      <section className="flex items-start gap-3 rounded-2xl border border-success/20 bg-success/5 p-5 shadow-[var(--shadow-card)]">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-success/10 text-success">
+      <section
+        className="flex items-start gap-3 rounded-2xl border p-5 shadow-[var(--shadow-card)]"
+        style={{ borderColor: `${GREEN}33`, background: `${GREEN}0D` }}
+      >
+        <span
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+          style={{ background: `${GREEN}22`, color: GREEN }}
+        >
           <CheckCircle2 className="size-5" />
         </span>
         <div>
@@ -36,16 +45,26 @@ export function TutorRequestNextStep({ status, hasReview }: TutorRequestNextStep
   const meta = REQUEST_STATUS_META[status]
   if (!meta.nextStep) return null
 
+  const colors = REQUEST_STATUS_COLORS[status]
+
   return (
-    <section className="flex items-start gap-3 rounded-2xl border border-primary/15 bg-gradient-to-r from-primary/8 to-primary/[0.03] p-5 shadow-[var(--shadow-card)]">
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+    <section
+      className="flex items-start gap-3 rounded-2xl border p-5 shadow-[var(--shadow-card)]"
+      style={{ borderColor: `${colors.fg}33`, background: colors.bg }}
+    >
+      <span
+        className="flex size-9 shrink-0 items-center justify-center rounded-xl"
+        style={{ background: "#fff", color: colors.fg }}
+      >
         <Compass className="size-5" />
       </span>
       <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+        <p className="text-xs font-semibold uppercase tracking-widest" style={{ color: colors.fg }}>
           Próximo passo
         </p>
-        <p className="mt-0.5 text-sm font-medium text-foreground">{meta.nextStep}</p>
+        <p className="mt-0.5 text-sm font-medium" style={{ color: "#1A1A1A" }}>
+          {meta.nextStep}
+        </p>
       </div>
     </section>
   )

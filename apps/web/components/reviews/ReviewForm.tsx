@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { AlertCircle, Loader2, MessageSquare, PawPrint, User } from "lucide-react"
 
+const NAVY = "#1D2F6F"
+
 import { createReviewAction } from "@/modules/review/application/actions"
 import { StarRatingInput } from "@/components/reviews/StarRatingInput"
 import { Button } from "@/components/ui/button"
@@ -148,6 +150,7 @@ export function ReviewForm({
       <Button
         type="submit"
         className="w-full"
+        style={{ background: NAVY }}
         disabled={isPending || rating === 0}
       >
         {isPending && <Loader2 className="mr-2 size-4 animate-spin" />}

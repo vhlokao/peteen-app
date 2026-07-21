@@ -1,4 +1,4 @@
-import { CalendarDays, FileText, Info, MapPin, PawPrint, Repeat2, User } from "lucide-react"
+import { CalendarDays, Info, MapPin, PawPrint, Quote, Repeat2, Tag } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
@@ -91,7 +91,8 @@ export function ProfessionalRequestSummary({
         </Avatar>
         <div className="min-w-0 flex-1">
           <p className="truncate font-semibold text-foreground">{tutor.displayName}</p>
-          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">Tutor(a)</p>
+          <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3 shrink-0" />
             <span className="truncate">{tutor.city}</span>
           </div>
@@ -141,7 +142,7 @@ export function ProfessionalRequestSummary({
           }
         />
         <InfoRow
-          icon={<User className="size-4" />}
+          icon={<Tag className="size-4" />}
           label="Tipo de serviço"
           value={
             <span className="flex items-center gap-1.5">
@@ -160,14 +161,19 @@ export function ProfessionalRequestSummary({
           label="Data solicitada"
           value={scheduledAtLabel}
         />
-        {notes && (
-          <InfoRow
-            icon={<FileText className="size-4" />}
-            label="Observações do tutor"
-            value={<p className="leading-relaxed text-foreground/80">{notes}</p>}
-          />
-        )}
       </div>
+
+      {notes && (
+        <div className="mt-4 flex gap-2.5 rounded-xl border border-border/70 bg-background p-3.5">
+          <Quote className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <p className="mb-1 text-[0.65rem] font-medium uppercase tracking-wide text-muted-foreground">
+              Observações do tutor
+            </p>
+            <p className="text-sm leading-relaxed text-foreground/80">{notes}</p>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

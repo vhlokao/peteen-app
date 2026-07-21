@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, CheckCircle2, MessageCircle, Star } from "lucide-react"
+import { ChevronLeft, CheckCircle2, Lock, MessageCircle, Star } from "lucide-react"
 
 import { requireAuth } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
@@ -168,19 +168,22 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
 
   return (
     <div className="page-container max-w-2xl pb-4">
-      <Link
-        href="/tutor/requests"
-        className="mb-5 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Voltar aos pedidos
-      </Link>
+      <div className="mb-5 flex items-center gap-3">
+        <Link
+          href="/tutor/requests"
+          aria-label="Voltar"
+          className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        >
+          <ChevronLeft className="size-5" />
+        </Link>
+        <h1 className="text-base font-semibold text-foreground">Detalhe da solicitação</h1>
+      </div>
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-foreground">
+          <h2 className="text-xl font-bold text-foreground">
             {SERVICE_TYPE_LABELS[request.serviceType as ServiceType]}
-          </h1>
+          </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Pedido #{requestId.slice(0, 8).toUpperCase()}
           </p>
@@ -191,11 +194,11 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
       <div className="flex flex-col gap-5">
         <TutorRequestNextStep status={request.status} hasReview={hasReview} />
 
-        {isAccepted && professionalPhone ? (
-          <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Contato
-            </h2>
+        <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Contato
+          </h2>
+          {isAccepted && professionalPhone ? (
             <a
               href={buildWhatsAppUrl(professionalPhone)}
               target="_blank"
@@ -206,8 +209,13 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
               <MessageCircle className="size-4" />
               Chamar no WhatsApp
             </a>
-          </section>
-        ) : null}
+          ) : (
+            <div className="flex items-center gap-2.5 rounded-xl bg-muted/50 px-3.5 py-3 text-xs text-muted-foreground">
+              <Lock className="size-4 shrink-0" />
+              <span>O contato direto é liberado quando a solicitação for aceita.</span>
+            </div>
+          )}
+        </section>
 
         <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
           <h2 className="mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">

@@ -22,6 +22,9 @@ import type {
 // Props
 // ─────────────────────────────────────────────────────────────────────────────
 
+const NAVY = "#1D2F6F"
+const GREEN = "#40916C"
+
 type RequestActionsProps = {
   requestId: string
   currentStatus: RequestStatus
@@ -92,6 +95,7 @@ export function RequestActions({
       <div className="flex flex-col gap-2 sm:flex-row">
         <Button
           className="flex-1 gap-2"
+          style={{ background: GREEN }}
           onClick={() =>
             handleAction(
               () => acceptServiceRequestAction(requestId),
@@ -137,6 +141,7 @@ export function RequestActions({
       <div className="flex flex-col gap-1.5">
         <Button
           className="w-full gap-2"
+          style={{ background: NAVY }}
           onClick={() =>
             handleAction(
               () => startServiceRequestAction(requestId),
@@ -167,6 +172,7 @@ export function RequestActions({
     return (
       <Button
         className="w-full gap-2"
+        style={{ background: GREEN }}
         onClick={() =>
           handleAction(
             () => completeServiceRequestAction(requestId),

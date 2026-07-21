@@ -100,17 +100,18 @@ export function TutorRequestSummary({
           </AvatarFallback>
         </Avatar>
         <div className="min-w-0 flex-1">
-          <Link
-            href={buildDiscoverUrl(professional.id, { from: "tutor", returnTo: `/tutor/requests/${requestId}` })}
-            className="truncate font-semibold text-foreground hover:text-primary"
-          >
-            {professional.displayName}
-          </Link>
+          <p className="truncate font-semibold text-foreground">{professional.displayName}</p>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
             <MapPin className="size-3 shrink-0" />
             <span className="truncate">{professional.city}</span>
           </div>
         </div>
+        <Link
+          href={buildDiscoverUrl(professional.id, { from: "tutor", returnTo: `/tutor/requests/${requestId}` })}
+          className="shrink-0 text-xs font-semibold text-primary hover:underline"
+        >
+          Ver perfil
+        </Link>
       </div>
 
       {myRelationship && myRelationship.completedServices > 0 && (

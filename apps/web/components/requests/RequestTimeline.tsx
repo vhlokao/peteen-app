@@ -4,6 +4,10 @@ import type {
   RequestStatus,
 } from "@/modules/service-request/domain/types"
 
+const NAVY = "#2C4893"
+const GREEN = "#40916C"
+const CORAL = "#C7756A"
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Timeline — estrutura de dados que guia a renderização.
 //
@@ -127,20 +131,18 @@ function buildSteps(request: {
 
 function StepIcon({ state }: { state: StepState }) {
   if (state === "done") {
-    return (
-      <CheckCircle2 className="size-5 shrink-0 text-green-500 dark:text-green-400" />
-    )
+    return <CheckCircle2 className="size-5 shrink-0" style={{ color: GREEN }} />
   }
   if (state === "active") {
     return (
       <div className="relative flex size-5 shrink-0 items-center justify-center">
-        <div className="absolute size-5 animate-ping rounded-full bg-primary/30" />
-        <div className="size-3 rounded-full bg-primary" />
+        <div className="absolute size-5 animate-ping rounded-full" style={{ background: `${NAVY}4D` }} />
+        <div className="size-3 rounded-full" style={{ background: NAVY }} />
       </div>
     )
   }
   if (state === "cancelled") {
-    return <XCircle className="size-5 shrink-0 text-destructive" />
+    return <XCircle className="size-5 shrink-0" style={{ color: CORAL }} />
   }
   return <Circle className="size-5 shrink-0 text-muted-foreground/40" />
 }
@@ -175,14 +177,18 @@ export function RequestTimeline({ request }: RequestTimelineProps) {
               <StepIcon state={step.state} />
               {!isLast && (
                 <div
-                  className={`my-1 w-px flex-1 ${
+                  className={
+                    step.state === "done" || step.state === "cancelled"
+                      ? "my-1 w-px flex-1"
+                      : "my-1 w-px flex-1 bg-border"
+                  }
+                  style={
                     step.state === "done"
-                      ? "bg-green-200 dark:bg-green-800"
+                      ? { minHeight: "24px", background: `${GREEN}66` }
                       : step.state === "cancelled"
-                        ? "bg-destructive/20"
-                        : "bg-border"
-                  }`}
-                  style={{ minHeight: "24px" }}
+                        ? { minHeight: "24px", background: `${CORAL}33` }
+                        : { minHeight: "24px" }
+                  }
                 />
               )}
             </div>

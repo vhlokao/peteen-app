@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button"
 import { cancelServiceRequestAction } from "@/modules/service-request/application/actions"
 import type { RequestStatus } from "@/modules/service-request/domain/types"
 
+const CORAL = "#E07A5F"
+
 type TutorRequestActionsProps = {
   requestId: string
   currentStatus: RequestStatus
@@ -42,7 +44,8 @@ export function TutorRequestActions({
   return (
     <Button
       variant="outline"
-      className="w-full gap-2 border-destructive/40 text-destructive hover:bg-destructive/5 hover:text-destructive"
+      className="w-full gap-2"
+      style={{ borderColor: `${CORAL}66`, color: CORAL }}
       onClick={handleCancel}
       disabled={isPending}
     >

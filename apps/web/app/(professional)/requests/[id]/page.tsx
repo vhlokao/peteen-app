@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
-import { ArrowLeft, Star } from "lucide-react"
+import { ChevronLeft, Star } from "lucide-react"
 
 import { getAuthContext } from "@/modules/identity/application/get-session"
 import { getServiceRequestDetailAction } from "@/modules/service-request/application/actions"
@@ -81,19 +81,22 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
 
   return (
     <div className="page-container max-w-2xl pb-4">
-      <Link
-        href="/requests"
-        className="mb-5 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" />
-        Voltar às solicitações
-      </Link>
+      <div className="mb-5 flex items-center gap-3">
+        <Link
+          href="/requests"
+          aria-label="Voltar"
+          className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+        >
+          <ChevronLeft className="size-5" />
+        </Link>
+        <h1 className="text-base font-semibold text-foreground">Solicitação</h1>
+      </div>
 
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-foreground">
+          <h2 className="text-xl font-bold text-foreground">
             {SERVICE_TYPE_LABELS[request.serviceType as ServiceType]}
-          </h1>
+          </h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
             Solicitação #{id.slice(0, 8).toUpperCase()}
           </p>

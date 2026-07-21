@@ -37,7 +37,7 @@ export type ServiceType = (typeof SERVICE_TYPES)[number]
 
 export const SERVICE_TYPE_LABELS: Record<ServiceType, string> = {
   DOG_WALK: "Passeio",
-  PET_SITTING: "Pet Sitting",
+  PET_SITTING: "Pet Sitter",
   BOARDING: "Hospedagem",
   GROOMING: "Banho e Tosa",
   TRAINING: "Adestramento",

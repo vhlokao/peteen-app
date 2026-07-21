@@ -385,7 +385,7 @@ export default function HomePage() {
           <div role="list" className="grid grid-cols-2 gap-3.5 lg:grid-cols-5 lg:gap-4">
             {[
               { emoji: "🐕", name: "Passeio", desc: "Energia gasta, patas felizes", href: "/discover?serviceType=walk" },
-              { emoji: "🏠", name: "Pet Sitting", desc: "Cuidado no conforto de casa", href: "/discover?serviceType=pet_sitting" },
+              { emoji: "🏠", name: "Pet Sitter", desc: "Cuidado no conforto de casa", href: "/discover?serviceType=pet_sitting" },
               { emoji: "🌙", name: "Hospedagem", desc: "Viaje tranquilo, ele fica bem", href: "/discover?serviceType=boarding" },
               { emoji: "🎓", name: "Adestramento", desc: "Educação com paciência", href: "/discover?serviceType=training" },
               { emoji: "💙", name: "Cuidado em Casa", desc: "Atenção para quem precisa mais", href: "/discover?serviceType=home_care" },

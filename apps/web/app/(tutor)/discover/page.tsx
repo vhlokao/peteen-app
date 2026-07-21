@@ -66,19 +66,20 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
   const hasActiveFilters = hasCity || hasServiceType
 
   // ── 1. Busca paralela: candidatos + contexto de auth ─────────────────────
+  // Sem cidade selecionada ("Todas as cidades") = busca sem filtro de
+  // cidade, não "não buscar" — findPublicProfessionals já trata city
+  // ausente como "sem restrição".
   const [result, ctx] = await Promise.all([
-    hasCity
-      ? findProfessionalsAction({
-          city: cleanCity,
-          serviceType: hasServiceType ? (cleanServiceType as ServiceType) : undefined,
-          limit: 20,
-          offset: 0,
-        })
-      : Promise.resolve(null),
+    findProfessionalsAction({
+      city: hasCity ? cleanCity : undefined,
+      serviceType: hasServiceType ? (cleanServiceType as ServiceType) : undefined,
+      limit: 20,
+      offset: 0,
+    }),
     getAuthContext(),
   ])
 
-  const candidates = result?.success ? result.data : []
+  const candidates = result.success ? result.data : []
 
   // ── 2. Ranking contextual + perfil do tutor em paralelo ──────────────────
   // rankProfessionals já expõe relationshipStats (público) de cada profissional.

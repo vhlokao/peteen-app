@@ -190,7 +190,10 @@ export async function findPublicProfessionals(
   const results = await prisma.professionalProfile.findMany({
     where: {
       deletedAt: null,
-      city: { equals: filters.city, mode: "insensitive" },
+      // city vazio/undefined = sem filtro de cidade (busca todos).
+      ...(filters.city
+        ? { city: { equals: filters.city, mode: "insensitive" } }
+        : {}),
       // Location Foundation V0 — filtro textual opcional por bairro.
       // Case-insensitive no banco; accent-insensitive só via normalização do
       // input na action (dicionário) — limitação documentada em

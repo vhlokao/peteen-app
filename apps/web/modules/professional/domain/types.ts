@@ -197,7 +197,9 @@ export type UpdateServiceInput = z.infer<typeof UpdateServiceSchema>
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const FindProfessionalsSchema = z.object({
-  city: z.string().min(2, "Cidade é obrigatória"),
+  // Opcional: "Todas as cidades" no filtro do Discovery busca sem
+  // restrição de cidade (ver findPublicProfessionals).
+  city: z.string().min(2, "Cidade é obrigatória").optional(),
   // Location Foundation V0 — filtro textual opcional por bairro. Comparação
   // case-insensitive no banco; a normalização (acentos via dicionário de
   // cidades, capitalização) acontece na action antes da query.

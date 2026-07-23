@@ -13,6 +13,7 @@ import {
   type TutorProfileData,
   type UpdateTutorProfileInput,
 } from "@/modules/tutor/domain/types"
+import { KNOWN_LOCATIONS, findKnownCityState } from "@/modules/location"
 import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,6 +32,8 @@ export function TutorProfileEditForm({ profile }: TutorProfileEditFormProps) {
     handleSubmit,
     control,
     setError,
+    setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<UpdateTutorProfileInput>({
     resolver: zodResolver(UpdateTutorProfileSchema),
@@ -122,35 +125,53 @@ export function TutorProfileEditForm({ profile }: TutorProfileEditFormProps) {
       <div className="grid grid-cols-[1fr_auto] gap-3">
         <FormField name="city" label="Cidade *" error={errors.city?.message}>
           {(field) => (
-            <Input {...field} {...register("city")} disabled={isSubmitting} />
+            <Controller
+              name="city"
+              control={control}
+              render={({ field: cityField }) => (
+                <select
+                  id={field.id}
+                  value={cityField.value}
+                  onChange={(e) => {
+                    const city = e.target.value
+                    cityField.onChange(city)
+                    // UF derivada da cidade — mantém city e state consistentes.
+                    setValue("state", findKnownCityState(city) ?? "", {
+                      shouldValidate: true,
+                    })
+                  }}
+                  onBlur={cityField.onBlur}
+                  disabled={isSubmitting}
+                  aria-invalid={field["aria-invalid"]}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <option value="">Selecione a cidade</option>
+                  {KNOWN_LOCATIONS.map((loc) => (
+                    <option key={loc.city} value={loc.city}>
+                      {loc.city} — {loc.state}
+                    </option>
+                  ))}
+                </select>
+              )}
+            />
           )}
         </FormField>
 
         <FormField
           name="state"
-          label="Estado *"
+          label="UF"
           error={errors.state?.message}
           className="w-20"
         >
           {(field) => (
-            <Controller
-              name="state"
-              control={control}
-              render={({ field: stateField }) => (
-                <Input
-                  {...field}
-                  value={stateField.value ?? ""}
-                  onChange={(e) =>
-                    stateField.onChange(
-                      e.target.value.toUpperCase().slice(0, 2)
-                    )
-                  }
-                  onBlur={stateField.onBlur}
-                  maxLength={2}
-                  className="uppercase"
-                  disabled={isSubmitting}
-                />
-              )}
+            <Input
+              {...field}
+              value={watch("state")}
+              readOnly
+              tabIndex={-1}
+              placeholder="—"
+              aria-label="Estado (preenchido pela cidade)"
+              className="cursor-default bg-muted/40 text-center uppercase text-muted-foreground"
             />
           )}
         </FormField>

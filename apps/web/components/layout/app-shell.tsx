@@ -78,6 +78,7 @@ export async function AppShell({
       email: ctx.user.email,
       primaryRole: ctx.user.primaryRole,
       roles: ctx.user.roles,
+      avatarUrl: ctx.user.avatarUrl,
     };
   } else {
     // Marketing: leitura opcional, sem guard e sem redirect.
@@ -88,6 +89,7 @@ export async function AppShell({
         email: ctx.user.email,
         primaryRole: ctx.user.primaryRole,
         roles: ctx.user.roles,
+        avatarUrl: ctx.user.avatarUrl,
       };
     }
   }

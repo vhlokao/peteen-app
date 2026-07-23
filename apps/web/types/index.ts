@@ -32,4 +32,6 @@ export type ShellSessionUser = {
   primaryRole: "TUTOR" | "PROFESSIONAL" | "PARTNER" | "ADMIN" | null;
   /** Todas as personas que este usuário possui */
   roles: ("TUTOR" | "PROFESSIONAL" | "PARTNER" | "ADMIN")[];
+  /** Foto do perfil da persona ativa (TutorProfile/ProfessionalProfile/PartnerProfile) */
+  avatarUrl?: string | null;
 };

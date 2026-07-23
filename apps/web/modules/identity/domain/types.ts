@@ -20,6 +20,7 @@ export type SessionUser = {
   email: string;
   roles: PersonaRole[];     // todas as personas que o user possui
   primaryRole: PersonaRole | null;  // User.activePrimaryRole — qual persona está ativa
+  avatarUrl: string | null; // foto do perfil da persona ativa (Tutor/Professional/Partner)
 
   // Metadados de estado do usuário
   onboardingCompletedAt: Date | null;

@@ -36,9 +36,9 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
       activePrimaryRole: true,
       onboardingCompletedAt: true,
       lastSeenAt: true,
-      tutorProfile: { select: { id: true } },
-      professionalProfile: { select: { id: true } },
-      partnerProfile: { select: { id: true } },
+      tutorProfile: { select: { id: true, avatarUrl: true } },
+      professionalProfile: { select: { id: true, avatarUrl: true } },
+      partnerProfile: { select: { id: true, avatarUrl: true } },
       adminProfile: { select: { id: true } },
     },
   })
@@ -55,12 +55,26 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
   if (dbUser.partnerProfile) roles.push("PARTNER")
   if (dbUser.adminProfile) roles.push("ADMIN")
 
+  const primaryRole = (dbUser.activePrimaryRole as PersonaRole) ?? roles[0] ?? null
+
+  // Avatar da persona ativa — cada persona tem sua própria foto de perfil
+  // (TutorProfile/ProfessionalProfile/PartnerProfile). ADMIN não tem avatar.
+  const avatarUrl =
+    primaryRole === "TUTOR"
+      ? (dbUser.tutorProfile?.avatarUrl ?? null)
+      : primaryRole === "PROFESSIONAL"
+        ? (dbUser.professionalProfile?.avatarUrl ?? null)
+        : primaryRole === "PARTNER"
+          ? (dbUser.partnerProfile?.avatarUrl ?? null)
+          : null
+
   const sessionUser: SessionUser = {
     id: dbUser.id,
     authId: dbUser.authId,
     email: dbUser.email,
     roles,
-    primaryRole: (dbUser.activePrimaryRole as PersonaRole) ?? roles[0] ?? null,
+    primaryRole,
+    avatarUrl,
     onboardingCompletedAt: dbUser.onboardingCompletedAt,
     lastSeenAt: dbUser.lastSeenAt,
   }

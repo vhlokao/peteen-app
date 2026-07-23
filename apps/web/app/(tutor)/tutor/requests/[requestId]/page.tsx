@@ -257,7 +257,7 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
           </section>
         ) : null}
 
-        {canReview && request.pet ? (
+        {canReview ? (
           <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-primary/10">
             <h2 className="mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Avaliar atendimento
@@ -266,8 +266,10 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
               requestId={requestId}
               professionalName={pro.displayName}
               serviceTypeLabel={SERVICE_TYPE_LABELS[request.serviceType as ServiceType]}
-              petName={request.pet.name}
-              petSpeciesLabel={SPECIES_LABELS[request.pet.species]}
+              petName={request.pet ? request.pet.name : "Pet não informado"}
+              petSpeciesLabel={
+                request.pet ? SPECIES_LABELS[request.pet.species] : "espécie não informada"
+              }
             />
           </section>
         ) : null}

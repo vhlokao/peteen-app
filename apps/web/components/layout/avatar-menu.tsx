@@ -26,7 +26,7 @@ import {
   isNavigationItemActive,
 } from "@/lib/navigation/app-navigation"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import type { ActorNavSection } from "@/lib/navigation/navigation-types"
 import type { AppShellVariant, ShellSessionUser } from "@/types"
@@ -108,6 +108,7 @@ export function AvatarMenu({ variant, user }: AvatarMenuProps) {
         className="flex cursor-pointer items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <Avatar size="sm">
+          {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.email} />}
           <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
         </Avatar>
       </Menu.Trigger>
@@ -118,6 +119,7 @@ export function AvatarMenu({ variant, user }: AvatarMenuProps) {
             {/* Identidade do usuário */}
             <div className="flex items-center gap-3 border-b border-border px-4 py-3.5">
               <Avatar size="sm" className="shrink-0">
+                {user.avatarUrl && <AvatarImage src={user.avatarUrl} alt={user.email} />}
                 <AvatarFallback>{getInitials(user.email)}</AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">

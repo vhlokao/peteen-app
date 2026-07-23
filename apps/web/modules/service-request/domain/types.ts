@@ -87,17 +87,19 @@ export const VALID_TRANSITIONS: Readonly<
     "COMPLETED",              // profissional marca como concluído (skip IN_PROGRESS permitido)
     "CANCELLED_BY_TUTOR",     // tutor cancela após aceitação
     "CANCELLED_BY_PROFESSIONAL", // profissional cancela após aceitação (impacto no trust)
-    "DISPUTED",               // qualquer parte abre disputa
   ],
   IN_PROGRESS: [
     "COMPLETED",              // profissional marca como concluído
-    "DISPUTED",               // qualquer parte abre disputa durante o atendimento
   ],
   // Estados terminais — sem saída possível
   COMPLETED:                  [],
   CANCELLED_BY_TUTOR:         [],
   CANCELLED_BY_PROFESSIONAL:  [],
-  DISPUTED:                   [], // resolvido por admin (fora desta fase)
+  // DISPUTED não é alcançável via transição de status.
+  // Disputa é uma entidade separada (Dispute) que coexiste
+  // com a solicitação. O status permanece no estado anterior
+  // (ACCEPTED ou IN_PROGRESS) quando uma disputa é aberta.
+  DISPUTED:                   [],
   EXPIRED:                    [],
 } as const
 
@@ -121,9 +123,7 @@ export const TRANSITION_ACTOR: Readonly<
   "ACCEPTED->COMPLETED":                  "professional",
   "ACCEPTED->CANCELLED_BY_TUTOR":         "tutor",
   "ACCEPTED->CANCELLED_BY_PROFESSIONAL":  "professional",
-  "ACCEPTED->DISPUTED":                   "either",
   "IN_PROGRESS->COMPLETED":              "professional",
-  "IN_PROGRESS->DISPUTED":               "either",
 } as const
 
 /**
@@ -155,7 +155,6 @@ export const TRANSITION_TRUST_EVENTS: Readonly<
     affectedParty: "professional",
   },
   "IN_PROGRESS->COMPLETED":              null, // idem — RECURRENCE_COMPLETED em completeServiceRequest
-  "IN_PROGRESS->DISPUTED":               null,
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────

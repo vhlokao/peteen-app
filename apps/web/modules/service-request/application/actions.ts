@@ -57,6 +57,7 @@ import {
   hasActiveRequestBetween,
   hasInProgressRequestForProfessional,
 } from "../infrastructure/repository"
+import { recordRequestAudit } from "../infrastructure/audit"
 
 const CONCURRENT_UPDATE_MESSAGE =
   "Esta solicitação já foi atualizada. Recarregue a página para ver o status mais recente."
@@ -265,7 +266,16 @@ export async function acceptServiceRequestAction(
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    const updated = await transitionStatus(requestId, request.status, toStatus)
+    const fromStatus = request.status
+    const updated = await transitionStatus(requestId, fromStatus, toStatus)
+
+    await recordRequestAudit(
+      session.id,
+      "request.accepted",
+      requestId,
+      { status: fromStatus },
+      { status: toStatus }
+    )
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -297,6 +307,7 @@ export async function rejectServiceRequestAction(
     requestId,
     toStatus: "CANCELLED_BY_PROFESSIONAL",
     requiredActor: "professional",
+    auditAction: "request.rejected",
   })
 }
 
@@ -371,7 +382,16 @@ export async function startServiceRequestAction(
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    const updated = await transitionStatus(requestId, request.status, toStatus)
+    const fromStatus = request.status
+    const updated = await transitionStatus(requestId, fromStatus, toStatus)
+
+    await recordRequestAudit(
+      session.id,
+      "request.started",
+      requestId,
+      { status: fromStatus },
+      { status: toStatus }
+    )
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -457,7 +477,16 @@ export async function cancelServiceRequestAction(
         }
       : undefined
 
-    const updated = await transitionStatus(requestId, request.status, toStatus, { trustEvent })
+    const fromStatus = request.status
+    const updated = await transitionStatus(requestId, fromStatus, toStatus, { trustEvent })
+
+    await recordRequestAudit(
+      session.id,
+      isTutor ? "request.cancelled_by_tutor" : "request.cancelled_by_professional",
+      requestId,
+      { status: fromStatus },
+      { status: toStatus }
+    )
 
     // Recalcula Trust Score se cancelamento do profissional gerou TrustEvent (falha silenciosa)
     if (trustEvent) {
@@ -578,10 +607,19 @@ export async function completeServiceRequestAction(
     const parsed = CompleteServiceRequestSchema.safeParse(input ?? {})
     const nextScheduledAt = parsed.success ? parsed.data.nextScheduledAt : undefined
 
-    const updated = await transitionStatus(requestId, request.status, toStatus, {
+    const fromStatus = request.status
+    const updated = await transitionStatus(requestId, fromStatus, toStatus, {
       trustEvent,
       nextScheduledAt,
     })
+
+    await recordRequestAudit(
+      session.id,
+      "request.completed",
+      requestId,
+      { status: fromStatus },
+      { status: toStatus }
+    )
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -709,10 +747,12 @@ async function applyTransition({
   requestId,
   toStatus,
   requiredActor,
+  auditAction,
 }: {
   requestId: string
   toStatus: RequestStatus
   requiredActor: "tutor" | "professional"
+  auditAction: string
 }): Promise<ActionResult<ServiceRequestData>> {
   try {
     const session = await requireAuth()
@@ -771,7 +811,16 @@ async function applyTransition({
         }
       : undefined
 
-    const updated = await transitionStatus(requestId, request.status, toStatus, { trustEvent })
+    const fromStatus = request.status
+    const updated = await transitionStatus(requestId, fromStatus, toStatus, { trustEvent })
+
+    await recordRequestAudit(
+      session.id,
+      auditAction,
+      requestId,
+      { status: fromStatus },
+      { status: toStatus }
+    )
 
     // Recalcula Trust Score se a transição gerou TrustEvent (falha silenciosa)
     if (trustEvent) {

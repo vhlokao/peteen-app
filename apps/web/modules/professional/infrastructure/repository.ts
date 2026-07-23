@@ -18,6 +18,7 @@
 import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma/client"
+import { compareLocationText, formatPublicLocation } from "@/modules/location"
 import type {
   ProfessionalProfileData,
   ProfessionalPublicProfile,
@@ -184,6 +185,29 @@ async function fetchReviewStats(professionalIds: string[]): Promise<Map<string, 
   }
 }
 
+/**
+ * Proximity V1 — label humano de localização, nunca distância/coordenada.
+ * tutorCity/tutorNeighborhood são só para exibição (ver comentário no
+ * FindProfessionalsSchema); não influenciam o WHERE/ORDER BY da query.
+ */
+function resolveLocationLabel(
+  pro: { city: string; state: string; neighborhood: string | null },
+  tutorCity?: string,
+  tutorNeighborhood?: string
+): string {
+  if (!tutorCity) return formatPublicLocation({ city: pro.city, state: pro.state })
+
+  const sameCity = compareLocationText(pro.city, tutorCity)
+  if (!sameCity) return formatPublicLocation({ city: pro.city, state: pro.state })
+
+  if (tutorNeighborhood && pro.neighborhood) {
+    const sameNeighborhood = compareLocationText(pro.neighborhood, tutorNeighborhood)
+    if (sameNeighborhood) return "Atende seu bairro"
+  }
+
+  return "Atende sua cidade"
+}
+
 export async function findPublicProfessionals(
   filters: FindProfessionalsInput
 ): Promise<ProfessionalPublicProfile[]> {
@@ -253,6 +277,11 @@ export async function findPublicProfessionals(
       createdAt: r.createdAt,
       reviewCount: stat?.reviewCount ?? 0,
       averageRating: stat?.averageRating ?? null,
+      locationLabel: resolveLocationLabel(
+        { city: r.city, state: r.state, neighborhood: r.neighborhood },
+        filters.tutorCity,
+        filters.tutorNeighborhood
+      ),
       services: r.services.map((s) => ({
         id: s.id,
         name: s.name,
@@ -309,6 +338,10 @@ export async function findPublicProfessionalById(
     createdAt: result.createdAt,
     reviewCount: stat?.reviewCount ?? 0,
     averageRating: stat?.averageRating ?? null,
+    // Perfil individual — sem contexto de busca/tutor disponível aqui,
+    // então sempre o fallback "Cidade — UF" (fora do escopo Proximity V1,
+    // que cobre só a lista do Discovery via findPublicProfessionals).
+    locationLabel: formatPublicLocation({ city: result.city, state: result.state }),
     services: result.services.map((s) => ({
       id: s.id,
       name: s.name,

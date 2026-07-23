@@ -161,6 +161,7 @@ export async function rankProfessionals(
         overallRating:        0,
         reviewVolume:         0,
         relationshipBoost:    0,
+        locationScore:        0,
         total:                pro.trustScore * 0.4,
       },
       relationshipStats: ZERO_RELATIONSHIP,

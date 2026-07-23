@@ -12,6 +12,7 @@
  */
 
 import type { ProfessionalPublicProfile } from "@/modules/professional/domain/types"
+import { compareLocationText } from "@/modules/location"
 import type {
   RankContext,
   ProfessionalRankStats,
@@ -24,7 +25,8 @@ import type {
 // Todos os parâmetros do ranking estão aqui.
 // Alterar aqui afeta todos os resultados de discovery.
 //
-// Score máximo teórico: ~90 pts (profissional perfeito, contexto total)
+// Score máximo teórico: ~118 pts (profissional perfeito, contexto total,
+// incluindo Proximity V1: 105 base + 8 cidade + 5 bairro)
 // Score mínimo: 0 (profissional novo, sem histórico)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -89,6 +91,15 @@ export const RANK_WEIGHTS = {
   TRUSTED_CLIENT:         3.0,
   PARTNER_CLIENT:         5.0,
   RELATIONSHIP_BOOST_MAX: 15,
+
+  /**
+   * Proximity V1 — boost por proximidade textual (sem distância geográfica
+   * real; lat/lng existem no schema mas não são usados aqui).
+   * Match de cidade é pré-requisito do match de bairro (bairro sozinho,
+   * sem cidade batendo, não pontua).
+   */
+  LOCATION_CITY_MATCH:         8,
+  LOCATION_NEIGHBORHOOD_MATCH: 5,
 } as const
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -101,7 +112,7 @@ export const RANK_WEIGHTS = {
 export function computeRankScore(
   pro: Pick<
     ProfessionalPublicProfile,
-    "trustScore" | "services" | "averageRating" | "reviewCount"
+    "trustScore" | "services" | "averageRating" | "reviewCount" | "city" | "neighborhood"
   >,
   ctx: RankContext,
   stats: ProfessionalRankStats
@@ -153,9 +164,25 @@ export function computeRankScore(
 
   const relationshipBoost = Math.min(rawRelBoost, RANK_WEIGHTS.RELATIONSHIP_BOOST_MAX)
 
+  // ── 7. Proximidade — mesma cidade/bairro do tutor (0–13 pts, Proximity V1) ──
+  // Sem tutorCity (busca sem cidade, tutor não identificado) = 0 para todos.
+  let locationScore = 0
+  if (ctx.tutorCity) {
+    const sameCity = compareLocationText(pro.city, ctx.tutorCity)
+    if (sameCity) {
+      locationScore += RANK_WEIGHTS.LOCATION_CITY_MATCH
+      if (ctx.tutorNeighborhood && pro.neighborhood) {
+        const sameNeighborhood = compareLocationText(pro.neighborhood, ctx.tutorNeighborhood)
+        if (sameNeighborhood) {
+          locationScore += RANK_WEIGHTS.LOCATION_NEIGHBORHOOD_MATCH
+        }
+      }
+    }
+  }
+
   const total =
     trustBase + serviceCompatibility + contextualReviews +
-    overallRating + reviewVolume + relationshipBoost
+    overallRating + reviewVolume + relationshipBoost + locationScore
 
   return {
     trustBase:            r1(trustBase),
@@ -164,6 +191,7 @@ export function computeRankScore(
     overallRating:        r1(overallRating),
     reviewVolume:         r1(reviewVolume),
     relationshipBoost:    r1(relationshipBoost),
+    locationScore:        r1(locationScore),
     total:                r1(total),
   }
 }

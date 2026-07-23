@@ -65,33 +65,50 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
   const hasServiceType = cleanServiceType.length > 0
   const hasActiveFilters = hasCity || hasServiceType
 
-  // ── 1. Busca paralela: candidatos + contexto de auth ─────────────────────
+  // ── 1. Contexto de auth + perfil do tutor (sequencial, antes da busca) ───
+  // Proximity V1: tutorCity cai de volta pro tutorProfile.city quando não
+  // há cidade digitada (ex: "Todas as cidades") — sem isso, locationScore/
+  // locationLabel ficariam sempre mudos pra quem não filtra por cidade.
+  // Isso exige tutorProfile disponível ANTES da busca de candidatos, então
+  // deixou de rodar em paralelo com ela — troca deliberada de latência
+  // (mais um round-trip sequencial só pra tutores autenticados) por sinal
+  // de proximidade que funciona mesmo sem filtro de cidade explícito.
+  const ctx = await getAuthContext()
+  const tutorProfile = ctx.authenticated
+    ? await findTutorProfileByUserId(ctx.user.id)
+    : null
+
+  // Declarado aqui (não mais junto de tutorCityForRec/tutorRegionId/etc. lá
+  // embaixo) porque agora precisa existir ANTES da busca e do ranking.
+  // Mesmo valor, mesmos consumidores de antes (getRecommendations,
+  // getLocalDiscoveryContextAction).
+  const tutorCity = cleanCity || tutorProfile?.city || undefined
+  const tutorNeighborhood = tutorProfile?.neighborhood ?? null
+
   // Sem cidade selecionada ("Todas as cidades") = busca sem filtro de
   // cidade, não "não buscar" — findPublicProfessionals já trata city
-  // ausente como "sem restrição".
-  const [result, ctx] = await Promise.all([
-    findProfessionalsAction({
-      city: hasCity ? cleanCity : undefined,
-      serviceType: hasServiceType ? (cleanServiceType as ServiceType) : undefined,
-      limit: 20,
-      offset: 0,
-    }),
-    getAuthContext(),
-  ])
+  // ausente como "sem restrição". tutorCity/tutorNeighborhood aqui não
+  // filtram a query — só alimentam locationLabel (DTO) e o ranking.
+  const result = await findProfessionalsAction({
+    city: hasCity ? cleanCity : undefined,
+    serviceType: hasServiceType ? (cleanServiceType as ServiceType) : undefined,
+    tutorCity,
+    tutorNeighborhood: tutorNeighborhood ?? undefined,
+    limit: 20,
+    offset: 0,
+  })
 
   const candidates = result.success ? result.data : []
 
-  // ── 2. Ranking contextual + perfil do tutor em paralelo ──────────────────
   // rankProfessionals já expõe relationshipStats (público) de cada profissional.
-  // findTutorProfileByUserId identifica o tutor para buscar seus relacionamentos pessoais.
-  const [professionals, tutorProfile] = await Promise.all([
+  const professionals =
     candidates.length > 0
-      ? rankProfessionals(candidates, {
+      ? await rankProfessionals(candidates, {
           serviceType: hasServiceType ? (cleanServiceType as ServiceType) : undefined,
+          tutorCity,
+          tutorNeighborhood: tutorNeighborhood ?? undefined,
         })
-      : Promise.resolve([]),
-    ctx.authenticated ? findTutorProfileByUserId(ctx.user.id) : Promise.resolve(null),
-  ])
+      : []
 
   // Gate: tutor precisa de ao menos 1 pet cadastrado para acessar o Discovery.
   // Reaproveita o tutorProfile já buscado — sem query extra de perfil.
@@ -104,8 +121,10 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
 
   const professionalIds = professionals.map((p) => p.id)
 
-  const tutorCityForRec = cleanCity || tutorProfile?.city || null
-  const tutorNeighborhood = tutorProfile?.neighborhood ?? null
+  // Mesmo valor de tutorCity (já calculado acima com o fallback pro perfil),
+  // só convertido pra null (em vez de undefined) — formato que
+  // getRecommendations já espera.
+  const tutorCityForRec = tutorCity ?? null
   const tutorRegionId = tutorProfile?.regionId ?? null
   const tutorNeighborhoodId = tutorProfile?.neighborhoodId ?? null
 
@@ -252,8 +271,7 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
                 id={pro.id}
                 displayName={pro.displayName}
                 avatarUrl={pro.avatarUrl}
-                city={pro.city}
-                state={pro.state}
+                locationLabel={pro.locationLabel}
                 trustScore={pro.trustScore}
                 trustLevel={pro.trustLevel}
                 isVerified={verificationActive}

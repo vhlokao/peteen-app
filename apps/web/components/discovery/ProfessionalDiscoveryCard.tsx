@@ -13,10 +13,16 @@ import { TrustStateChip } from "@/components/shared/trust/TrustStateChip"
 import { ReputationBadgePill } from "@/modules/reputation-badges/components/reputation-badge-pill"
 import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
 import type { PartnerEndorsement } from "@/modules/partners/domain/types"
-import { resolvePublicLocation } from "@/modules/location"
 
 const NAVY = "#1D2F6F"
 const GREEN = "#40916C"
+const NAVY_SOFT = "#2C4893"
+
+/** Proximity V1 — cor do label conforme o nível de match com o tutor. */
+const LOCATION_LABEL_COLOR: Record<string, string> = {
+  "Atende seu bairro": GREEN,
+  "Atende sua cidade": NAVY_SOFT,
+}
 
 type ProfessionalDiscoveryCardService = {
   id: string
@@ -29,8 +35,8 @@ type ProfessionalDiscoveryCardProps = {
   id: string
   displayName: string
   avatarUrl: string | null
-  city: string
-  state: string
+  /** Proximity V1 — "Atende seu bairro" / "Atende sua cidade" / "Cidade — UF". */
+  locationLabel: string
   trustScore: number
   trustLevel: TrustLevel
   isVerified: boolean
@@ -58,8 +64,7 @@ export function ProfessionalDiscoveryCard({
   id,
   displayName,
   avatarUrl,
-  city,
-  state,
+  locationLabel,
   trustScore,
   trustLevel,
   isVerified,
@@ -95,6 +100,7 @@ export function ProfessionalDiscoveryCard({
     ? formatPublicServicePrice(primaryServiceEntry)
     : null
   const hasReviews = averageRating !== null && reviewCount > 0
+  const locationColor = LOCATION_LABEL_COLOR[locationLabel]
 
   return (
     <Link
@@ -133,11 +139,16 @@ export function ProfessionalDiscoveryCard({
               {SERVICE_TYPE_LABELS[primaryService]}
             </span>
           )}
-          <div className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+          <div
+            className={
+              locationColor
+                ? "mt-1.5 flex items-center gap-1 text-xs font-semibold"
+                : "mt-1.5 flex items-center gap-1 text-xs text-muted-foreground"
+            }
+            style={locationColor ? { color: locationColor } : undefined}
+          >
             <MapPin className="size-3 shrink-0" />
-            <span className="truncate">
-              {resolvePublicLocation({ city, state }).label}
-            </span>
+            <span className="truncate">{locationLabel}</span>
           </div>
         </div>
       </div>

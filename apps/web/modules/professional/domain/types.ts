@@ -205,6 +205,11 @@ export const FindProfessionalsSchema = z.object({
   // cidades, capitalização) acontece na action antes da query.
   neighborhood: z.string().min(2).max(100).optional(),
   serviceType: z.enum(SERVICE_TYPES).optional(),
+  // Proximity V1 — não filtram nem ordenam a query; usados só para calcular
+  // locationLabel por profissional no mapeamento do DTO (ver
+  // findPublicProfessionals / resolveLocationLabel).
+  tutorCity: z.string().optional(),
+  tutorNeighborhood: z.string().optional(),
   // Campos reservados para o Ranking Engine (Fase 4)
   // petSpecies: z.enum(SPECIES).optional(),
   // hasSpecialNeeds: z.boolean().optional(),
@@ -313,4 +318,11 @@ export type ProfessionalPublicProfile = Omit<
   reviewCount: number
   /** Média real de ratings — null quando não há reviews. */
   averageRating: number | null
+  /**
+   * Proximity V1 — label de localização humana ("Atende seu bairro" /
+   * "Atende sua cidade" / "Cidade — UF" como fallback). Calculado no
+   * repository a partir de tutorCity/tutorNeighborhood — nunca expõe
+   * lat/lng/distância real.
+   */
+  locationLabel: string
 }

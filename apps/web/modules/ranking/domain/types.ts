@@ -32,6 +32,16 @@ export type RankContext = {
   petSpecies?: Species
   /** Raça do pet — refinamento futuro */
   petBreed?: string
+  /**
+   * Cidade do tutor (busca ativa ou perfil) — boost de proximidade
+   * (Proximity V1). Ausente = sem boost de localização para ninguém.
+   */
+  tutorCity?: string
+  /**
+   * Bairro do tutor — boost adicional de proximidade (Proximity V1).
+   * Só tem efeito se tutorCity também estiver presente e bater.
+   */
+  tutorNeighborhood?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,6 +101,11 @@ export type RankScoreBreakdown = {
    * Fase 5.3: calculado a partir de TutorProfessionalRelationship.
    */
   relationshipBoost: number
+  /**
+   * Boost por proximidade — mesma cidade e/ou bairro do tutor.
+   * Proximity V1: match textual (cidade/bairro), sem distância geográfica real.
+   */
+  locationScore: number
   /** Score total de ranking */
   total: number
 }

@@ -3,24 +3,56 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { syncSupabaseUser } from "./sync-user";
+import { isSafeRedirectPath } from "../domain/safe-redirect";
+
+const EMAIL_RATE_LIMIT_MESSAGE =
+  "Não conseguimos enviar um novo acesso agora porque o limite temporário de e-mails foi atingido. Aguarde alguns minutos e tente novamente.";
+
+function buildMagicLinkRedirectUrl(next?: string): string {
+  const base = `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`;
+  if (isSafeRedirectPath(next)) {
+    return `${base}?next=${encodeURIComponent(next)}`;
+  }
+  return base;
+}
 
 /**
  * signInWithMagicLink — envia Magic Link para o email informado.
  * O Supabase redireciona para /auth/callback após confirmação.
+ *
+ * Retorna um resultado tipado em vez de throw: "email rate limit exceeded"
+ * é uma resposta esperada do provedor (cota de envio atingida), não uma
+ * exceção. Um throw não-tratado numa Server Action vira, em produção, o
+ * erro genérico "An error occurred in the Server Components render" no
+ * client (Next sanitiza a mensagem real) e HTTP 500 — escondendo do usuário
+ * o motivo real e impedindo qualquer orientação de retry.
  */
-export async function signInWithMagicLink(email: string) {
+export async function signInWithMagicLink(
+  email: string,
+  next?: string
+): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createSupabaseServerClient();
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      emailRedirectTo: buildMagicLinkRedirectUrl(next),
     },
   });
 
   if (error) {
-    throw new Error(error.message);
+    if (error.message.toLowerCase().includes("rate limit")) {
+      console.error("[auth] signInWithMagicLink: rate limit exceeded");
+      return { success: false, error: EMAIL_RATE_LIMIT_MESSAGE };
+    }
+    console.error("[auth] signInWithMagicLink failed:", error.message);
+    return {
+      success: false,
+      error: "Não foi possível enviar o link de acesso. Tente novamente em instantes.",
+    };
   }
+
+  return { success: true };
 }
 
 /**
@@ -62,7 +94,8 @@ export async function signInWithGoogle() {
  */
 export async function signInWithPassword(
   email: string,
-  password: string
+  password: string,
+  next?: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createSupabaseServerClient();
 
@@ -85,7 +118,7 @@ export async function signInWithPassword(
     email: data.user.email!,
   });
 
-  redirect("/dashboard");
+  redirect(isSafeRedirectPath(next) ? next : "/dashboard");
 }
 
 /**

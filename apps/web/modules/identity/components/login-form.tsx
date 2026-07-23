@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -37,15 +37,20 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 type LoginFormProps = {
   errorCode?: string;
+  next?: string;
 };
 
-export function LoginForm({ errorCode }: LoginFormProps) {
+export function LoginForm({ errorCode, next }: LoginFormProps) {
   const [isPendingGoogle, startGoogleTransition] = useTransition();
   const [isPendingPassword, startPasswordTransition] = useTransition();
   const [emailSent, setEmailSent] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   const [showPasswordSection, setShowPasswordSection] = useState(false);
   const [password, setPassword] = useState("");
+  // Guard síncrono contra duplo-submit (duplo clique / Enter+clique) — o
+  // state `isLoading` só reflete no `disabled` após um re-render, o que
+  // deixa uma janela de corrida para um segundo disparo. O ref é síncrono.
+  const submitLockRef = useRef(false);
 
   const {
     handleSubmit,
@@ -60,14 +65,18 @@ export function LoginForm({ errorCode }: LoginFormProps) {
   // ── Magic Link ─────────────────────────────────────────────────────────────
 
   async function onSubmitMagicLink(values: LoginFormValues) {
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
     setServerError(null);
     try {
-      await signInWithMagicLink(values.email);
-      setEmailSent(true);
-    } catch (err) {
-      setServerError(
-        err instanceof Error ? err.message : "Erro ao enviar e-mail."
-      );
+      const result = await signInWithMagicLink(values.email, next);
+      if (result.success) {
+        setEmailSent(true);
+      } else {
+        setServerError(result.error);
+      }
+    } finally {
+      submitLockRef.current = false;
     }
   }
 
@@ -90,6 +99,8 @@ export function LoginForm({ errorCode }: LoginFormProps) {
   // ── Password (dev) ─────────────────────────────────────────────────────────
 
   function handlePasswordSignIn() {
+    if (submitLockRef.current) return;
+
     const email = getValues("email");
     if (!email) {
       setServerError("Informe o e-mail antes de usar senha.");
@@ -100,10 +111,11 @@ export function LoginForm({ errorCode }: LoginFormProps) {
       return;
     }
 
+    submitLockRef.current = true;
     setServerError(null);
     startPasswordTransition(async () => {
       try {
-        const result = await signInWithPassword(email, password);
+        const result = await signInWithPassword(email, password, next);
         if (!result.success) {
           setServerError(result.error);
         }
@@ -115,6 +127,8 @@ export function LoginForm({ errorCode }: LoginFormProps) {
             message || "Credenciais inválidas. Verifique e-mail e senha."
           );
         }
+      } finally {
+        submitLockRef.current = false;
       }
     });
   }

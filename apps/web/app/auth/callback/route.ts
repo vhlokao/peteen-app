@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { handleAuthCallback } from "@/modules/identity/infrastructure/auth-actions";
 import { getUserByAuthId } from "@/modules/identity/infrastructure/sync-user";
+import { isSafeRedirectPath } from "@/modules/identity/domain/safe-redirect";
 
 /**
  * GET /auth/callback
@@ -40,6 +41,7 @@ const PERSONA_REDIRECTS = {
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  const next = searchParams.get("next");
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=no_code`);
@@ -57,8 +59,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${origin}/login?error=sync_failed`);
     }
 
-    // 3. Determinar redirect por persona
-    const destination = resolveRedirectDestination(dbUser);
+    // 3. Destino: ?next= (validado, path interno) tem prioridade sobre a
+    // persona — preserva para onde o usuário estava indo antes do login.
+    const destination = isSafeRedirectPath(next) ? next : resolveRedirectDestination(dbUser);
 
     return NextResponse.redirect(`${origin}${destination}`);
   } catch {

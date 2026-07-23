@@ -93,9 +93,9 @@ export async function middleware(request: NextRequest) {
   if (isProtectedRoute && !user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    // Preservar destino original para redirect pós-login (via ?next=)
-    // Nota: o callback de OAuth/Magic Link não usa este param automaticamente.
-    // Implementação manual de ?next= fica para versão futura.
+    // Preservar destino original para redirect pós-login (via ?next=).
+    // Consumido por LoginForm (magic link/senha) e por /auth/callback,
+    // que valida o path com isSafeRedirectPath antes de redirecionar.
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }

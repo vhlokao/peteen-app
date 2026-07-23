@@ -50,12 +50,16 @@ import {
   findServiceRequestsByProfessionalId,
   findRequestWithOwnershipContext,
   transitionStatus,
+  ConcurrentStatusChangeError,
   countCompletedRequestsBetween,
   hasPendingRequestsForPet,
   hasRecentCompletionBetween,
   hasActiveRequestBetween,
   hasInProgressRequestForProfessional,
 } from "../infrastructure/repository"
+
+const CONCURRENT_UPDATE_MESSAGE =
+  "Esta solicitação já foi atualizada. Recarregue a página para ver o status mais recente."
 import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
 import { isDevBypassEnabled } from "@/modules/antifraude/domain/dev-flags"
@@ -261,7 +265,7 @@ export async function acceptServiceRequestAction(
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    const updated = await transitionStatus(requestId, toStatus)
+    const updated = await transitionStatus(requestId, request.status, toStatus)
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -271,6 +275,9 @@ export async function acceptServiceRequestAction(
 
     return { success: true, data: updated }
   } catch (err) {
+    if (err instanceof ConcurrentStatusChangeError) {
+      return { success: false, error: CONCURRENT_UPDATE_MESSAGE }
+    }
     console.error("[acceptServiceRequestAction]", err)
     return { success: false, error: "Erro interno ao aceitar solicitação." }
   }
@@ -364,7 +371,7 @@ export async function startServiceRequestAction(
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    const updated = await transitionStatus(requestId, toStatus)
+    const updated = await transitionStatus(requestId, request.status, toStatus)
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -374,6 +381,9 @@ export async function startServiceRequestAction(
 
     return { success: true, data: updated }
   } catch (err) {
+    if (err instanceof ConcurrentStatusChangeError) {
+      return { success: false, error: CONCURRENT_UPDATE_MESSAGE }
+    }
     console.error("[startServiceRequestAction]", err)
     return { success: false, error: "Erro interno ao iniciar solicitação." }
   }
@@ -447,7 +457,7 @@ export async function cancelServiceRequestAction(
         }
       : undefined
 
-    const updated = await transitionStatus(requestId, toStatus, { trustEvent })
+    const updated = await transitionStatus(requestId, request.status, toStatus, { trustEvent })
 
     // Recalcula Trust Score se cancelamento do profissional gerou TrustEvent (falha silenciosa)
     if (trustEvent) {
@@ -462,6 +472,9 @@ export async function cancelServiceRequestAction(
 
     return { success: true, data: updated }
   } catch (err) {
+    if (err instanceof ConcurrentStatusChangeError) {
+      return { success: false, error: CONCURRENT_UPDATE_MESSAGE }
+    }
     console.error("[cancelServiceRequestAction]", err)
     return { success: false, error: "Erro interno ao cancelar solicitação." }
   }
@@ -565,7 +578,7 @@ export async function completeServiceRequestAction(
     const parsed = CompleteServiceRequestSchema.safeParse(input ?? {})
     const nextScheduledAt = parsed.success ? parsed.data.nextScheduledAt : undefined
 
-    const updated = await transitionStatus(requestId, toStatus, {
+    const updated = await transitionStatus(requestId, request.status, toStatus, {
       trustEvent,
       nextScheduledAt,
     })
@@ -595,6 +608,9 @@ export async function completeServiceRequestAction(
 
     return { success: true, data: updated }
   } catch (err) {
+    if (err instanceof ConcurrentStatusChangeError) {
+      return { success: false, error: CONCURRENT_UPDATE_MESSAGE }
+    }
     console.error("[completeServiceRequestAction]", err)
     return { success: false, error: "Erro interno ao concluir solicitação." }
   }
@@ -755,7 +771,7 @@ async function applyTransition({
         }
       : undefined
 
-    const updated = await transitionStatus(requestId, toStatus, { trustEvent })
+    const updated = await transitionStatus(requestId, request.status, toStatus, { trustEvent })
 
     // Recalcula Trust Score se a transição gerou TrustEvent (falha silenciosa)
     if (trustEvent) {
@@ -770,6 +786,9 @@ async function applyTransition({
 
     return { success: true, data: updated }
   } catch (err) {
+    if (err instanceof ConcurrentStatusChangeError) {
+      return { success: false, error: CONCURRENT_UPDATE_MESSAGE }
+    }
     console.error(`[applyTransition ${toStatus}]`, err)
     return { success: false, error: "Erro interno ao processar a solicitação." }
   }

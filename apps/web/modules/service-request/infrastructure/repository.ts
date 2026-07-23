@@ -342,15 +342,30 @@ export async function hasPendingRequestsForPet(petId: string): Promise<boolean> 
 // Nunca chamar prisma.serviceRequest.update({ data: { status } }) diretamente.
 //
 // O que esta função garante:
-//   1. Status é atualizado para o valor correto
+//   1. Status só é atualizado se o registro ainda estiver em `fromStatus`
+//      (guard otimista via updateMany — ver ConcurrentStatusChangeError abaixo)
 //   2. Timestamps corretos são registrados (startedAt, completedAt)
 //   3. nextScheduledAt é registrado se informado (para CRM e sugestão de recorrência)
 //   4. TrustEvent é inserido NA MESMA TRANSAÇÃO — sem eventos órfãos
 //   5. Se qualquer parte falhar, tudo é revertido
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Lançado quando `transitionStatus` não encontra o registro no `fromStatus`
+ * esperado — outra transição já mudou o status entre a leitura (na Server
+ * Action) e este update. É o guard atômico contra a race condition de duas
+ * transições concorrentes lidas a partir do mesmo status obsoleto.
+ */
+export class ConcurrentStatusChangeError extends Error {
+  constructor(requestId: string) {
+    super(`ServiceRequest ${requestId} não estava mais no status esperado.`)
+    this.name = "ConcurrentStatusChangeError"
+  }
+}
+
 export async function transitionStatus(
   requestId: string,
+  fromStatus: RequestStatus,
   toStatus: RequestStatus,
   options?: {
     trustEvent?: TrustEventPayload
@@ -377,13 +392,20 @@ export async function transitionStatus(
       }
     }
 
-    const updated = await tx.serviceRequest.update({
-      where: { id: requestId },
+    // Guard atômico: só atualiza se o status ainda for `fromStatus`.
+    // Se outro processo já transicionou o request (ex.: tutor cancelou e
+    // profissional aceitou quase ao mesmo tempo), count é 0 e nada é escrito.
+    const { count } = await tx.serviceRequest.updateMany({
+      where: { id: requestId, status: fromStatus },
       data: {
         status: toStatus,
         ...timestampData,
       },
     })
+
+    if (count === 0) {
+      throw new ConcurrentStatusChangeError(requestId)
+    }
 
     // TrustEvent emitido dentro da mesma transação
     // Garante: ou o status muda E o evento é registrado, ou nenhum dos dois ocorre
@@ -403,7 +425,7 @@ export async function transitionStatus(
       })
     }
 
-    return updated
+    return tx.serviceRequest.findUniqueOrThrow({ where: { id: requestId } })
   })
 
   return mapToDomain(result)

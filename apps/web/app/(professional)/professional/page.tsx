@@ -93,7 +93,7 @@ export default async function ProfessionalHomePage() {
             </span>
             <div>
               <p className="text-xs text-white/70">Olá,</p>
-              <p className="text-lg font-extrabold text-white">{firstName}</p>
+              <h1 className="text-lg font-extrabold text-white">{firstName}</h1>
             </div>
           </div>
           <Link

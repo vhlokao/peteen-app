@@ -69,7 +69,7 @@ export function ProfessionalProfilePreview({ profile }: { profile: ProfessionalP
           />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-lg font-extrabold text-white">{profile.displayName}</p>
+          <h1 className="truncate text-lg font-extrabold text-white">{profile.displayName}</h1>
           {mainService && (
             <p className="mt-0.5 truncate text-sm text-white/70">{SERVICE_TYPE_LABELS[mainService]}</p>
           )}

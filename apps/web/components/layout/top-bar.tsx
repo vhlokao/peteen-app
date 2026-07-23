@@ -9,7 +9,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { AvatarMenu } from "@/components/layout/avatar-menu";
 import { TopNavLinks } from "@/components/layout/top-nav-links";
 import { NotificationBell } from "@/modules/notifications/components/notification-bell";
-import { getVariantForRole } from "@/lib/navigation/app-navigation";
+import { getVariantForRole, getHomeHrefForVariant } from "@/lib/navigation/app-navigation";
 import type { AppShellVariant, ShellSessionUser } from "@/types";
 
 type TopBarProps = {
@@ -45,12 +45,17 @@ export function TopBar({
   // Visitante = não autenticado, na landing pública.
   const isVisitor = !isAuthenticated && pathname === "/";
 
+  // Logo leva à home da persona quando autenticado (ex: /professional),
+  // à home pública quando visitante — nunca joga o usuário logado pra fora
+  // do produto.
+  const logoHref = isAuthenticated ? getHomeHrefForVariant(effectiveVariant) : "/";
+
   return (
     <header className="safe-top sticky top-0 z-40 border-b border-border/80 bg-background/90 backdrop-blur-md">
       <div className="mx-auto flex h-[var(--header-height)] max-w-[var(--content-max-width)] items-center justify-between gap-4 px-[var(--page-padding-x)]">
-        {/* Logo — sempre visível, sempre leva à home pública */}
+        {/* Logo — sempre visível, leva à home da persona (autenticado) ou pública (visitante) */}
         <Link
-          href="/"
+          href={logoHref}
           aria-label="Peteen — página inicial"
           className="flex shrink-0 items-center gap-2 font-heading text-lg font-semibold tracking-tight text-foreground"
         >

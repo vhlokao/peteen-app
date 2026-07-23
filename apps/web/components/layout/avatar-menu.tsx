@@ -14,7 +14,7 @@
  *  4. Conta — Configurações/Segurança (placeholders até existir rota) + Sair
  */
 
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import Link from "next/link"
 import { LogOut, Settings, ShieldQuestion } from "lucide-react"
 import { Menu } from "@base-ui/react/menu"
@@ -23,6 +23,7 @@ import {
   appNavigation,
   filterNavigationItems,
   getAreaSwitchSection,
+  isNavigationItemActive,
 } from "@/lib/navigation/app-navigation"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
@@ -52,7 +53,7 @@ const itemClass =
 
 const sectionTitleClass = "px-2.5 pb-1 pt-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground/70"
 
-function MenuSection({ section }: { section: ActorNavSection }) {
+function MenuSection({ section, pathname }: { section: ActorNavSection; pathname: string }) {
   return (
     <div>
       <p className={sectionTitleClass}>{section.title}</p>
@@ -67,14 +68,15 @@ function MenuSection({ section }: { section: ActorNavSection }) {
             </Menu.Item>
           )
         }
+        const active = isNavigationItemActive(pathname, item)
         return (
           <Menu.LinkItem
             key={item.href}
             closeOnClick
             render={<Link href={item.href} />}
-            className={itemClass}
+            className={cn(itemClass, active && "bg-primary/10 text-primary")}
           >
-            <Icon className="size-4 shrink-0 text-muted-foreground" />
+            <Icon className={cn("size-4 shrink-0", active ? "stroke-[2.5] text-primary" : "text-muted-foreground")} />
             <span>{item.label}</span>
           </Menu.LinkItem>
         )
@@ -85,6 +87,7 @@ function MenuSection({ section }: { section: ActorNavSection }) {
 
 export function AvatarMenu({ variant, user }: AvatarMenuProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const actorSections = appNavigation[variant].actorSections.map((section) => ({
     ...section,
     items: filterNavigationItems(section.items),
@@ -130,14 +133,14 @@ export function AvatarMenu({ variant, user }: AvatarMenuProps) {
             <div className="max-h-[70vh] overflow-y-auto p-1.5">
               {/* Minha área — navegação operacional do ator */}
               {actorSections.map((section) => (
-                <MenuSection key={section.title} section={section} />
+                <MenuSection key={section.title} section={section} pathname={pathname} />
               ))}
 
               {/* Trocar área — só se o usuário tiver mais de uma persona real */}
               {areaSwitchSection ? (
                 <>
                   <div role="separator" className="mx-1.5 my-1 border-t border-border" />
-                  <MenuSection section={areaSwitchSection} />
+                  <MenuSection section={areaSwitchSection} pathname={pathname} />
                 </>
               ) : null}
 

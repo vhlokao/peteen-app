@@ -102,9 +102,11 @@ export function getVariantForRole(role: string): Exclude<AppShellVariant, "marke
  *
  * Header contextual mínimo por persona:
  *  - Tutor: Buscar (é a ação central do tutor — encontrar profissional).
- *  - Profissional e Parceiro: nenhum item — eles vieram operar (pedidos,
- *    clientes, agenda, recomendações), não buscar. Header fica só
- *    Logo + Sino + Avatar.
+ *  - Profissional: os mesmos 4 itens do BottomNav mobile (Loop F/G2) —
+ *    no desktop o BottomNav fica oculto (lg:hidden), então sem isso o
+ *    header ficava sem nenhuma navegação persistente, só Logo + Sino + Avatar.
+ *  - Parceiro: nenhum item ainda — fora do escopo desta correção (Loop F/G2
+ *    corrigiu só o profissional).
  *
  * "Como funciona", "Planos" e listagem de "Parceiros": omitidos — sem rota
  * nem anchor reais ainda. Melhor omitir do que linkar quebrado.
@@ -112,6 +114,14 @@ export function getVariantForRole(role: string): Exclude<AppShellVariant, "marke
 export function getProductHeaderNavigation(variant: AppShellVariant): NavigationItem[] {
   if (variant === "tutor") {
     return [{ label: "Buscar", href: "/discover", icon: Search }]
+  }
+  if (variant === "professional") {
+    return [
+      { label: "Início", href: "/professional", icon: LayoutDashboard, exact: true },
+      { label: "Solicitações", href: "/requests", icon: Inbox },
+      { label: "Clientes", href: "/professional/clients", icon: Users },
+      { label: "Perfil", href: "/professional/profile", icon: UserCircle },
+    ]
   }
   return []
 }

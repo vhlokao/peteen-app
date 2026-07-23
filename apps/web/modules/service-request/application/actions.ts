@@ -277,6 +277,15 @@ export async function acceptServiceRequestAction(
       { status: toStatus }
     )
 
+    // Observabilidade: aceite de solicitação com data agendada já no passado.
+    // Não bloqueia — só sinaliza, pois aqui ainda não há um horário de início real.
+    if (request.scheduledAt && request.scheduledAt.getTime() < Date.now()) {
+      console.info("request.accept.past_scheduled_at", {
+        requestId,
+        scheduledAt: request.scheduledAt,
+      })
+    }
+
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
     revalidatePath("/requests")
@@ -377,6 +386,19 @@ export async function startServiceRequestAction(
           success: false,
           error:
             "Este atendimento não pode ser iniciado ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para iniciar um novo atendimento recorrente.",
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Guardrail operacional: data agendada muito no passado ────────────────
+    if (request.scheduledAt) {
+      const hoursAgo = (Date.now() - request.scheduledAt.getTime()) / 36e5
+      if (hoursAgo > 24) {
+        return {
+          success: false,
+          error:
+            "A data agendada já passou. Entre em contato com o tutor para confirmar se o atendimento ainda vai acontecer.",
         }
       }
     }

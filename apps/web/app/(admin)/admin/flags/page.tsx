@@ -58,7 +58,7 @@ export default async function AdminFlagsPage({ searchParams }: Props) {
         <select
           name="status"
           defaultValue={status ?? ""}
-          className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm"
+          className="rounded border border-neutral-200 bg-background px-3 py-1.5 text-sm"
         >
           <option value="">Todos os status</option>
           <option value="OPEN">Abertos</option>
@@ -69,7 +69,7 @@ export default async function AdminFlagsPage({ searchParams }: Props) {
         <select
           name="severity"
           defaultValue={severity ?? ""}
-          className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm"
+          className="rounded border border-neutral-200 bg-background px-3 py-1.5 text-sm"
         >
           <option value="">Toda severidade</option>
           <option value="LOW">Baixo</option>
@@ -81,7 +81,7 @@ export default async function AdminFlagsPage({ searchParams }: Props) {
         <select
           name="targetType"
           defaultValue={targetType ?? ""}
-          className="rounded border border-neutral-200 bg-white px-3 py-1.5 text-sm"
+          className="rounded border border-neutral-200 bg-background px-3 py-1.5 text-sm"
         >
           <option value="">Todos os tipos</option>
           <option value="USER">Usuário</option>

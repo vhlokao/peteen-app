@@ -100,7 +100,7 @@ export function TutorProfileForm({
             autoComplete="name"
             autoFocus
             disabled={isSubmitting}
-            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
           />
         </Field>
 
@@ -111,7 +111,7 @@ export function TutorProfileForm({
             name="city"
             control={control}
             render={({ field: cityField }) => (
-              <div className="flex items-center gap-2.5 rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 focus-within:border-[#2C4893] focus-within:shadow-[0_0_0_4px_rgba(44,72,147,.10)]">
+              <div className="flex items-center gap-2.5 rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 focus-within:border-[#2C4893] focus-within:shadow-[0_0_0_4px_rgba(44,72,147,.10)]">
                 <MapPin className="size-[17px] shrink-0 text-[#8A897F]" />
                 <select
                   value={cityField.value}
@@ -157,7 +157,7 @@ export function TutorProfileForm({
             placeholder="Pinheiros"
             autoComplete="address-level3"
             disabled={isSubmitting}
-            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
           />
         </Field>
 
@@ -170,7 +170,7 @@ export function TutorProfileForm({
             placeholder="+55 11 9 9999-9999"
             autoComplete="tel"
             disabled={isSubmitting}
-            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
           />
         </Field>
 
@@ -182,7 +182,7 @@ export function TutorProfileForm({
             placeholder="Conte um pouco sobre você e seus pets..."
             rows={3}
             disabled={isSubmitting}
-            className="w-full resize-none rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+            className="w-full resize-none rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
           />
         </Field>
       </div>

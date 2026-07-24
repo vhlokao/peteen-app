@@ -560,7 +560,7 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
                 type="url"
                 placeholder="https://..."
                 disabled={isSubmitting}
-                className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+                className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
               />
             </Field>
             <div className="h-[18px]" />
@@ -573,7 +573,7 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
             placeholder="Nome do pet"
             autoFocus
             disabled={isSubmitting}
-            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
           />
         </Field>
 
@@ -622,7 +622,7 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
             {...register("breed")}
             placeholder="Ex: SRD, Golden Retriever"
             disabled={isSubmitting}
-            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-white px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
+            className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
           />
         </Field>
       </div>

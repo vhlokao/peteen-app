@@ -1,6 +1,6 @@
 import { Star } from "lucide-react"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import type { ProfessionalReviewRow } from "../domain/types"
 
@@ -34,6 +34,9 @@ export function ProfessionalReviewCard({ review, relationshipBadge }: Profession
     <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
       <div className="flex items-start gap-3">
         <Avatar className="size-10 shrink-0 rounded-xl">
+          {review.avatarUrl && (
+            <AvatarImage src={review.avatarUrl} alt={review.tutorName} />
+          )}
           <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-semibold text-primary">
             {initials}
           </AvatarFallback>

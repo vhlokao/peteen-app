@@ -88,6 +88,7 @@ export type PartnerRecommendationRow = {
   connectionId: string
   professionalId: string
   displayName: string
+  avatarUrl?: string | null
   city: string
   specialty: string
   isActive: boolean

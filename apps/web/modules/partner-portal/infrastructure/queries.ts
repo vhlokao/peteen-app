@@ -407,6 +407,7 @@ export async function getPartnerRecommendations(
         select: {
           id: true,
           displayName: true,
+          avatarUrl: true,
           city: true,
           serviceTypes: true,
         },
@@ -418,6 +419,7 @@ export async function getPartnerRecommendations(
     connectionId: conn.id,
     professionalId: conn.targetProfile.id,
     displayName: conn.targetProfile.displayName,
+    avatarUrl: conn.targetProfile.avatarUrl,
     city: conn.targetProfile.city,
     specialty: formatSpecialty(conn.targetProfile.serviceTypes),
     isActive: conn.isActive,

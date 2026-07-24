@@ -14,7 +14,7 @@ import {
 import type { PartnerRecommendationRow } from "../domain/types"
 import { buildDiscoverUrl } from "../domain/navigation"
 import { PartnerStatusPill } from "./partner-status-pill"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button, buttonVariants } from "@/components/ui/button"
 
 type Props = {
@@ -54,6 +54,9 @@ export function PartnerRecommendationCard({ recommendation, onUpdated }: Props) 
     <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
       <div className="flex items-start gap-3">
         <Avatar className="size-11 shrink-0 rounded-xl">
+          {recommendation.avatarUrl && (
+            <AvatarImage src={recommendation.avatarUrl} alt={recommendation.displayName} />
+          )}
           <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-semibold text-primary">
             {initials}
           </AvatarFallback>

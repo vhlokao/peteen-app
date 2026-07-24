@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import Link from "next/link"
 import { AlertCircle, Bell, Eye } from "lucide-react"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { requireProfessionalContext } from "@/modules/professional-crm/application/require-professional"
 import {
   getProfessionalDashboardStats,
@@ -88,9 +89,12 @@ export default async function ProfessionalHomePage() {
         <span className="pointer-events-none absolute -right-10 -top-10 size-32 rounded-full bg-white/[.08]" />
         <div className="relative flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-white text-sm font-extrabold" style={{ color: NAVY }}>
-              {initials}
-            </span>
+            <Avatar className="size-11 shrink-0 rounded-xl bg-white">
+              {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.displayName} />}
+              <AvatarFallback className="rounded-xl bg-white text-sm font-extrabold" style={{ color: NAVY }}>
+                {initials}
+              </AvatarFallback>
+            </Avatar>
             <div>
               <p className="text-xs text-white/70">Olá,</p>
               <h1 className="text-lg font-extrabold text-white">{firstName}</h1>

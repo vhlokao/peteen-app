@@ -1,6 +1,8 @@
 import Link from "next/link"
 import { ChevronRight, PawPrint } from "lucide-react"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+
 const NAVY = "#1D2F6F"
 const CORAL = "#E07A5F"
 
@@ -69,12 +71,17 @@ export function TutorActiveRequestCard({
       </div>
 
       <div className="relative flex items-center gap-3.5">
-        <span
-          className="grid size-12 shrink-0 place-items-center rounded-[14px] bg-[#E8EEF6] text-[15px] font-bold"
-          style={{ color: NAVY }}
-        >
-          {initials}
-        </span>
+        <Avatar className="size-12 shrink-0 rounded-[14px] bg-[#E8EEF6]">
+          {request.professionalAvatarUrl && (
+            <AvatarImage src={request.professionalAvatarUrl} alt={request.professionalName} />
+          )}
+          <AvatarFallback
+            className="rounded-[14px] bg-[#E8EEF6] text-[15px] font-bold"
+            style={{ color: NAVY }}
+          >
+            {initials}
+          </AvatarFallback>
+        </Avatar>
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15.5px] font-bold text-white">
             {request.professionalName}

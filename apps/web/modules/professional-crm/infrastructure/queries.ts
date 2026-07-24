@@ -420,7 +420,7 @@ export async function findProfessionalClients(
       lastServiceAt: true,
       relationshipLevel: true,
       tutor: {
-        select: { displayName: true, city: true },
+        select: { displayName: true, avatarUrl: true, city: true },
       },
     },
   })
@@ -455,6 +455,7 @@ export async function findProfessionalClients(
     return {
       tutorId: rel.tutorId,
       tutorName: rel.tutor.displayName,
+      avatarUrl: rel.tutor.avatarUrl,
       city: rel.tutor.city,
       totalServices: rel.completedServices,
       lastServiceAt: rel.lastServiceAt,
@@ -528,7 +529,7 @@ export async function getProfessionalReviewsData(
       comment: true,
       createdAt: true,
       requestId: true,
-      tutor: { select: { id: true, displayName: true } },
+      tutor: { select: { id: true, displayName: true, avatarUrl: true } },
       request: {
         select: {
           serviceType: true,
@@ -557,6 +558,7 @@ export async function getProfessionalReviewsData(
     id: r.id,
     tutorId: r.tutor.id,
     tutorName: r.tutor.displayName,
+    avatarUrl: r.tutor.avatarUrl,
     rating: r.rating,
     comment: r.comment,
     createdAt: r.createdAt,

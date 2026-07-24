@@ -46,6 +46,7 @@ export type ProfessionalNextAction = {
 export type ProfessionalClientRow = {
   tutorId: string
   tutorName: string
+  avatarUrl?: string | null
   city: string
   totalServices: number
   lastServiceAt: Date | null
@@ -68,6 +69,7 @@ export type ProfessionalReviewRow = {
   id: string
   tutorId: string
   tutorName: string
+  avatarUrl?: string | null
   rating: number
   comment: string | null
   createdAt: Date

@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { requirePartnerContext } from "@/modules/partner-portal/application/require-partner"
 import {
   getPartnerDashboardStats,
@@ -51,12 +52,15 @@ export default async function PartnerHomePage() {
         <span className="pointer-events-none absolute -bottom-10 -left-8 size-28 rounded-full bg-white/[.06]" />
 
         <div className="relative flex items-center gap-3.5">
-          <span
-            className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white text-lg font-extrabold"
-            style={{ color: NAVY }}
-          >
-            {initials}
-          </span>
+          <Avatar className="size-14 shrink-0 rounded-2xl bg-white">
+            {partner.logoUrl && <AvatarImage src={partner.logoUrl} alt={partner.businessName} />}
+            <AvatarFallback
+              className="rounded-2xl bg-white text-lg font-extrabold"
+              style={{ color: NAVY }}
+            >
+              {initials}
+            </AvatarFallback>
+          </Avatar>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-widest text-white/60">
               Área do Parceiro

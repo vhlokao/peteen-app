@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { CalendarDays, MapPin, PawPrint } from "lucide-react"
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { RELATIONSHIP_LEVEL_ICONS } from "@/modules/relationship/domain/constants"
 import type { RelationshipLevel } from "@/modules/relationship/domain/types"
 import type { ProfessionalClientRow } from "../domain/types"
@@ -41,6 +41,9 @@ export function ProfessionalClientsList({ clients }: { clients: ProfessionalClie
           >
             <div className="flex items-start gap-3">
               <Avatar className="size-11 shrink-0 rounded-xl">
+                {client.avatarUrl && (
+                  <AvatarImage src={client.avatarUrl} alt={client.tutorName} />
+                )}
                 <AvatarFallback className="rounded-xl bg-primary/10 text-sm font-semibold text-primary">
                   {initials}
                 </AvatarFallback>

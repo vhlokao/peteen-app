@@ -46,9 +46,11 @@ export async function getTutorNotifications(
   limit = DEFAULT_LIMIT
 ): Promise<NotificationItem[]> {
   const since = recentSince()
+  // Care updates usam janela mais curta (24h) — sinal de "cuidado acontecendo agora".
+  const careSince = new Date(Date.now() - 24 * 60 * 60 * 1000)
   const items: NotificationItem[] = []
 
-  const [requests, disputes] = await Promise.all([
+  const [requests, disputes, careUpdates] = await Promise.all([
     prisma.serviceRequest.findMany({
       where: {
         tutorId,
@@ -80,6 +82,24 @@ export async function getTutorNotifications(
         status: true,
         createdAt: true,
         resolvedAt: true,
+      },
+    }),
+    // Fonte derivada: atualizações de cuidado recentes em atendimentos ativos.
+    // Privacidade: NÃO selecionamos content nem categoria — a notificação é
+    // genérica (o conteúdo livre pode conter saúde/medicação/incidente/dado
+    // privado do pet ou do tutor). createdAt define a novidade (não occurredAt).
+    prisma.careUpdate.findMany({
+      where: {
+        deletedAt: null,
+        createdAt: { gte: careSince },
+        request: { tutorId, status: "IN_PROGRESS" },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        requestId: true,
+        createdAt: true,
       },
     }),
   ])
@@ -162,6 +182,19 @@ export async function getTutorNotifications(
         entityType: "Dispute",
       })
     }
+  }
+
+  for (const cu of careUpdates) {
+    items.push({
+      id: `notif-tutor-care-${cu.id}`,
+      type: "care_update",
+      title: "Nova atualização do atendimento",
+      description: "O profissional publicou uma nova atualização sobre o cuidado do seu pet.",
+      createdAt: cu.createdAt,
+      href: tutorNotificationHref.request(cu.requestId),
+      entityId: cu.id,
+      entityType: "CareUpdate",
+    })
   }
 
   return finalize(items, limit)

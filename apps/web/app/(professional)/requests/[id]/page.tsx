@@ -14,6 +14,7 @@ import { DisputeBanner } from "@/modules/disputes/components/dispute-banner"
 import { ProfessionalRequestStatusPill } from "@/modules/professional-crm/components/professional-request-status-pill"
 import { ProfessionalRequestNextStep } from "@/modules/professional-crm/components/professional-request-next-step"
 import { ProfessionalRequestSummary } from "@/modules/professional-crm/components/professional-request-summary"
+import { CareUpdateForm, CareTimeline, getCareTimelineAction } from "@/modules/care-timeline"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
@@ -79,6 +80,18 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
       : Promise.resolve(null),
   ])
 
+  // Care Timeline — durante o atendimento (com publicação) e após concluído
+  // (só leitura). V0. Uma disputa aberta congela a publicação (o servidor já
+  // bloqueia; aqui escondemos o form para o profissional não bater no erro),
+  // mas a leitura da timeline é preservada.
+  const hasActiveDispute = dispute?.status === "OPEN" || dispute?.status === "UNDER_REVIEW"
+  const showCareTimeline =
+    isProfessionalView && ["IN_PROGRESS", "COMPLETED"].includes(request.status)
+  const canPublishCare =
+    isProfessionalView && request.status === "IN_PROGRESS" && !hasActiveDispute
+  const careTimelineResult = showCareTimeline ? await getCareTimelineAction(id) : null
+  const careUpdates = careTimelineResult?.success ? careTimelineResult.data : []
+
   return (
     <div className="page-container max-w-2xl pb-4">
       <div className="mb-5 flex items-center gap-3">
@@ -134,6 +147,29 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
             }}
           />
         </section>
+
+        {showCareTimeline && (
+          <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
+            <h2 className="mb-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Diário de cuidado
+            </h2>
+            {canPublishCare ? (
+              <>
+                <p className="mb-4 text-xs text-muted-foreground">
+                  Compartilhe como está sendo o atendimento. O tutor acompanha em tempo real.
+                </p>
+                <CareUpdateForm requestId={id} />
+                <div className="mt-5">
+                  <CareTimeline updates={careUpdates} />
+                </div>
+              </>
+            ) : (
+              <div className="mt-3">
+                <CareTimeline updates={careUpdates} />
+              </div>
+            )}
+          </section>
+        )}
 
         <ProfessionalRequestSummary
           tutor={request.tutor}

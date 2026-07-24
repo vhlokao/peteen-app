@@ -69,6 +69,9 @@ model User {
   openedDisputes  Dispute[]       @relation("DisputeOpener")
   adminAuditLogs  AdminAuditLog[] @relation("AdminAuditLogs")
 
+  // Care Timeline — atualizações de cuidado escritas por este usuário
+  careUpdatesAuthored CareUpdate[] @relation("CareUpdateAuthor")
+
   @@index([authId])
   @@index([email])
   @@index([activePrimaryRole])
@@ -172,6 +175,7 @@ model ProfessionalProfile {
   crmClients     CrmClient[]
   relationships  TutorProfessionalRelationship[]
   availabilities ProfessionalAvailability[]
+  careUpdates    CareUpdate[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -387,7 +391,8 @@ model Pet {
   // Etapa 6.4+ — vacinas, medicamentos, histórico médico, documentos
   // extensionData Json? @default("{}")
 
-  requests ServiceRequest[]
+  requests    ServiceRequest[]
+  careUpdates CareUpdate[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -451,8 +456,9 @@ model ServiceRequest {
   recurrenceEndsAt DateTime? // quando a série de recorrência expira
   nextScheduledAt  DateTime? // data prevista do próximo atendimento na série
 
-  review   Review?
-  disputes Dispute[]
+  review      Review?
+  disputes    Dispute[]
+  careUpdates CareUpdate[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -464,6 +470,51 @@ model ServiceRequest {
   @@index([isRecurring])
   @@index([seriesId])
   @@map("service_requests")
+}
+
+// ─────────────────────────────────────────────
+// CARE TIMELINE — atualizações de cuidado durante o atendimento
+//
+// V0: apenas texto. O profissional publica dentro de uma request IN_PROGRESS;
+// o tutor visualiza. Soft delete (deletedAt) preserva evidência para disputa.
+// authorId (User) é separado de professionalId (ProfessionalProfile) para
+// preparar autoria plural futura sem migração. Sem impacto em Trust/Ranking.
+// ─────────────────────────────────────────────
+
+enum CareUpdateCategory {
+  CHECK_IN
+  FEEDING
+  WALK
+  ACTIVITY
+  REST
+  NOTE
+  CHECK_OUT
+}
+
+model CareUpdate {
+  id             String             @id @default(cuid())
+  requestId      String
+  petId          String?
+  professionalId String
+  authorId       String
+  category       CareUpdateCategory
+  content        String
+  occurredAt     DateTime
+  createdAt      DateTime           @default(now())
+  editedAt       DateTime?
+  deletedAt      DateTime?
+
+  request      ServiceRequest      @relation(fields: [requestId], references: [id])
+  pet          Pet?                @relation(fields: [petId], references: [id])
+  professional ProfessionalProfile @relation(fields: [professionalId], references: [id])
+  author       User                @relation("CareUpdateAuthor", fields: [authorId], references: [id])
+
+  @@index([requestId])
+  @@index([requestId, occurredAt])
+  @@index([requestId, deletedAt])
+  @@index([authorId])
+  @@index([createdAt])
+  @@map("care_updates")
 }
 
 // ─────────────────────────────────────────────

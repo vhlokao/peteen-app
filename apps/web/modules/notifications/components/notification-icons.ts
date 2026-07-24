@@ -13,6 +13,7 @@ import {
   XCircle,
   Bell,
   AlertTriangle,
+  PawPrint,
 } from "lucide-react"
 
 import type { NotificationType } from "../domain/types"
@@ -22,6 +23,7 @@ export const NOTIFICATION_ICONS: Record<NotificationType, LucideIcon> = {
   request_accepted: CheckCircle2,
   request_completed: CheckCircle2,
   request_cancelled: XCircle,
+  care_update: PawPrint,
   review_received: Star,
   review_pending: Star,
   dispute_opened: Scale,

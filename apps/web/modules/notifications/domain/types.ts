@@ -8,6 +8,7 @@ export type NotificationType =
   | "request_accepted"
   | "request_completed"
   | "request_cancelled"
+  | "care_update"
   | "review_received"
   | "review_pending"
   | "dispute_opened"

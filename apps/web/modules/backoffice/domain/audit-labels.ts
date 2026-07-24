@@ -32,6 +32,9 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   "professional.service_activated": "Serviço ativado",
   "professional.service_deactivated": "Serviço desativado",
   "partner.profile_updated": "Perfil de parceiro atualizado",
+  "care_update.published": "Atualização de cuidado publicada",
+  "care_update.edited": "Atualização de cuidado editada",
+  "care_update.deleted": "Atualização de cuidado excluída",
 }
 
 export const AUDIT_ENTITY_TYPE_LABELS: Record<string, string> = {
@@ -48,6 +51,7 @@ export const AUDIT_ENTITY_TYPE_LABELS: Record<string, string> = {
   ServiceRequest: "Solicitação",
   TrustConnection: "Conexão de confiança",
   ProfessionalAvailability: "Disponibilidade profissional",
+  CareUpdate: "Atualização de cuidado",
 }
 
 export const AUDIT_ACTION_COLORS: Record<string, string> = {

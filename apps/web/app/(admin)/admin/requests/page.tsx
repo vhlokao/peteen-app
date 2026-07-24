@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
@@ -21,9 +22,12 @@ const COLUMNS = [
     key: "id",
     header: "ID",
     render: (row: AdminRequestRow) => (
-      <span className="font-mono text-[0.65rem] text-muted-foreground">
+      <Link
+        href={`/admin/requests/${row.id}`}
+        className="font-mono text-[0.65rem] text-primary underline-offset-2 hover:underline"
+      >
         {row.id.slice(0, 8)}…
-      </span>
+      </Link>
     ),
   },
   {
@@ -140,9 +144,9 @@ export default async function AdminRequestsPage({ searchParams }: RequestsPagePr
           Filtrar
         </button>
         {status && (
-          <a href="/admin/requests" className="py-1.5 text-sm text-muted-foreground underline">
+          <Link href="/admin/requests" className="py-1.5 text-sm text-muted-foreground underline">
             Limpar
-          </a>
+          </Link>
         )}
       </form>
 

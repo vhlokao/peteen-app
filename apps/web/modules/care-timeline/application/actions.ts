@@ -30,6 +30,7 @@ import {
   type CareUpdate,
   type CreateCareUpdateInput,
 } from "../domain/types"
+import { resolveEffectiveOccurredAt } from "../domain/occurred-at"
 import {
   createCareUpdateAtomic,
   editCareUpdate,
@@ -38,9 +39,6 @@ import {
   getCareTimeline,
   recordCareUpdateAudit,
 } from "../infrastructure/repository"
-
-/** Tolerância de skew de relógio ao validar occurredAt no futuro. */
-const FUTURE_SKEW_MS = 5 * 60 * 1000
 
 const DISPUTE_FROZEN_MESSAGE =
   "Esta solicitação está em disputa. A timeline de cuidado ficou congelada e não pode ser alterada."
@@ -95,17 +93,26 @@ export async function publishCareUpdateAction(
       return { success: false, error: DISPUTE_FROZEN_MESSAGE }
     }
 
-    // Validação temporal: não no futuro (com tolerância de skew), não antes do início
-    const occurredAt = parsed.data.occurredAt
-    if (occurredAt.getTime() > Date.now() + FUTURE_SKEW_MS) {
-      return { success: false, error: "A data/hora da atualização não pode ser no futuro." }
-    }
-    if (ctx.request.startedAt && occurredAt.getTime() < ctx.request.startedAt.getTime()) {
+    // Validação temporal — regra canônica única (domain/occurred-at.ts).
+    // O input do formulário tem precisão de minuto; publicar no mesmo minuto do
+    // início é legítimo e o valor efetivo é elevado para startedAt.
+    const resolved = resolveEffectiveOccurredAt({
+      inputOccurredAt: parsed.data.occurredAt,
+      startedAt: ctx.request.startedAt,
+      now: new Date(),
+    })
+    if (!resolved.ok) {
       return {
         success: false,
-        error: "A data/hora da atualização não pode ser anterior ao início do atendimento.",
+        error:
+          resolved.reason === "FUTURE"
+            ? "A data/hora da atualização não pode ser no futuro."
+            : "A data/hora da atualização não pode ser anterior ao início do atendimento.",
       }
     }
+    // A partir daqui só existe UM occurredAt: o efetivo — persistido, auditado
+    // e devolvido ao client.
+    const occurredAt = resolved.occurredAt
 
     // Criação atômica: re-verifica status/disputa/startedAt sob lock da request
     // no instante da escrita. petId e professionalId são derivados da request

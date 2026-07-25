@@ -15,6 +15,7 @@
  */
 
 import { z } from "zod"
+import { isCivilDayInThePast } from "@/lib/date/civil-day"
 import type { ActionResult } from "@/modules/tutor/domain/types"
 import type { ServiceType } from "@/modules/professional/domain/types"
 import type { Species } from "@/modules/tutor/domain/types"
@@ -214,9 +215,16 @@ export const CreateServiceRequestSchema = z.object({
     ] as const,
     { error: () => "Selecione um tipo de serviço válido" }
   ),
+  // Comparação por DIA CIVIL (America/Sao_Paulo), não por instante: o produto
+  // só captura data, então hoje é válido — horário/disponibilidade ficam com a
+  // Agenda MVP. Comparar instantes fazia o mesmo dia ser aceito de madrugada e
+  // recusado depois das 09:00 BRT.
   scheduledAt: z.coerce
     .date()
-    .refine((d) => d > new Date(), "A data agendada deve ser no futuro"),
+    .refine(
+      (d) => !isCivilDayInThePast(d, new Date()),
+      "A data agendada não pode estar no passado."
+    ),
   notes: z.string().max(500, "Observações podem ter no máximo 500 caracteres").optional(),
 
   // ── Recorrência ────────────────────────────────────────────────────────────

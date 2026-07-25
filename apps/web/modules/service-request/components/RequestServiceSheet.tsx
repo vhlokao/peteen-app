@@ -18,6 +18,7 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button"
 import { createServiceRequestAction } from "@/modules/service-request/application/actions"
 import { parseCivilDateToStableInstant } from "@/lib/date/parse-civil-date"
+import { civilDateKey, isCivilDayInThePast } from "@/lib/date/civil-day"
 import type { PetData } from "@/modules/tutor/domain/types"
 import {
   type ServiceType,
@@ -41,12 +42,12 @@ const requestFormSchema = z.object({
     .string()
     .min(1, "Informe a data")
     .refine((d) => {
-      // Mesma conversão usada na submissão (ver onSubmit) — meio-dia UTC evita
-      // que a comparação de "data futura" seja afetada pelo deslocamento de
-      // fuso que `new Date("YYYY-MM-DD")` (meia-noite UTC) introduziria.
+      // Mesma conversão usada na submissão (ver onSubmit) e MESMA regra do
+      // servidor (isCivilDayInThePast) — client e servidor não podem divergir.
+      // Comparação por dia civil: hoje é válido.
       const date = parseCivilDateToStableInstant(d)
-      return !isNaN(date.getTime()) && date > new Date()
-    }, "A data deve ser no futuro"),
+      return !isNaN(date.getTime()) && !isCivilDayInThePast(date, new Date())
+    }, "A data agendada não pode estar no passado."),
   notes: z.string().max(500, "Máximo 500 caracteres").optional(),
 })
 
@@ -88,7 +89,9 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
   const submittingRef = useRef(false)
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
 
-  const todayStr = new Date().toISOString().split("T")[0]!
+  // Dia civil de São Paulo — não `toISOString()`, que devolve a data UTC e,
+  // depois das 21h BRT, já aponta para amanhã, escondendo "hoje" do picker.
+  const todayStr = civilDateKey(new Date())
 
   const {
     register,

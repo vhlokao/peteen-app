@@ -75,7 +75,8 @@ import { isDevBypassEnabled } from "@/modules/antifraude/domain/dev-flags"
  * Invariantes:
  *   - Apenas tutores podem criar requests
  *   - O pet deve pertencer ao tutor autenticado
- *   - A data agendada deve ser no futuro
+ *   - A data agendada não pode estar num dia civil anterior a hoje
+ *     (America/Sao_Paulo) — hoje é válido; horário/disponibilidade são da Agenda
  *   - Se isRecurring e parentRequestId: valida que o parent existe e foi COMPLETED
  *   - Se isRecurring sem parentRequestId: gera um novo seriesId automaticamente
  *

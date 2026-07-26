@@ -8,7 +8,7 @@ import { getAllProfessionalBadgeSummaries } from "@/modules/badges/application/g
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 
 import { getPendingProfessionalVerificationEntityIds, getSuspendedProfessionalEntityIds } from "@/modules/verification/infrastructure/repository"
 import { prepareVerificationQueue } from "@/modules/verification/application/prepare-queue"
@@ -79,7 +79,7 @@ function VerificationStatusLabel({
 
 export default async function AdminBadgesPage() {
 
-  await requireAdmin()
+  await requireAdminOrRedirect()
 
   await prepareVerificationQueue()
 

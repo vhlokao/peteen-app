@@ -12,7 +12,7 @@ import { notFound } from "next/navigation"
 import { ArrowLeft, RefreshCw, Shield, TrendingUp, Users } from "lucide-react"
 import Link from "next/link"
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 
 import { calculateTrustScore } from "@/modules/trust-engine/application/calculate-trust-score"
 import { prisma } from "@/lib/prisma/client"
@@ -64,7 +64,7 @@ function Row({ label, value, mono = false }: { label: string; value: React.React
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default async function TrustDebugPage({ params }: PageProps) {
-  await requireAdmin()
+  await requireAdminOrRedirect()
   const { professionalId } = await params
 
   const [profile, trust] = await Promise.all([

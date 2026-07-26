@@ -4,7 +4,7 @@ import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { ShieldCheck } from "lucide-react"
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 import {
   getAdminVerificationMetricsAction,
   getAdminVerificationsAction,
@@ -38,7 +38,7 @@ const STATUS_STYLES: Record<VerificationRequestStatus, string> = {
 }
 
 export default async function AdminVerificationsPage({ searchParams }: Props) {
-  await requireAdmin()
+  await requireAdminOrRedirect()
   const params = await searchParams
 
   const entityType = params.entityType as VerificationEntityType | undefined

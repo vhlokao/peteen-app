@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 import { findServiceRequestWithParticipants } from "@/modules/service-request/infrastructure/repository"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
@@ -32,15 +32,17 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 /**
  * /admin/requests/[requestId] — detalhe administrativo de uma solicitação.
  *
- * requireAdmin() é chamado aqui diretamente, sem depender só do AdminShell
- * (layout) — defesa em profundidade, mesmo padrão de admin/partners/[id].
+ * requireAdminOrRedirect() é chamado aqui diretamente, sem depender só do
+ * AdminShell (layout) — defesa em profundidade, mesmo padrão de
+ * admin/partners/[id]. A variante *OrRedirect redireciona em vez de lançar,
+ * para não gerar stack trace de fluxo esperado.
  *
  * V0: mostra os dados essenciais da solicitação + a inspeção da Care
  * Timeline (histórico completo, incluindo itens editados/excluídos).
  * Somente leitura — nenhuma ação administrativa nesta tela ainda.
  */
 export default async function AdminRequestDetailPage({ params }: Props) {
-  await requireAdmin()
+  await requireAdminOrRedirect()
 
   const { requestId } = await params
   const request = await findServiceRequestWithParticipants(requestId)

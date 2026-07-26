@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { ChevronLeft, CheckCircle2, Lock, MessageCircle, Star } from "lucide-react"
 
-import { requireAuth } from "@/modules/identity/application/get-session"
+import { requireAuthOrRedirect } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { getServiceRequestDetailAction } from "@/modules/service-request/application/actions"
 import { getProfessionalPhoneByRequestId } from "@/modules/service-request/infrastructure/repository"
@@ -117,7 +117,7 @@ function SubmittedReview({
  */
 export default async function TutorRequestDetailPage({ params }: PageProps) {
   const { requestId } = await params
-  const session = await requireAuth()
+  const session = await requireAuthOrRedirect()
   const tutorProfile = await findTutorProfileByUserId(session.id)
 
   if (!tutorProfile) {

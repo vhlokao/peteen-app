@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { MapPin, TrendingUp } from "lucide-react"
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 import {
   getAdminGrowthOverviewAction,
   getAdminRegionGrowthRowsAction,
@@ -31,7 +31,7 @@ export default async function AdminGrowthPage({
 }: {
   searchParams: SearchParams
 }) {
-  await requireAdmin()
+  await requireAdminOrRedirect()
 
   const sp = await searchParams
   const cityFilter = sp.city?.trim() || ""

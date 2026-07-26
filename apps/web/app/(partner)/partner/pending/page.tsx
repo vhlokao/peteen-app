@@ -4,7 +4,7 @@ import { redirect } from "next/navigation"
 import { LinkIcon } from "lucide-react"
 
 import { buttonVariants } from "@/components/ui/button"
-import { requireAuth } from "@/modules/identity/application/get-session"
+import { requireAuthOrRedirect } from "@/modules/identity/application/get-session"
 import { findPartnerProfileByUserId } from "@/modules/partner-portal/infrastructure/repository"
 
 export const metadata: Metadata = {
@@ -22,7 +22,7 @@ export const metadata: Metadata = {
  * conteúdo abaixo reflete essa realidade, só com o visual atualizado.
  */
 export default async function PartnerPendingPage() {
-  const session = await requireAuth()
+  const session = await requireAuthOrRedirect()
 
   if (!session.roles.includes("PARTNER")) {
     redirect("/dashboard")

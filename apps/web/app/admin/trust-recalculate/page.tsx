@@ -15,14 +15,14 @@ import type { Metadata } from "next"
 import { ArrowLeft, AlertTriangle, RefreshCw } from "lucide-react"
 import Link from "next/link"
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 import { prisma } from "@/lib/prisma/client"
 import { RecalculateButton } from "./RecalculateButton"
 
 export const metadata: Metadata = { title: "Recalcular Índice de Confiança" }
 
 export default async function TrustRecalculatePage() {
-  await requireAdmin()
+  await requireAdminOrRedirect()
 
   const stats = await prisma.professionalProfile.aggregate({
     where: { deletedAt: null },

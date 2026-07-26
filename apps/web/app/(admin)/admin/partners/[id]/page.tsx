@@ -3,7 +3,7 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { notFound } from "next/navigation"
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 import { getPartnerById } from "@/modules/partners/infrastructure/repository"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
 import { PartnerForm } from "@/components/admin/PartnerForm"
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function AdminPartnerEditPage({ params }: Props) {
-  await requireAdmin()
+  await requireAdminOrRedirect()
   const { id } = await params
   const partner = await getPartnerById(id)
 

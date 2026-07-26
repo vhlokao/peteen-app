@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { Network } from "lucide-react"
 // Network icon used only in empty-state and metrics area
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 import { getAdminTrustConnectionsAction } from "@/modules/trust-graph/application/actions"
 import { getAdminProfessionalsForTrustGraphAction } from "@/modules/backoffice/application/actions"
 import { getActivePartnersForSelectAction } from "@/modules/partners/application/actions"
@@ -34,7 +34,7 @@ export default async function AdminTrustGraphPage({
 }: {
   searchParams: SearchParams
 }) {
-  await requireAdmin()
+  await requireAdminOrRedirect()
 
   const sp = await searchParams
   const filterSourceType     = sp.sourceType     || ""

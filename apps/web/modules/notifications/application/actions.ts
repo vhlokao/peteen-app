@@ -5,7 +5,7 @@
  * Camada: application — leitura com guards de ownership
  */
 
-import { requireAdmin, requireAuth } from "@/modules/identity/application/get-session"
+import { getAuthContext, requireAdmin } from "@/modules/identity/application/get-session"
 import { findProfessionalProfileByUserId } from "@/modules/professional/infrastructure/repository"
 import { requireProfessionalContext } from "@/modules/professional-crm/application/require-professional"
 import { requirePartnerContext } from "@/modules/partner-portal/application/require-partner"
@@ -59,27 +59,40 @@ export async function getPartnerNotificationCountAction(): Promise<number> {
   return countPartnerNotifications(partner.id)
 }
 
-/** Contador para layout — não redireciona visitantes de /discover (parceiro, profissional, etc.) */
+/**
+ * Contador para layout — não redireciona visitantes de /discover (parceiro, profissional, etc.)
+ *
+ * Sem sessão de aplicação devolve 0 em vez de lançar: este contador roda no
+ * render do layout, onde um throw viraria stack trace de fluxo esperado. É a
+ * mesma degradação graciosa que já era feita para persona errada / sem perfil —
+ * a autorização real de cada rota continua na página e no middleware.
+ */
 export async function getTutorNotificationCountForLayoutAction(): Promise<number> {
-  const session = await requireAuth()
+  const ctx = await getAuthContext()
+  if (!ctx.authenticated) return 0
+  const session = ctx.user
   if (!session.roles.includes("TUTOR")) return 0
   const profile = await findTutorProfileByUserId(session.id)
   if (!profile) return 0
   return countTutorNotifications(profile.id)
 }
 
-/** Contador para layout — não redireciona outras personas */
+/** Contador para layout — não redireciona outras personas (ver nota acima sobre sessão ausente) */
 export async function getProfessionalNotificationCountForLayoutAction(): Promise<number> {
-  const session = await requireAuth()
+  const ctx = await getAuthContext()
+  if (!ctx.authenticated) return 0
+  const session = ctx.user
   if (!session.roles.includes("PROFESSIONAL")) return 0
   const profile = await findProfessionalProfileByUserId(session.id)
   if (!profile) return 0
   return countProfessionalNotifications(profile.id)
 }
 
-/** Contador para layout — não redireciona em /partner/pending */
+/** Contador para layout — não redireciona em /partner/pending (ver nota acima sobre sessão ausente) */
 export async function getPartnerNotificationCountForLayoutAction(): Promise<number> {
-  const session = await requireAuth()
+  const ctx = await getAuthContext()
+  if (!ctx.authenticated) return 0
+  const session = ctx.user
   const owned = await findOwnedPartnerForUser(session.id)
   if (
     !owned ||

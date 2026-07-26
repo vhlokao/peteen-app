@@ -10,7 +10,7 @@ import {
   Search,
 } from "lucide-react"
 
-import { requireAuth } from "@/modules/identity/application/get-session"
+import { requireAuthOrRedirect } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { findHiredProfessionalsByTutorId } from "@/modules/tutor-portal/infrastructure/queries"
 import { findRecentPetsByTutorId } from "@/modules/pets/infrastructure/repository"
@@ -73,7 +73,7 @@ function greetingForHour(hour: number): string {
  *  - getMyRequestsAsTutorAction        — já existia (service-request)
  */
 export default async function TutorDashboardPage() {
-  const session = await requireAuth()
+  const session = await requireAuthOrRedirect()
   const tutorProfile = await findTutorProfileByUserId(session.id)
 
   if (!tutorProfile) {

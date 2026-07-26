@@ -11,7 +11,7 @@ import { PetForm } from "@/modules/pets/components/pet-form"
 import { ArchivePetButton } from "@/modules/pets/components/archive-pet-button"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { findPetByIdAndTutorId } from "@/modules/pets/infrastructure/repository"
-import { requireAuth } from "@/modules/identity/application/get-session"
+import { requireAuthOrRedirect } from "@/modules/identity/application/get-session"
 
 type PageProps = {
   params: Promise<{ id: string }>
@@ -19,7 +19,7 @@ type PageProps = {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params
-  const session = await requireAuth()
+  const session = await requireAuthOrRedirect()
   const tutorProfile = await findTutorProfileByUserId(session.id)
   if (!tutorProfile) return { title: "Pet" }
 
@@ -31,7 +31,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function EditPetPage({ params }: PageProps) {
   const { id } = await params
-  const session = await requireAuth()
+  const session = await requireAuthOrRedirect()
   const tutorProfile = await findTutorProfileByUserId(session.id)
 
   if (!tutorProfile) {

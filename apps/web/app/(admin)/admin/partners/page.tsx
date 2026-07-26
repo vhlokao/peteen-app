@@ -6,7 +6,7 @@ import { Handshake, ExternalLink } from "lucide-react"
 
 
 
-import { requireAdmin } from "@/modules/identity/application/get-session"
+import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 
 import { getAdminPartnersAction } from "@/modules/partners/application/actions"
 
@@ -46,7 +46,7 @@ type Props = {
 
 export default async function AdminPartnersPage({ searchParams }: Props) {
 
-  await requireAdmin()
+  await requireAdminOrRedirect()
 
   const { onboarding } = await searchParams
 

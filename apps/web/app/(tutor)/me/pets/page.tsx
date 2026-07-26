@@ -8,14 +8,14 @@ import { buttonVariants } from "@/components/ui/button"
 import { PetList } from "@/modules/pets/components/pet-list"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { findActivePetsByTutorId } from "@/modules/pets/infrastructure/repository"
-import { requireAuth } from "@/modules/identity/application/get-session"
+import { requireAuthOrRedirect } from "@/modules/identity/application/get-session"
 
 export const metadata: Metadata = {
   title: "Meus pets",
 }
 
 export default async function MyPetsPage() {
-  const session = await requireAuth()
+  const session = await requireAuthOrRedirect()
   const tutorProfile = await findTutorProfileByUserId(session.id)
 
   if (!tutorProfile) {

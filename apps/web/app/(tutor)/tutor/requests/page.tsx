@@ -11,7 +11,7 @@ import { TutorRequestCard } from "@/modules/tutor-portal/components/tutor-reques
 import { TutorRequestsTabs } from "@/modules/tutor-portal/components/TutorRequestsTabs"
 import { isActiveRequestStatus } from "@/modules/tutor-portal/domain/request-status-display"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
-import { requireAuth } from "@/modules/identity/application/get-session"
+import { requireAuthOrRedirect } from "@/modules/identity/application/get-session"
 
 export const metadata: Metadata = {
   title: "Seus pedidos",
@@ -34,7 +34,7 @@ function groupRequests(requests: ServiceRequestWithParticipants[]) {
  * era feito pelos sets OPEN/TERMINAL do código original.
  */
 export default async function TutorRequestsPage() {
-  const session = await requireAuth()
+  const session = await requireAuthOrRedirect()
   const tutorProfile = await findTutorProfileByUserId(session.id)
 
   if (!tutorProfile) {

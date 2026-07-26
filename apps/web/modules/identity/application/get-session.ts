@@ -1,4 +1,5 @@
 import { cache } from "react"
+import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma/client"
 import type { AuthContext, PersonaRole, SessionUser } from "../domain/types"
@@ -113,4 +114,75 @@ export async function requireRole(role: PersonaRole): Promise<SessionUser> {
  */
 export async function requireAdmin(): Promise<SessionUser> {
   return requireRole("ADMIN")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VARIANTES PARA PÁGINAS E LAYOUTS (Server Components)
+//
+// Por que existem, além de requireAuth/requireRole/requireAdmin:
+//   Aquelas sinalizam acesso negado com `throw new Error(...)`, o que é certo
+//   em Server Actions (o try/catch da action converte em { success: false }).
+//   Numa página/layout não há try/catch nem error.tsx: o throw vira erro não
+//   tratado e o Next loga stack trace + digest para um fluxo ESPERADO,
+//   poluindo a observabilidade e podendo mascarar falhas reais.
+//
+//   Estas variantes decidem pelo AuthContext (nunca por texto de Error) e usam
+//   `redirect()` do Next, cujo sinal interno é tratado pelo roteador sem log de
+//   erro — mesmo padrão que AdminShell já usava.
+//
+// Falhas reais (Prisma, timeout Supabase, TypeError) continuam propagando:
+//   não há try/catch aqui, então qualquer exceção de getAuthContext sobe intacta.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Destino padrão quando não há sessão válida na camada de aplicação. */
+const UNAUTHENTICATED_REDIRECT = "/login"
+
+/**
+ * Destino padrão quando há sessão porém sem o papel exigido.
+ * `/dashboard` roteia por persona (TUTOR → /discover, PROFESSIONAL → /requests,
+ * PARTNER → /partner), que é exatamente o comportamento que AdminShell já
+ * produzia — por isso nenhum destino novo é introduzido aqui.
+ */
+const FORBIDDEN_REDIRECT = "/dashboard"
+
+/**
+ * requireAuthOrRedirect — versão de `requireAuth` para páginas/layouts.
+ * Redireciona em vez de lançar quando não há sessão de aplicação.
+ */
+export async function requireAuthOrRedirect(
+  redirectTo: string = UNAUTHENTICATED_REDIRECT
+): Promise<SessionUser> {
+  const ctx = await getAuthContext()
+  if (!ctx.authenticated) {
+    redirect(redirectTo)
+  }
+  return ctx.user
+}
+
+/**
+ * requireRoleOrRedirect — versão de `requireRole` para páginas/layouts.
+ * Distingue explicitamente os dois casos esperados:
+ *   - sem sessão de aplicação  → `unauthenticatedTo`
+ *   - com sessão, sem o papel  → `forbiddenTo`
+ */
+export async function requireRoleOrRedirect(
+  role: PersonaRole,
+  options?: { unauthenticatedTo?: string; forbiddenTo?: string }
+): Promise<SessionUser> {
+  const ctx = await getAuthContext()
+  if (!ctx.authenticated) {
+    redirect(options?.unauthenticatedTo ?? UNAUTHENTICATED_REDIRECT)
+  }
+  if (!ctx.user.roles.includes(role)) {
+    redirect(options?.forbiddenTo ?? FORBIDDEN_REDIRECT)
+  }
+  return ctx.user
+}
+
+/** requireAdminOrRedirect — versão de `requireAdmin` para páginas/layouts. */
+export async function requireAdminOrRedirect(options?: {
+  unauthenticatedTo?: string
+  forbiddenTo?: string
+}): Promise<SessionUser> {
+  return requireRoleOrRedirect("ADMIN", options)
 }

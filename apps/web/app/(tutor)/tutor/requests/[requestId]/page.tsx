@@ -7,6 +7,7 @@ import { requireAuthOrRedirect } from "@/modules/identity/application/get-sessio
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { getServiceRequestDetailAction } from "@/modules/service-request/application/actions"
 import { getProfessionalPhoneByRequestId } from "@/modules/service-request/infrastructure/repository"
+import { findRequestAcceptedAt } from "@/modules/service-request/infrastructure/audit"
 import { getReviewForRequestAction } from "@/modules/review/application/actions"
 import { getMyRelationshipWithProfessional } from "@/modules/relationship/application/actions"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
@@ -151,7 +152,11 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
 
   const isAccepted = request.status === "ACCEPTED"
 
-  const [existingReviewResult, myRelationship, dispute, professionalPhone] =
+  // acceptedAt — horário real do aceite (AuditLog), mesma lógica da página
+  // do profissional. Só relevante a partir de ACCEPTED.
+  const needsAcceptedAt = request.status !== "PENDING"
+
+  const [existingReviewResult, myRelationship, dispute, professionalPhone, acceptedAt] =
     await Promise.all([
       isCompleted && hasReview ? getReviewForRequestAction(requestId) : null,
       getMyRelationshipWithProfessional(request.professional.id),
@@ -161,6 +166,7 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
       isAccepted
         ? getProfessionalPhoneByRequestId(requestId, tutorProfile.id)
         : Promise.resolve(null),
+      needsAcceptedAt ? findRequestAcceptedAt(requestId) : Promise.resolve(null),
     ])
 
   const existingReview = existingReviewResult?.success ? existingReviewResult.data : null
@@ -234,6 +240,7 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
               updatedAt: request.updatedAt,
               startedAt: request.startedAt,
               completedAt: request.completedAt,
+              acceptedAt,
             }}
           />
         </section>

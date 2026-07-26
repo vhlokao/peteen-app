@@ -30,6 +30,8 @@ type TimelineStep = {
   sublabel?: string
   state: StepState
   timestamp?: Date | null
+  /** true quando `timestamp` é aproximado (fallback), não o instante exato do evento */
+  approximate?: boolean
   /** Reservado para Fase 5 — AuditLog.id vinculado a esta etapa */
   auditEventId?: string
 }
@@ -49,8 +51,16 @@ function buildSteps(request: {
   updatedAt: Date
   startedAt: Date | null
   completedAt: Date | null
+  /** Instante real do aceite (AuditLog "request.accepted") — null se não houver evidência. */
+  acceptedAt?: Date | null
 }): TimelineStep[] {
-  const { status, createdAt, updatedAt, startedAt, completedAt } = request
+  const { status, createdAt, updatedAt, startedAt, completedAt, acceptedAt } = request
+
+  // Fonte do horário do passo "accepted": AuditLog é exato; updatedAt é
+  // fallback aproximado (requests antigas, anteriores à auditoria de
+  // lifecycle) — nunca inventamos um horário quando nenhum dos dois existe.
+  const acceptedTimestamp = acceptedAt ?? updatedAt
+  const acceptedIsApproximate = acceptedAt == null
 
   const isCancelled =
     status === "CANCELLED_BY_TUTOR" ||
@@ -92,14 +102,17 @@ function buildSteps(request: {
             : "Encerrado"
         : "Aceito pelo profissional",
       sublabel: isCancelled ? undefined : "O profissional confirmou o atendimento",
-      // acceptedAt não existe no schema — updatedAt é a melhor aproximação
-      // FASE 5: adicionar campo acceptedAt ao schema e migrar aqui
       state: isCancelled ? "cancelled" : stepState("ACCEPTED", 1),
+      // Cancelamento (PENDING ou ACCEPTED → CANCELLED_*) preserva o
+      // comportamento anterior integralmente (updatedAt, sempre "aprox.") —
+      // fora do escopo desta correção, que mira só o rótulo "Aceito pelo
+      // profissional" do fluxo não cancelado.
       timestamp: isCancelled
         ? updatedAt
         : currentIndex >= 1
-          ? updatedAt
+          ? acceptedTimestamp
           : null,
+      approximate: isCancelled ? true : currentIndex >= 1 ? acceptedIsApproximate : undefined,
     },
   ]
 
@@ -158,6 +171,8 @@ type RequestTimelineProps = {
     updatedAt: Date
     startedAt: Date | null
     completedAt: Date | null
+    /** Instante real do aceite (AuditLog) — omitido/null usa updatedAt como fallback aproximado. */
+    acceptedAt?: Date | null
   }
 }
 
@@ -217,7 +232,7 @@ export function RequestTimeline({ request }: RequestTimelineProps) {
                 <div className="mt-1 flex items-center gap-1 text-[0.65rem] text-muted-foreground">
                   <Clock className="size-3 shrink-0" />
                   <span>{formatDateTime(step.timestamp)}</span>
-                  {step.id === "accepted" && (
+                  {step.approximate && (
                     <span className="opacity-60">(aprox.)</span>
                   )}
                 </div>

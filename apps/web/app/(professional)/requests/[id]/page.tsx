@@ -6,6 +6,7 @@ import { ChevronLeft, Star } from "lucide-react"
 import { getAuthContext } from "@/modules/identity/application/get-session"
 import { getServiceRequestDetailAction } from "@/modules/service-request/application/actions"
 import { findCooldownReleaseAt } from "@/modules/service-request/infrastructure/repository"
+import { findRequestAcceptedAt } from "@/modules/service-request/infrastructure/audit"
 import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 import { findRelationship } from "@/modules/relationship/infrastructure/repository"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
@@ -78,7 +79,13 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
   // compartilhado com o tutor (getServiceRequestDetailAction).
   const needsCooldownCheck = isProfessionalView && request.status === "PENDING"
 
-  const [dispute, priorRelationship, cooldownReleaseAt] = await Promise.all([
+  // acceptedAt — horário real do aceite (AuditLog), para a timeline exibir o
+  // instante exato em vez de updatedAt (que muda em toda transição
+  // posterior). Só relevante a partir de ACCEPTED; em PENDING nunca houve
+  // aceite, então não vale a query.
+  const needsAcceptedAt = request.status !== "PENDING"
+
+  const [dispute, priorRelationship, cooldownReleaseAt, acceptedAt] = await Promise.all([
     isProfessionalView
       ? findDisputeForProfessionalRequest(id, request.professional.id)
       : Promise.resolve(null),
@@ -92,6 +99,7 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
           ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
         )
       : Promise.resolve(null),
+    needsAcceptedAt ? findRequestAcceptedAt(id) : Promise.resolve(null),
   ])
 
   // Care Timeline — durante o atendimento (com publicação) e após concluído
@@ -159,6 +167,7 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
               updatedAt: request.updatedAt,
               startedAt: request.startedAt,
               completedAt: request.completedAt,
+              acceptedAt,
             }}
           />
         </section>

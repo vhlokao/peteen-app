@@ -54,6 +54,7 @@ import {
   countCompletedRequestsBetween,
   hasPendingRequestsForPet,
   hasRecentCompletionBetween,
+  findCooldownReleaseAt,
   hasActiveRequestBetween,
   hasInProgressRequestForProfessional,
 } from "../infrastructure/repository"
@@ -62,6 +63,17 @@ import { recordRequestAudit } from "../infrastructure/audit"
 const CONCURRENT_UPDATE_MESSAGE =
   "Esta solicitação já foi atualizada. Recarregue a página para ver o status mais recente."
 import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
+import { CIVIL_DAY_TIME_ZONE } from "@/lib/date/civil-day"
+
+/** Data/hora de liberação do cooldown na mensagem de erro do aceite — fuso fixo do piloto. */
+const ACCEPT_COOLDOWN_DATETIME_FORMAT = new Intl.DateTimeFormat("pt-BR", {
+  timeZone: CIVIL_DAY_TIME_ZONE,
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+})
 import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
 import { isDevBypassEnabled } from "@/modules/antifraude/domain/dev-flags"
 
@@ -262,6 +274,27 @@ export async function acceptServiceRequestAction(
           success: false,
           error:
             "Você já possui um atendimento em andamento. Finalize o atendimento atual antes de aceitar uma nova solicitação.",
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Guardrail antifraude: cooldown de conclusão recente bloqueia o aceite ─
+    // Move ao aceite o mesmo bloqueio que já existia só no início: se o
+    // atendimento não poderá ser iniciado por causa do cooldown, o profissional
+    // não deve nem conseguir aceitá-lo. O guard em startServiceRequestAction
+    // permanece como defesa final (ex.: requests ACCEPTED antes desta correção).
+    // Bypassável em development via DEV_BYPASS_ANTIFRAUD_GUARDRAILS=true (.env.local).
+    if (!isDevBypassEnabled("antifraud")) {
+      const cooldownReleaseAt = await findCooldownReleaseAt(
+        request.tutorId,
+        request.professionalId,
+        ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
+      )
+      if (cooldownReleaseAt) {
+        return {
+          success: false,
+          error: `Você concluiu um atendimento com este tutor há menos de 24 horas. Esta solicitação poderá ser aceita a partir de ${ACCEPT_COOLDOWN_DATETIME_FORMAT.format(cooldownReleaseAt)}.`,
         }
       }
     }

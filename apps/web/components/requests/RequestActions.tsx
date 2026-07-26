@@ -30,12 +30,27 @@ type RequestActionsProps = {
   currentStatus: RequestStatus
   /** Data agendada do serviço — bloqueia "Iniciar atendimento" antes dela. */
   scheduledAt: Date | null
+  /**
+   * Até quando o cooldown antifraude de 24h (conclusão recente com o mesmo
+   * tutor) segue ativo — null quando não há cooldown. Só é relevante para
+   * PENDING (bloqueia "Aceitar"); o servidor é quem decide de fato, isto é
+   * só para explicar/desabilitar a UI proativamente.
+   */
+  cooldownReleaseAt: Date | null
 }
 
 const SCHEDULED_DATE_FORMAT = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
   month: "2-digit",
   year: "numeric",
+})
+
+const COOLDOWN_DATETIME_FORMAT = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +72,7 @@ export function RequestActions({
   requestId,
   currentStatus,
   scheduledAt,
+  cooldownReleaseAt,
 }: RequestActionsProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -67,6 +83,11 @@ export function RequestActions({
   const scheduled = scheduledAt ? new Date(scheduledAt) : null
   if (scheduled) scheduled.setHours(0, 0, 0, 0)
   const beforeDate = scheduled ? today < scheduled : false
+
+  // Bloqueio de "Aceitar solicitação" durante o cooldown antifraude de 24h.
+  // Só desabilita/explica a UI — a validação real é sempre no servidor.
+  const cooldownUntil = cooldownReleaseAt ? new Date(cooldownReleaseAt) : null
+  const cooldownActive = cooldownUntil ? new Date() < cooldownUntil : false
 
   function handleAction(
     action: () => Promise<ActionResult<ServiceRequestData>>,
@@ -92,44 +113,54 @@ export function RequestActions({
 
   if (currentStatus === "PENDING") {
     return (
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Button
-          className="flex-1 gap-2"
-          style={{ background: GREEN }}
-          onClick={() =>
-            handleAction(
-              () => acceptServiceRequestAction(requestId),
-              "ACCEPTED"
-            )
-          }
-          disabled={isPending}
-        >
-          {isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <CheckCircle2 className="size-4" />
-          )}
-          Aceitar solicitação
-        </Button>
+      <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button
+            className="flex-1 gap-2"
+            style={{ background: GREEN }}
+            onClick={() =>
+              handleAction(
+                () => acceptServiceRequestAction(requestId),
+                "ACCEPTED"
+              )
+            }
+            disabled={isPending || cooldownActive}
+          >
+            {isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="size-4" />
+            )}
+            Aceitar solicitação
+          </Button>
 
-        <Button
-          variant="outline"
-          className="flex-1 gap-2 border-destructive/40 text-destructive hover:bg-destructive/5 hover:text-destructive"
-          onClick={() =>
-            handleAction(
-              () => rejectServiceRequestAction(requestId),
-              "CANCELLED_BY_PROFESSIONAL"
-            )
-          }
-          disabled={isPending}
-        >
-          {isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <XCircle className="size-4" />
-          )}
-          Recusar
-        </Button>
+          <Button
+            variant="outline"
+            className="flex-1 gap-2 border-destructive/40 text-destructive hover:bg-destructive/5 hover:text-destructive"
+            onClick={() =>
+              handleAction(
+                () => rejectServiceRequestAction(requestId),
+                "CANCELLED_BY_PROFESSIONAL"
+              )
+            }
+            disabled={isPending}
+          >
+            {isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <XCircle className="size-4" />
+            )}
+            Recusar
+          </Button>
+        </div>
+
+        {cooldownActive && cooldownUntil && (
+          <p className="text-center text-xs text-muted-foreground">
+            Você concluiu um atendimento com este tutor há menos de 24 horas.
+            Esta solicitação poderá ser aceita a partir de{" "}
+            {COOLDOWN_DATETIME_FORMAT.format(cooldownUntil)}.
+          </p>
+        )}
       </div>
     )
   }

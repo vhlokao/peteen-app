@@ -33,6 +33,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   no_code: "Link de autenticação inválido. Solicite um novo link.",
   callback_failed: "Falha na autenticação. Tente novamente.",
   sync_failed: "Erro interno. Por favor, tente novamente.",
+  account_sync_required:
+    "Não foi possível carregar os dados da sua conta. Entre novamente. Caso o problema continue, procure o suporte.",
 };
 
 type LoginFormProps = {

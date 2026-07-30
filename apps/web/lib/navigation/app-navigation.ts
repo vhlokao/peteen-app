@@ -148,7 +148,8 @@ export const appNavigation: Record<AppShellVariant, PersonaNavigation> = {
       { label: "Início", shortLabel: "Início", href: "/tutor", icon: LayoutDashboard, exact: true },
       { label: "Buscar", shortLabel: "Buscar", href: "/discover", icon: Search },
       { label: "Solicitações", shortLabel: "Pedidos", href: "/tutor/requests", icon: Inbox },
-      { label: "Perfil", shortLabel: "Perfil", href: "/tutor/perfil", icon: UserCircle },
+      // "Conta" (4º item) não é um link — é o gatilho do menu de conta,
+      // renderizado diretamente pelo BottomNav (ver bottom-nav.tsx).
     ],
   },
 
@@ -173,7 +174,7 @@ export const appNavigation: Record<AppShellVariant, PersonaNavigation> = {
       { label: "Início", shortLabel: "Início", href: "/professional", icon: LayoutDashboard, exact: true },
       { label: "Solicitações", shortLabel: "Pedidos", href: "/requests", icon: Inbox },
       { label: "Clientes", shortLabel: "Clientes", href: "/professional/clients", icon: Users },
-      { label: "Perfil", shortLabel: "Perfil", href: "/professional/profile", icon: UserCircle },
+      // "Conta" (4º item) não é um link — ver nota acima (tutor.mobile).
     ],
   },
 
@@ -193,7 +194,7 @@ export const appNavigation: Record<AppShellVariant, PersonaNavigation> = {
       { label: "Início", shortLabel: "Início", href: "/partner", icon: LayoutDashboard, exact: true },
       { label: "Recomendar", shortLabel: "Recomendar", href: "/partner/recommendations", icon: ThumbsUp },
       { label: "Métricas", shortLabel: "Métricas", href: "/partner/metrics", icon: BarChart3 },
-      { label: "Perfil", shortLabel: "Perfil", href: "/partner/profile", icon: UserCircle },
+      // "Conta" (4º item) não é um link — ver nota acima (tutor.mobile).
     ],
   },
 

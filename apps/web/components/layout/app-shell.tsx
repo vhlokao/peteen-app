@@ -31,6 +31,7 @@ import { redirect } from "next/navigation";
 import { getAuthContext } from "@/modules/identity/application/get-session";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/top-bar";
+import { AccountMenuScopeProvider } from "@/components/layout/account-menu-scope";
 import { cn } from "@/lib/utils";
 import type { AppShellVariant, ShellSessionUser } from "@/types";
 
@@ -96,29 +97,36 @@ export async function AppShell({
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      {showTopBar ? (
-        <TopBar
-          variant={variant}
-          user={sessionUser}
-          notificationCount={notificationCount}
-          notificationsHref={notificationsHref}
-        />
-      ) : null}
+    // AccountMenuScopeProvider garante exclusividade entre o menu de conta do
+    // avatar (header) e o "Conta" do BottomNav mobile — só um aberto por vez.
+    // Ver components/layout/account-menu-scope.tsx.
+    <AccountMenuScopeProvider>
+      <div className="flex min-h-dvh flex-col">
+        {showTopBar ? (
+          <TopBar
+            variant={variant}
+            user={sessionUser}
+            notificationCount={notificationCount}
+            notificationsHref={notificationsHref}
+          />
+        ) : null}
 
-      <main
-        className={cn(
-          "flex-1 overflow-y-auto",
-          // Mobile: padding-bottom para o BottomNav fixo não cobrir conteúdo
-          hasNav && "pb-[calc(var(--bottom-nav-height)+1rem)] lg:pb-0",
-          className
-        )}
-      >
-        {children}
-      </main>
+        <main
+          className={cn(
+            "flex-1 overflow-y-auto",
+            // Mobile: padding-bottom para o BottomNav fixo não cobrir conteúdo
+            hasNav && "pb-[calc(var(--bottom-nav-height)+1rem)] lg:pb-0",
+            className
+          )}
+        >
+          {children}
+        </main>
 
-      {/* BottomNav só aparece em rotas autenticadas e em mobile (lg:hidden via CSS) */}
-      {hasNav ? <BottomNav variant={variant} /> : null}
-    </div>
+        {/* BottomNav só aparece em rotas autenticadas e em mobile (lg:hidden via CSS).
+            sessionUser é sempre não-nulo aqui: hasNav já passou pelos redirects
+            de auth/onboarding acima antes de chegar neste ponto. */}
+        {hasNav && sessionUser ? <BottomNav variant={variant} user={sessionUser} /> : null}
+      </div>
+    </AccountMenuScopeProvider>
   );
 }

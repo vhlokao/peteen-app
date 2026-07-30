@@ -4,6 +4,7 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
+import { normalizeLocationInput } from "@/modules/location"
 import { computeActivationScore } from "../domain/activation"
 import type {
   Partner,
@@ -391,14 +392,16 @@ export async function createPartner(input: CreatePartnerInput): Promise<Partner>
   const partner = getPartnerDelegate()
   const baseSlug = input.slug?.trim() || generatePartnerSlug(input.businessName)
   const slug = await ensureUniqueSlug(baseSlug)
+  // Normalização de escrita (Location Consistency V0.1).
+  const location = normalizeLocationInput({ city: input.city, state: input.state })
 
   const row = await partner.create({
     data: {
       businessName: input.businessName.trim(),
       slug,
       category:     input.category,
-      city:         input.city.trim(),
-      state:        input.state.trim(),
+      city:         location.city ?? input.city.trim(),
+      state:        location.state ?? input.state.trim(),
       description:  input.description?.trim() || null,
       phone:        input.phone?.trim() || null,
       website:      input.website?.trim() || null,
@@ -422,14 +425,16 @@ export async function createPartnerOnboarding(
   const partner = getPartnerDelegate()
   const baseSlug = generatePartnerSlug(input.businessName)
   const slug = await ensureUniqueSlug(baseSlug)
+  // Normalização de escrita (Location Consistency V0.1).
+  const location = normalizeLocationInput({ city: input.city, state: input.state })
 
   const row = await partner.create({
     data: {
       businessName: input.businessName.trim(),
       slug,
       category:     input.category,
-      city:         input.city.trim(),
-      state:        input.state.trim(),
+      city:         location.city ?? input.city.trim(),
+      state:        location.state ?? input.state.trim(),
       description:  input.description?.trim() || null,
       phone:        input.phone.trim(),
       website:      input.website?.trim() || null,
@@ -450,13 +455,15 @@ export async function updatePartnerOnboardingBusiness(
   input: PartnerOnboardingBusinessInput
 ): Promise<Partner> {
   const partner = getPartnerDelegate()
+  // Normalização de escrita (Location Consistency V0.1).
+  const location = normalizeLocationInput({ city: input.city, state: input.state })
   const row = await partner.update({
     where: { id: partnerId },
     data: {
       businessName: input.businessName.trim(),
       category:     input.category,
-      city:         input.city.trim(),
-      state:        input.state.trim(),
+      city:         location.city ?? input.city.trim(),
+      state:        location.state ?? input.state.trim(),
       description:  input.description?.trim() || null,
       phone:        input.phone.trim(),
       website:      input.website?.trim() || null,
@@ -513,11 +520,13 @@ export async function updatePartner(
   if (!existing) throw new Error("Parceiro não encontrado")
 
   const data: Record<string, unknown> = {}
+  // Normalização de escrita (Location Consistency V0.1).
+  const location = normalizeLocationInput({ city: input.city, state: input.state })
 
   if (input.businessName !== undefined) data.businessName = input.businessName.trim()
   if (input.category !== undefined)     data.category = input.category
-  if (input.city !== undefined)         data.city = input.city.trim()
-  if (input.state !== undefined)        data.state = input.state.trim()
+  if (location.city !== undefined)      data.city = location.city
+  if (location.state !== undefined)     data.state = location.state
   if (input.description !== undefined)  data.description = input.description?.trim() || null
   if (input.phone !== undefined)        data.phone = input.phone?.trim() || null
   if (input.website !== undefined)      data.website = input.website?.trim() || null

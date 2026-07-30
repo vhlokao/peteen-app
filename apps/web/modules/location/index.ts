@@ -17,6 +17,12 @@ export {
   normalizeCityName,
   normalizeNeighborhoodName,
   normalizeStateCode,
+  normalizeLocationInput,
+} from "./domain/normalize"
+
+export type {
+  LocationInputRaw,
+  NormalizedLocationInput,
 } from "./domain/normalize"
 
 export { formatPublicLocation, LOCATION_NOT_INFORMED_LABEL } from "./domain/format"

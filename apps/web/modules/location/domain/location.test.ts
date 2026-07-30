@@ -17,6 +17,7 @@ import {
   normalizeCityName,
   normalizeNeighborhoodName,
   normalizeStateCode,
+  normalizeLocationInput,
 } from "./normalize.ts"
 import { formatPublicLocation, LOCATION_NOT_INFORMED_LABEL } from "./format.ts"
 import { resolvePublicLocation, resolveLocationCompleteness } from "./resolve.ts"
@@ -178,6 +179,105 @@ describe("resolvePublicLocation", () => {
     assert.equal(r.label.includes("null"), false)
     assert.equal(r.label.includes("undefined"), false)
     assert.equal(r.label, "Cotia")
+  })
+})
+
+describe("normalizeLocationInput", () => {
+  // 1-4: "São Paulo" em variações de caixa/espaço convergem para a forma canônica
+  it("1. já canônico permanece idêntico", () => {
+    assert.equal(normalizeLocationInput({ city: "São Paulo" }).city, "São Paulo")
+  })
+  it("2. minúsculo converge para canônico", () => {
+    assert.equal(normalizeLocationInput({ city: "sao paulo" }).city, "São Paulo")
+  })
+  it("3. caixa alta converge para canônico", () => {
+    assert.equal(normalizeLocationInput({ city: "SÃO PAULO" }).city, "São Paulo")
+  })
+  it("4. espaços extras convergem para canônico", () => {
+    assert.equal(normalizeLocationInput({ city: " São  Paulo " }).city, "São Paulo")
+  })
+
+  // 5-7: Carapicuiba sem acento, em variações de caixa, restaura grafia canônica
+  it("5. sem acento converge para canônico", () => {
+    assert.equal(normalizeLocationInput({ city: "Carapicuiba" }).city, "Carapicuíba")
+  })
+  it("6. minúsculo sem acento converge para canônico", () => {
+    assert.equal(normalizeLocationInput({ city: "carapicuiba" }).city, "Carapicuíba")
+  })
+  it("7. caixa alta com acento converge para canônico", () => {
+    assert.equal(normalizeLocationInput({ city: "CARAPICUÍBA" }).city, "Carapicuíba")
+  })
+
+  // 8-9: UF
+  it("8. UF minúscula vira maiúscula", () => {
+    assert.equal(normalizeLocationInput({ state: "sp" }).state, "SP")
+  })
+  it("9. UF com espaços e caixa mista vira maiúscula", () => {
+    assert.equal(normalizeLocationInput({ state: " Sp " }).state, "SP")
+  })
+
+  // 10-14: bairro
+  it("10. bairro em caixa baixa recebe capitalização segura", () => {
+    assert.equal(normalizeLocationInput({ neighborhood: "vila martins" }).neighborhood, "Vila Martins")
+  })
+  it("11. bairro em caixa alta recebe capitalização segura", () => {
+    assert.equal(normalizeLocationInput({ neighborhood: "VILA CAMPESTRE" }).neighborhood, "Vila Campestre")
+  })
+  it("12. bairro com espaços extras é colapsado e capitalizado", () => {
+    assert.equal(normalizeLocationInput({ neighborhood: "  vila   isa " }).neighborhood, "Vila Isa")
+  })
+  it("13. bairro vazio vira null, nunca valor artificial", () => {
+    assert.equal(normalizeLocationInput({ neighborhood: "" }).neighborhood, null)
+  })
+  it("14. bairro null permanece null", () => {
+    assert.equal(normalizeLocationInput({ neighborhood: null }).neighborhood, null)
+  })
+
+  // 15-17: cidades fora do dicionário — nunca bloqueadas, nunca inventadas
+  it("15. cidade válida desconhecida recebe só capitalização segura", () => {
+    assert.equal(normalizeLocationInput({ city: "mogi das cruzes" }).city, "Mogi das Cruzes")
+  })
+  it("16. cidade de outro estado é normalizada independentemente do catálogo local", () => {
+    assert.equal(normalizeLocationInput({ city: "rio de janeiro", state: "rj" }).city, "Rio de Janeiro")
+    assert.equal(normalizeLocationInput({ city: "rio de janeiro", state: "rj" }).state, "RJ")
+  })
+  it("17. acento fora do catálogo é preservado, nunca removido", () => {
+    assert.equal(normalizeLocationInput({ city: "Águas de São Pedro" }).city, "Águas de São Pedro")
+  })
+
+  // 18-19: idempotência
+  it("18. valor já canônico permanece idêntico ao normalizar de novo", () => {
+    const once = normalizeLocationInput({ city: "Carapicuíba", state: "SP", neighborhood: "Centro" })
+    assert.equal(once.city, "Carapicuíba")
+    assert.equal(once.state, "SP")
+    assert.equal(once.neighborhood, "Centro")
+  })
+  it("19. aplicar duas vezes produz o mesmo resultado (idempotente)", () => {
+    const raw = { city: "  carapicuiba ", state: " sp ", neighborhood: "  vila martins " }
+    const once = normalizeLocationInput(raw)
+    const twice = normalizeLocationInput({
+      city: once.city,
+      state: once.state,
+      neighborhood: once.neighborhood,
+    })
+    assert.deepEqual(twice, once)
+  })
+
+  // 20: nunca mapeia por similaridade — cidade desconhecida não vira uma cidade do catálogo
+  it("20. não mapeia cidade desconhecida por semelhança a uma cidade conhecida", () => {
+    // "Carapicu" é prefixo de "Carapicuíba" mas NÃO deve ser mapeado — só dicionário exato.
+    assert.equal(normalizeLocationInput({ city: "Carapicu" }).city, "Carapicu")
+    // Cidade sem qualquer relação com o dicionário permanece exatamente o que foi digitado
+    // (com capitalização segura), nunca vira uma das 8 cidades conhecidas.
+    assert.equal(normalizeLocationInput({ city: "taboao da serra" }).city, "Taboao da Serra")
+  })
+
+  // Contrato de update parcial: campo ausente (undefined) permanece ausente.
+  it("campo ausente (undefined) permanece ausente — preserva update parcial", () => {
+    const result = normalizeLocationInput({ city: "São Paulo" })
+    assert.equal(result.state, undefined)
+    assert.equal(result.neighborhood, undefined)
+    assert.equal("state" in result, true) // chave existe, valor é undefined
   })
 })
 

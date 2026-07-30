@@ -4,6 +4,7 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
+import { normalizeLocationInput } from "@/modules/location"
 import type {
   TutorProfileData,
   CreateTutorProfileInput,
@@ -78,17 +79,25 @@ export async function updateTutorProfileRecord(
   id: string,
   input: UpdateTutorProfileInput
 ): Promise<TutorProfileData> {
+  // Normalização de escrita (Location Consistency V0.1) — campos ausentes
+  // continuam ausentes (update parcial preservado).
+  const location = normalizeLocationInput({
+    city: input.city,
+    state: input.state,
+    neighborhood: input.neighborhood,
+  })
+
   return prisma.tutorProfile.update({
     where: { id },
     data: {
       ...(input.displayName !== undefined && { displayName: input.displayName }),
       ...(input.bio !== undefined && { bio: input.bio ?? null }),
       ...(input.phone !== undefined && { phone: input.phone || null }),
-      ...(input.neighborhood !== undefined && {
-        neighborhood: input.neighborhood ?? null,
+      ...(location.neighborhood !== undefined && {
+        neighborhood: location.neighborhood,
       }),
-      ...(input.city !== undefined && { city: input.city }),
-      ...(input.state !== undefined && { state: input.state }),
+      ...(location.city !== undefined && { city: location.city }),
+      ...(location.state !== undefined && { state: location.state }),
       ...(input.lat !== undefined && { lat: input.lat ?? null }),
       ...(input.lng !== undefined && { lng: input.lng ?? null }),
     },

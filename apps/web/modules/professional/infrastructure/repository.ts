@@ -18,7 +18,7 @@
 import { Prisma } from "@prisma/client"
 
 import { prisma } from "@/lib/prisma/client"
-import { compareLocationText, formatPublicLocation } from "@/modules/location"
+import { compareLocationText, formatPublicLocation, normalizeLocationInput } from "@/modules/location"
 import type {
   ProfessionalProfileData,
   ProfessionalPublicProfile,
@@ -85,15 +85,23 @@ export async function updateProfessionalProfileRecord(
   id: string,
   input: UpdateProfessionalProfileInput
 ): Promise<ProfessionalProfileData> {
+  // Normalização de escrita (Location Consistency V0.1) — campos ausentes
+  // continuam ausentes (update parcial preservado).
+  const location = normalizeLocationInput({
+    city: input.city,
+    state: input.state,
+    neighborhood: input.neighborhood,
+  })
+
   const result = await prisma.professionalProfile.update({
     where: { id },
     data: {
       ...(input.displayName !== undefined && { displayName: input.displayName }),
       ...(input.bio !== undefined && { bio: input.bio ?? null }),
       ...(input.phone !== undefined && { phone: input.phone || null }),
-      ...(input.neighborhood !== undefined && { neighborhood: input.neighborhood ?? null }),
-      ...(input.city !== undefined && { city: input.city }),
-      ...(input.state !== undefined && { state: input.state }),
+      ...(location.neighborhood !== undefined && { neighborhood: location.neighborhood }),
+      ...(location.city !== undefined && { city: location.city }),
+      ...(location.state !== undefined && { state: location.state }),
       ...(input.lat !== undefined && { lat: input.lat ?? null }),
       ...(input.lng !== undefined && { lng: input.lng ?? null }),
       ...(input.avatarUrl !== undefined && {

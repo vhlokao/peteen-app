@@ -49,7 +49,7 @@ import {
   reactivateServiceRecord,
 } from "../infrastructure/repository"
 import { recordProfessionalProfileAudit } from "../infrastructure/audit"
-import { normalizeCityName, normalizeNeighborhoodName } from "@/modules/location"
+import { normalizeCityName, normalizeNeighborhoodName, normalizeLocationInput } from "@/modules/location"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROFESSIONAL PROFILE
@@ -91,6 +91,14 @@ export async function createProfessionalProfileAction(
       }
     }
 
+    // Normalização de escrita (Location Consistency V0.1) — ponto server-side
+    // autoritativo, antes da persistência. Nunca bloqueia cidade desconhecida.
+    const location = normalizeLocationInput({
+      city: parsed.data.city,
+      state: parsed.data.state,
+      neighborhood: parsed.data.neighborhood,
+    })
+
     const profile = await prisma.$transaction(async (tx) => {
       const p = await tx.professionalProfile.create({
         data: {
@@ -98,9 +106,9 @@ export async function createProfessionalProfileAction(
           displayName: parsed.data.displayName,
           bio: parsed.data.bio ?? null,
           phone: parsed.data.phone || null,
-          neighborhood: parsed.data.neighborhood ?? null,
-          city: parsed.data.city,
-          state: parsed.data.state,
+          neighborhood: location.neighborhood ?? null,
+          city: location.city ?? parsed.data.city,
+          state: location.state ?? parsed.data.state,
           lat: parsed.data.lat ?? null,
           lng: parsed.data.lng ?? null,
           serviceTypes: parsed.data.serviceTypes,

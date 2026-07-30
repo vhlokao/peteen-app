@@ -21,6 +21,7 @@ import {
   updateTutorProfileRecord,
 } from "../infrastructure/repository"
 import { recordTutorProfileAudit } from "../infrastructure/audit"
+import { normalizeLocationInput } from "@/modules/location"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TUTOR PROFILE
@@ -53,6 +54,14 @@ export async function createTutorProfileAction(
       }
     }
 
+    // Normalização de escrita (Location Consistency V0.1) — ponto server-side
+    // autoritativo, antes da persistência. Nunca bloqueia cidade desconhecida.
+    const location = normalizeLocationInput({
+      city: parsed.data.city,
+      state: parsed.data.state,
+      neighborhood: parsed.data.neighborhood,
+    })
+
     const profile = await prisma.$transaction(async (tx) => {
       const p = await tx.tutorProfile.create({
         data: {
@@ -60,9 +69,9 @@ export async function createTutorProfileAction(
           displayName: parsed.data.displayName,
           bio: parsed.data.bio ?? null,
           phone: parsed.data.phone || null,
-          neighborhood: parsed.data.neighborhood ?? null,
-          city: parsed.data.city,
-          state: parsed.data.state,
+          neighborhood: location.neighborhood ?? null,
+          city: location.city ?? parsed.data.city,
+          state: location.state ?? parsed.data.state,
           lat: parsed.data.lat ?? null,
           lng: parsed.data.lng ?? null,
         },

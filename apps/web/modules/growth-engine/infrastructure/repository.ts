@@ -4,6 +4,7 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
+import { normalizeLocationInput, normalizeNeighborhoodName } from "@/modules/location"
 import {
   computeHealthScore,
   computeTerritoryMetrics,
@@ -461,10 +462,15 @@ export async function createRegion(data: CreateRegionInput) {
   if (!regionDelegate) throw new Error(GROWTH_DELEGATE_UNAVAILABLE)
 
   const slug = data.slug?.trim() || slugifyTerritory(data.name)
+  // Normalização de escrita (Location Consistency V0.1) — city/state apenas.
+  // `name` de Region NÃO passa por normalizeNeighborhoodName: semanticamente
+  // é o nome da região (ex: "Zona Oeste"), não um bairro — aplicar a mesma
+  // função alteraria o significado do campo.
+  const location = normalizeLocationInput({ city: data.city, state: data.state })
   return regionDelegate.create({
     data: {
-      city:  data.city.trim(),
-      state: data.state.trim(),
+      city:  location.city ?? data.city.trim(),
+      state: location.state ?? data.state.trim(),
       name:  data.name.trim(),
       slug,
     },
@@ -475,11 +481,14 @@ export async function updateRegion(id: string, data: UpdateRegionInput) {
   const regionDelegate = getRegionDelegate()
   if (!regionDelegate) throw new Error(GROWTH_DELEGATE_UNAVAILABLE)
 
+  // Normalização de escrita (Location Consistency V0.1) — city/state apenas
+  // (ver nota em createRegion sobre `name`).
+  const location = normalizeLocationInput({ city: data.city, state: data.state })
   return regionDelegate.update({
     where: { id },
     data: {
-      ...(data.city !== undefined && { city: data.city.trim() }),
-      ...(data.state !== undefined && { state: data.state.trim() }),
+      ...(location.city !== undefined && { city: location.city }),
+      ...(location.state !== undefined && { state: location.state }),
       ...(data.name !== undefined && { name: data.name.trim() }),
       ...(data.slug !== undefined && { slug: data.slug.trim() }),
     },
@@ -491,11 +500,15 @@ export async function createNeighborhood(data: CreateNeighborhoodInput) {
   if (!neighborhoodDelegate) throw new Error(GROWTH_DELEGATE_UNAVAILABLE)
 
   const slug = data.slug?.trim() || slugifyTerritory(data.name)
+  // Normalização de escrita (Location Consistency V0.1). `name` aqui É o
+  // nome do bairro (não há coluna separada "neighborhood" neste modelo) —
+  // normalizeNeighborhoodName se aplica corretamente ao significado do campo.
+  const location = normalizeLocationInput({ city: data.city, state: data.state })
   return neighborhoodDelegate.create({
     data: {
-      city:     data.city.trim(),
-      state:    data.state.trim(),
-      name:     data.name.trim(),
+      city:     location.city ?? data.city.trim(),
+      state:    location.state ?? data.state.trim(),
+      name:     normalizeNeighborhoodName(data.name) ?? data.name.trim(),
       slug,
       regionId: data.regionId ?? null,
     },
@@ -506,12 +519,17 @@ export async function updateNeighborhood(id: string, data: UpdateNeighborhoodInp
   const neighborhoodDelegate = getNeighborhoodDelegate()
   if (!neighborhoodDelegate) throw new Error(GROWTH_DELEGATE_UNAVAILABLE)
 
+  // Normalização de escrita (Location Consistency V0.1) — ver nota em
+  // createNeighborhood sobre `name`.
+  const location = normalizeLocationInput({ city: data.city, state: data.state })
   return neighborhoodDelegate.update({
     where: { id },
     data: {
-      ...(data.city !== undefined && { city: data.city.trim() }),
-      ...(data.state !== undefined && { state: data.state.trim() }),
-      ...(data.name !== undefined && { name: data.name.trim() }),
+      ...(location.city !== undefined && { city: location.city }),
+      ...(location.state !== undefined && { state: location.state }),
+      ...(data.name !== undefined && {
+        name: normalizeNeighborhoodName(data.name) ?? data.name.trim(),
+      }),
       ...(data.slug !== undefined && { slug: data.slug.trim() }),
       ...(data.regionId !== undefined && { regionId: data.regionId }),
     },

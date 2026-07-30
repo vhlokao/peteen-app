@@ -101,3 +101,57 @@ export function normalizeStateCode(raw: string | null | undefined): string | nul
   if (!/^[A-Z]{2}$/.test(collapsed)) return null
   return BR_STATE_CODES.includes(collapsed) ? collapsed : null
 }
+
+/** Entrada bruta de localização para escrita — campos ausentes (undefined)
+ * representam "não alterar" num update parcial; presentes (mesmo null/"")
+ * representam um valor explícito a normalizar. */
+export type LocationInputRaw = {
+  city?: string
+  state?: string
+  neighborhood?: string | null
+}
+
+/** Saída normalizada — mesma forma opcional de LocationInputRaw, para que o
+ * chamador continue usando o padrão `input.campo !== undefined && {...}` já
+ * existente nos repositórios, sem mudar a semântica de update parcial. */
+export type NormalizedLocationInput = {
+  city?: string
+  state?: string
+  neighborhood?: string | null
+}
+
+/**
+ * normalizeLocationInput — ponto único de normalização de ESCRITA para
+ * cidade/UF/bairro. Reusa normalizeCityName/normalizeStateCode/
+ * normalizeNeighborhoodName — não reimplementa nenhuma regra.
+ *
+ * Regras:
+ *   - campo ausente (undefined) → permanece ausente (preserva update parcial);
+ *   - city: nunca vira null (campo obrigatório no schema) — cidade fora do
+ *     dicionário KNOWN_LOCATIONS recebe só capitalização segura, nunca é
+ *     bloqueada, nunca é mapeada por aproximação a uma cidade conhecida;
+ *   - state: idem — UF não reconhecida cai para maiúscula/trim sem validar
+ *     contra BR_STATE_CODES (nunca bloqueia, nunca inventa);
+ *   - neighborhood: vazio/whitespace/null → null (nunca vira valor
+ *     artificial); presente → capitalização segura, sem dicionário (não
+ *     existe bairro "canônico" na V0).
+ */
+export function normalizeLocationInput(
+  input: LocationInputRaw
+): NormalizedLocationInput {
+  return {
+    city:
+      input.city === undefined
+        ? undefined
+        : (normalizeCityName(input.city) ?? input.city),
+    state:
+      input.state === undefined
+        ? undefined
+        : (normalizeStateCode(input.state) ??
+          collapseWhitespace(input.state).toUpperCase()),
+    neighborhood:
+      input.neighborhood === undefined
+        ? undefined
+        : normalizeNeighborhoodName(input.neighborhood),
+  }
+}

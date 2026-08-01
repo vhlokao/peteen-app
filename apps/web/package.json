@@ -16,7 +16,8 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "test:location": "node --experimental-strip-types --test modules/location/domain/location.test.ts",
-    "test:agenda": "node --experimental-strip-types --test lib/date/agenda-temporal.test.ts"
+    "test:agenda": "node --experimental-strip-types --test lib/date/agenda-temporal.test.ts",
+    "test:pet-photo": "node --experimental-strip-types --test lib/storage/pet-photo-signature.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

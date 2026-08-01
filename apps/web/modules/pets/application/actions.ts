@@ -10,6 +10,12 @@ import { requireAuth } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import type { ActionResult } from "@/modules/tutor/domain/types"
 import {
+  deletePetPhotoByUrl,
+  isPetPhotoUrl,
+  uploadPetPhoto,
+  PetPhotoValidationError,
+} from "@/lib/storage/pet-photo"
+import {
   CreatePetSchema,
   UpdatePetSchema,
   type CreatePetInput,
@@ -40,14 +46,65 @@ async function requireTutorProfile(userId: string) {
   return findTutorProfileByUserId(userId)
 }
 
+/**
+ * Envia a foto para o bucket "pets" e retorna a URL pública — não grava
+ * nada no Pet (isso acontece via createPetAction/updatePetAction, como
+ * qualquer outro campo do formulário).
+ *
+ * `petId` é opcional: ausente na criação (o pet ainda não existe); quando
+ * presente (edição), a posse é validada antes do upload.
+ */
+export async function uploadPetPhotoAction(
+  formData: FormData
+): Promise<ActionResult<{ url: string }>> {
+  try {
+    const session = await requireAuth()
+    const tutorProfile = await requireTutorProfile(session.id)
+    if (!tutorProfile) {
+      return { success: false, error: "Perfil de tutor não encontrado." }
+    }
+
+    const petId = formData.get("petId")
+    if (typeof petId === "string" && petId.length > 0) {
+      const existing = await findPetByIdAndTutorId(petId, tutorProfile.id, {
+        includeArchived: true,
+      })
+      if (!existing) {
+        return { success: false, error: "Pet não encontrado ou acesso negado." }
+      }
+    }
+
+    const file = formData.get("file")
+    if (!(file instanceof File) || file.size === 0) {
+      return { success: false, error: "Selecione uma imagem." }
+    }
+
+    const url = await uploadPetPhoto(file, session.authId)
+    return { success: true, data: { url } }
+  } catch (err) {
+    if (err instanceof PetPhotoValidationError) {
+      return { success: false, error: err.message }
+    }
+    console.error("[uploadPetPhotoAction]", err)
+    return { success: false, error: "Não foi possível enviar a foto. Tente novamente." }
+  }
+}
+
 export async function createPetAction(
   input: CreatePetInput
 ): Promise<ActionResult<PetData>> {
+  const rollbackPhoto = async () => {
+    if (isPetPhotoUrl(input.avatarUrl)) {
+      await deletePetPhotoByUrl(input.avatarUrl)
+    }
+  }
+
   try {
     const session = await requireAuth()
     const tutorProfile = await requireTutorProfile(session.id)
 
     if (!tutorProfile) {
+      await rollbackPhoto()
       return {
         success: false,
         error: "Complete o perfil de tutor antes de adicionar pets.",
@@ -56,6 +113,7 @@ export async function createPetAction(
 
     const parsed = CreatePetSchema.safeParse(input)
     if (!parsed.success) {
+      await rollbackPhoto()
       const fieldErrors = parsed.error.flatten().fieldErrors as Record<
         string,
         string[]
@@ -74,6 +132,7 @@ export async function createPetAction(
     return { success: true, data: pet }
   } catch (err) {
     console.error("[createPetAction]", err)
+    await rollbackPhoto()
     return { success: false, error: "Erro interno ao adicionar pet." }
   }
 }
@@ -110,6 +169,18 @@ export async function updatePetAction(
 
     const updated = await updatePetRecord(petId, tutorProfile.id, parsed.data)
     await recordPetAudit(session.id, "pet.updated", updated, existing)
+
+    // Substituição/remoção de foto: só remove o arquivo antigo DEPOIS que o
+    // novo valor já foi salvo com sucesso no Pet — nunca antes. O valor
+    // "antigo" vem do registro que o próprio servidor leu (ownership-checked
+    // acima), nunca de um path enviado pelo cliente.
+    if (
+      parsed.data.avatarUrl !== undefined &&
+      existing.avatarUrl !== updated.avatarUrl &&
+      isPetPhotoUrl(existing.avatarUrl)
+    ) {
+      await deletePetPhotoByUrl(existing.avatarUrl)
+    }
 
     revalidatePetPaths()
     return { success: true, data: updated }

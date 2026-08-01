@@ -18,6 +18,7 @@ function petAuditPayload(pet: PetData): Record<string, unknown> {
     breed: pet.breed,
     gender: pet.gender,
     size: pet.size,
+    avatarUrl: pet.avatarUrl,
     isActive: pet.isActive,
   }
 }

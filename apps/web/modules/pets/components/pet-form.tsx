@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
-import { Loader2, AlertCircle, PawPrint, Check, Plus, ChevronLeft } from "lucide-react"
+import { Loader2, AlertCircle, PawPrint, Check, ChevronLeft } from "lucide-react"
 
 import {
   createPetAction,
@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { TutorStepBar } from "@/modules/tutor/components/tutor-step-bar"
+import { PetPhotoField } from "@/modules/pets/components/pet-photo-field"
 import { cn } from "@/lib/utils"
 
 const petFormSchema = z.object({
@@ -99,7 +100,10 @@ function toPetInput(values: PetFormValues): CreatePetInput {
     weight: values.weight,
     size: values.size,
     description: values.description || undefined,
-    avatarUrl: values.avatarUrl?.trim() || undefined,
+    // Nunca colapsa para `undefined`: "" é uma remoção explícita de foto, e
+    // precisa chegar como tal ao repositório (undefined significaria "não
+    // alterar o campo").
+    avatarUrl: (values.avatarUrl ?? "").trim(),
     hasSpecialNeeds: false,
   }
 }
@@ -336,22 +340,23 @@ export function PetForm({
         )}
       </FormField>
 
-      <FormField
+      <Controller
         name="avatarUrl"
-        label="Foto (URL)"
-        error={errors.avatarUrl?.message}
-        description="Cole o link de uma imagem do seu pet."
-      >
-        {(field) => (
-          <Input
-            {...field}
-            {...register("avatarUrl")}
-            type="url"
-            placeholder="https://..."
+        control={control}
+        render={({ field }) => (
+          <PetPhotoField
+            petId={pet?.id}
+            value={field.value ?? ""}
+            onChange={field.onChange}
             disabled={isSubmitting}
           />
         )}
-      </FormField>
+      />
+      {errors.avatarUrl?.message ? (
+        <p className="text-xs text-destructive" role="alert">
+          {errors.avatarUrl.message}
+        </p>
+      ) : null}
 
       <div className="flex flex-col gap-3 pt-2">
         <Button
@@ -399,7 +404,6 @@ export function PetForm({
 // botão de pular), só que com o layout do redesign do onboarding de tutor.
 
 const NAVY = "#1D2F6F"
-const CORAL = "#E07A5F"
 const GREEN = "#40916C"
 
 const onboardingPetSchema = z.object({
@@ -424,7 +428,6 @@ type OnboardingPetFormProps = {
 export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
   const router = useRouter()
   const [serverError, setServerError] = useState<string | null>(null)
-  const [showAvatarField, setShowAvatarField] = useState(false)
   const [justCompleted, setJustCompleted] = useState(false)
 
   const {
@@ -448,7 +451,7 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
       name: values.name,
       species: values.species,
       breed: values.breed || undefined,
-      avatarUrl: values.avatarUrl?.trim() || undefined,
+      avatarUrl: (values.avatarUrl ?? "").trim(),
       hasSpecialNeeds: false,
     }
 
@@ -532,40 +535,20 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
           </div>
         ) : null}
 
-        {/* Foto — decorativa, revela o campo real de URL ao clicar (sem upload de arquivo disponível) */}
         <div className="mb-5 flex justify-center">
-          <button
-            type="button"
-            onClick={() => setShowAvatarField((v) => !v)}
-            className="relative grid size-[88px] place-items-center rounded-[28px]"
-            style={{ background: "#FBEDE8", color: CORAL }}
-            aria-label="Adicionar foto do pet"
-            aria-pressed={showAvatarField}
-          >
-            <PawPrint className="size-11" />
-            <span
-              className="absolute -bottom-1 -right-1 grid size-[30px] place-items-center rounded-full border-[3px] border-[#FAFAF8]"
-              style={{ background: NAVY }}
-            >
-              <Plus className="size-[15px] text-white" />
-            </span>
-          </button>
-        </div>
-
-        {showAvatarField && (
-          <>
-            <Field label="Link da foto (opcional)" error={errors.avatarUrl?.message}>
-              <input
-                {...register("avatarUrl")}
-                type="url"
-                placeholder="https://..."
+          <Controller
+            name="avatarUrl"
+            control={control}
+            render={({ field }) => (
+              <PetPhotoField
+                value={field.value ?? ""}
+                onChange={field.onChange}
                 disabled={isSubmitting}
-                className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"
               />
-            </Field>
-            <div className="h-[18px]" />
-          </>
-        )}
+            )}
+          />
+        </div>
+        <div className="h-[18px]" />
 
         <Field label="Nome do pet *" error={errors.name?.message}>
           <input

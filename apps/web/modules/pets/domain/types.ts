@@ -71,9 +71,17 @@ export const CreatePetSchema = z.object({
     .string()
     .max(1000, "Descrição pode ter no máximo 1000 caracteres")
     .optional(),
+  // Só aceita URLs geradas pelo próprio fluxo de upload (bucket "pets") —
+  // nunca um link arbitrário digitado pelo cliente.
   avatarUrl: z
     .string()
-    .url("URL de imagem inválida")
+    .refine(
+      (url) => {
+        const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "")
+        return !!base && url.startsWith(`${base}/storage/v1/object/public/pets/`)
+      },
+      { message: "URL de imagem inválida" }
+    )
     .optional()
     .or(z.literal("")),
   // Legado — mantido para onboarding e reviews

@@ -1,7 +1,6 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { useForm, Controller } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -100,7 +99,6 @@ export function ProfessionalServiceForm({
   onCancel,
   onSuccess,
 }: Props) {
-  const router = useRouter()
   const [serverError, setServerError] = useState<string | null>(null)
 
   const defaultBasePrice =
@@ -170,7 +168,10 @@ export function ProfessionalServiceForm({
       }
 
       toast.success("Serviço criado com sucesso.")
-      router.refresh()
+      // O refresh é responsabilidade de quem nos montou (onSuccess), não
+      // daqui — chamar os dois de perto duplicava router.refresh() e
+      // contribuía para a corrida de payloads fora de ordem (ver
+      // professional-services-list.tsx).
       onSuccess()
       return
     }
@@ -197,7 +198,6 @@ export function ProfessionalServiceForm({
     }
 
     toast.success("Serviço atualizado com sucesso.")
-    router.refresh()
     onSuccess()
   }
 

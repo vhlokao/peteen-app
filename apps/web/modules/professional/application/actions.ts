@@ -141,7 +141,7 @@ export async function createProfessionalProfileAction(
     })
 
     revalidatePath("/onboarding")
-    revalidatePath("/(professional)/onboarding")
+    revalidatePath("/onboarding/professional")
 
     return {
       success: true,
@@ -195,14 +195,12 @@ export async function updateProfessionalProfileAction(
     const updated = await updateProfessionalProfileRecord(profileId, parsed.data)
     await recordProfessionalProfileAudit(session.id, updated, profile)
 
-    revalidatePath("/(professional)")
     revalidatePath("/professional")
     revalidatePath("/professional/profile")
     revalidatePath("/professional/metricas")
     revalidatePath("/admin/audit")
     revalidatePath("/discover")
     revalidatePath(`/discover/${profileId}`)
-    revalidatePath("/(discovery)/professionals")
 
     return { success: true, data: updated }
   } catch (err) {
@@ -352,8 +350,8 @@ export async function createServiceAction(
 
     const service = await createServiceRecord(professionalProfile.id, parsed.data)
 
-    revalidatePath("/(professional)/services")
-    revalidatePath(`/(discovery)/professionals/${professionalProfile.id}`)
+    revalidatePath("/professional/services")
+    revalidatePath(`/discover/${professionalProfile.id}`)
 
     return { success: true, data: service }
   } catch (err) {
@@ -440,8 +438,8 @@ export async function updateServiceAction(
 
     const updated = await updateServiceRecord(serviceId, parsed.data)
 
-    revalidatePath("/(professional)/services")
-    revalidatePath(`/(discovery)/professionals/${professionalProfile.id}`)
+    revalidatePath("/professional/services")
+    revalidatePath(`/discover/${professionalProfile.id}`)
 
     return { success: true, data: updated }
   } catch (err) {
@@ -494,8 +492,8 @@ export async function deactivateServiceAction(
 
     const deactivated = await deactivateServiceRecord(serviceId)
 
-    revalidatePath("/(professional)/services")
-    revalidatePath(`/(discovery)/professionals/${professionalProfile.id}`)
+    revalidatePath("/professional/services")
+    revalidatePath(`/discover/${professionalProfile.id}`)
 
     return { success: true, data: deactivated }
   } catch (err) {
@@ -542,7 +540,8 @@ export async function reactivateServiceAction(
 
     const reactivated = await reactivateServiceRecord(serviceId)
 
-    revalidatePath("/(professional)/services")
+    revalidatePath("/professional/services")
+    revalidatePath(`/discover/${professionalProfile.id}`)
 
     return { success: true, data: reactivated }
   } catch (err) {

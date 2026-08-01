@@ -428,6 +428,14 @@ model Service {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Service Uniqueness Concurrency Safety — no máximo um Service ATIVO por
+  // (professionalId, serviceType). Garantido no banco por um índice único
+  // PARCIAL (WHERE "isActive" = true), aplicado via
+  // prisma/migrations/20260801120000_service_uniqueness_concurrency_safety.
+  // Não representável aqui como @@unique: o Prisma não suporta predicado
+  // WHERE em índices únicos/parciais na DSL do schema. Services inativos
+  // (histórico) continuam podendo se repetir do mesmo tipo — só o conjunto
+  // de ativos é único.
   @@index([professionalId])
   @@index([serviceType])
   @@map("services")

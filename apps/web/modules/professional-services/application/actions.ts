@@ -18,6 +18,7 @@ import {
   hasActiveServiceOfType,
   reactivateServiceRecord,
   updateServiceRecord,
+  DuplicateActiveServiceError,
 } from "@/modules/professional/infrastructure/repository"
 
 /**
@@ -114,6 +115,16 @@ export async function createProfessionalServiceAction(
     revalidateServicePaths(profile.id)
     return { success: true, data: service }
   } catch (err) {
+    // Última linha de defesa: o índice único parcial do banco rejeitou a
+    // escrita porque uma criação concorrente venceu a corrida entre o guard
+    // (hasActiveServiceOfType) e esta chamada. Mesma mensagem neutra do guard.
+    if (err instanceof DuplicateActiveServiceError) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
     console.error("[createProfessionalServiceAction]", err)
     return { success: false, error: "Erro interno ao criar serviço." }
   }
@@ -177,6 +188,13 @@ export async function updateProfessionalServiceAction(
     revalidateServicePaths(profile.id)
     return { success: true, data: updated }
   } catch (err) {
+    if (err instanceof DuplicateActiveServiceError) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
     console.error("[updateProfessionalServiceAction]", err)
     return { success: false, error: "Erro interno ao atualizar serviço." }
   }
@@ -213,6 +231,13 @@ export async function activateProfessionalServiceAction(
     revalidateServicePaths(profile.id)
     return { success: true, data: activated }
   } catch (err) {
+    if (err instanceof DuplicateActiveServiceError) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
     console.error("[activateProfessionalServiceAction]", err)
     return { success: false, error: "Erro interno ao ativar serviço." }
   }

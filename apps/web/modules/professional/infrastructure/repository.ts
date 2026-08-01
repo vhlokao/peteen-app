@@ -364,24 +364,62 @@ export async function findPublicProfessionalById(
 // SERVICES (catálogo do profissional)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Service Uniqueness Concurrency Safety — lançado quando o índice único
+ * PARCIAL do banco (services_professionalId_serviceType_active_key, ver
+ * prisma/migrations/20260801120000_service_uniqueness_concurrency_safety)
+ * rejeita a escrita porque já existe outro Service ATIVO do mesmo tipo para
+ * o profissional. É a última linha de defesa: o guard de aplicação
+ * (hasActiveServiceOfType) cobre o caso comum antes da tentativa de escrita,
+ * mas só o índice garante integridade sob concorrência real (duas escritas
+ * simultâneas). A camada application converte esta exceção na mesma
+ * mensagem neutra do guard — nunca expõe nome de índice, SQL ou stack.
+ */
+export class DuplicateActiveServiceError extends Error {
+  constructor(context: string) {
+    super(`Violação do índice único de Service ativo (${context}).`)
+    this.name = "DuplicateActiveServiceError"
+  }
+}
+
+/**
+ * `code === "P2002"` é o único unique constraint hoje existente na tabela
+ * `services` (o índice parcial acima) — não há ambiguidade em tratar
+ * qualquer P2002 vindo destas escritas como duplicidade de Service ativo.
+ * Não confundir com outros erros: só o P2002 é convertido; qualquer outro
+ * código/erro continua propagando normalmente.
+ */
+function isDuplicateActiveServiceViolation(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002"
+}
+
 export async function createServiceRecord(
   professionalId: string,
   input: CreateServiceInput
 ): Promise<ServiceData> {
-  return prisma.service.create({
-    data: {
-      professionalId,
-      name: input.name,
-      description: input.description ?? null,
-      serviceType: input.serviceType,
-      // Ausente na criação = sem duração. Nada é inventado por serviceType —
-      // as sugestões existem só como assistência no formulário.
-      defaultDurationMin: input.defaultDurationMin ?? null,
-      priceMin: input.priceMin ?? null,
-      priceMax: input.priceMax ?? null,
-      isActive: true,
-    },
-  }) as Promise<ServiceData>
+  try {
+    return (await prisma.service.create({
+      data: {
+        professionalId,
+        name: input.name,
+        description: input.description ?? null,
+        serviceType: input.serviceType,
+        // Ausente na criação = sem duração. Nada é inventado por serviceType —
+        // as sugestões existem só como assistência no formulário.
+        defaultDurationMin: input.defaultDurationMin ?? null,
+        priceMin: input.priceMin ?? null,
+        priceMax: input.priceMax ?? null,
+        isActive: true,
+      },
+    })) as ServiceData
+  } catch (err) {
+    if (isDuplicateActiveServiceViolation(err)) {
+      throw new DuplicateActiveServiceError(
+        `create, professionalId=${professionalId}, serviceType=${input.serviceType}`
+      )
+    }
+    throw err
+  }
 }
 
 export async function findServicesByProfessionalId(
@@ -463,22 +501,32 @@ export async function updateServiceRecord(
   id: string,
   input: UpdateServiceInput
 ): Promise<ServiceData> {
-  return prisma.service.update({
-    where: { id },
-    data: {
-      ...(input.name !== undefined && { name: input.name }),
-      ...(input.description !== undefined && { description: input.description ?? null }),
-      ...(input.serviceType !== undefined && { serviceType: input.serviceType }),
-      // Update parcial explícito: campo ausente NÃO apaga a duração gravada;
-      // `null` explícito remove. Editar aqui nunca altera compromissos já
-      // aceitos — a duração deles foi congelada no aceite.
-      ...(input.defaultDurationMin !== undefined && {
-        defaultDurationMin: input.defaultDurationMin,
-      }),
-      ...(input.priceMin !== undefined && { priceMin: input.priceMin ?? null }),
-      ...(input.priceMax !== undefined && { priceMax: input.priceMax ?? null }),
-    },
-  }) as Promise<ServiceData>
+  try {
+    return (await prisma.service.update({
+      where: { id },
+      data: {
+        ...(input.name !== undefined && { name: input.name }),
+        ...(input.description !== undefined && { description: input.description ?? null }),
+        ...(input.serviceType !== undefined && { serviceType: input.serviceType }),
+        // Update parcial explícito: campo ausente NÃO apaga a duração gravada;
+        // `null` explícito remove. Editar aqui nunca altera compromissos já
+        // aceitos — a duração deles foi congelada no aceite.
+        ...(input.defaultDurationMin !== undefined && {
+          defaultDurationMin: input.defaultDurationMin,
+        }),
+        ...(input.priceMin !== undefined && { priceMin: input.priceMin ?? null }),
+        ...(input.priceMax !== undefined && { priceMax: input.priceMax ?? null }),
+      },
+    })) as ServiceData
+  } catch (err) {
+    // Só dispara quando o update muda serviceType (ou mantém isActive=true
+    // implicitamente) e colide com outro Service ativo do tipo resultante —
+    // o guard de aplicação já cobre o caso comum antes de chegar aqui.
+    if (isDuplicateActiveServiceViolation(err)) {
+      throw new DuplicateActiveServiceError(`update, id=${id}, serviceType=${input.serviceType}`)
+    }
+    throw err
+  }
 }
 
 export async function deactivateServiceRecord(id: string): Promise<ServiceData> {
@@ -489,10 +537,17 @@ export async function deactivateServiceRecord(id: string): Promise<ServiceData> 
 }
 
 export async function reactivateServiceRecord(id: string): Promise<ServiceData> {
-  return prisma.service.update({
-    where: { id },
-    data: { isActive: true },
-  }) as Promise<ServiceData>
+  try {
+    return (await prisma.service.update({
+      where: { id },
+      data: { isActive: true },
+    })) as ServiceData
+  } catch (err) {
+    if (isDuplicateActiveServiceViolation(err)) {
+      throw new DuplicateActiveServiceError(`reactivate, id=${id}`)
+    }
+    throw err
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -48,6 +48,7 @@ import {
   updateServiceRecord,
   deactivateServiceRecord,
   reactivateServiceRecord,
+  DuplicateActiveServiceError,
 } from "../infrastructure/repository"
 import { recordProfessionalProfileAudit } from "../infrastructure/audit"
 import { normalizeCityName, normalizeNeighborhoodName, normalizeLocationInput } from "@/modules/location"
@@ -356,6 +357,16 @@ export async function createServiceAction(
 
     return { success: true, data: service }
   } catch (err) {
+    // Última linha de defesa: o índice único parcial do banco rejeitou a
+    // escrita porque uma criação concorrente venceu a corrida entre o guard
+    // (hasActiveServiceOfType) e esta chamada. Mesma mensagem neutra do guard.
+    if (err instanceof DuplicateActiveServiceError) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
     console.error("[createServiceAction]", err)
     return { success: false, error: "Erro interno ao criar serviço." }
   }
@@ -434,6 +445,13 @@ export async function updateServiceAction(
 
     return { success: true, data: updated }
   } catch (err) {
+    if (err instanceof DuplicateActiveServiceError) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
     console.error("[updateServiceAction]", err)
     return { success: false, error: "Erro interno ao atualizar serviço." }
   }
@@ -528,6 +546,13 @@ export async function reactivateServiceAction(
 
     return { success: true, data: reactivated }
   } catch (err) {
+    if (err instanceof DuplicateActiveServiceError) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
     console.error("[reactivateServiceAction]", err)
     return { success: false, error: "Erro interno ao reativar serviço." }
   }

@@ -419,6 +419,12 @@ model Service {
   priceMax    Float?
   isActive    Boolean @default(true)
 
+  // Agenda Foundation V0.3 — duração padrão em minutos, informada pelo
+  // profissional. Opcional: serviço sem duração continua válido e aceitável.
+  // É apenas a PREVISÃO usada para congelar durationMin no aceite; nunca
+  // prova de duração real (essa vem de startedAt/completedAt).
+  defaultDurationMin Int?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -442,6 +448,24 @@ model ServiceRequest {
   scheduledAt DateTime?
   startedAt   DateTime?
   completedAt DateTime?
+
+  // ── Agenda Foundation V0.3 — precisão temporal e duração ──────────────────
+  // scheduledHasTime é a ÚNICA fonte para decidir se o horário de
+  // `scheduledAt` pode ser exibido (ver domain/schedule-precision.ts):
+  //   false → precisão de DATA (âncora técnica; registros anteriores à V0.3)
+  //   true  → data e horário reais capturados no fluxo de criação
+  // NOT NULL com default false: toda linha existente vira legado sem backfill.
+  // Nunca é alterado por aceite/início/conclusão.
+  scheduledHasTime Boolean @default(false)
+
+  // Duração PREVISTA, congelada a partir de Service.defaultDurationMin no
+  // momento do aceite. Editar o Service depois não reescreve compromissos já
+  // aceitos. Null quando o serviço não declara duração.
+  durationMin Int?
+
+  // Fim previsto = scheduledAt + durationMin, derivado no aceite.
+  // Null quando não há horário real ou não há duração.
+  endAt DateTime?
 
   notes String?
 

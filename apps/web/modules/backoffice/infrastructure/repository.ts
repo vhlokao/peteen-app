@@ -337,6 +337,7 @@ export async function getAdminRequests(
       serviceType: true,
       status:      true,
       scheduledAt: true,
+      scheduledHasTime: true,
       completedAt: true,
       createdAt:   true,
       tutor:       { select: { displayName: true } },
@@ -355,6 +356,7 @@ export async function getAdminRequests(
     serviceType:      r.serviceType,
     status:           r.status,
     scheduledAt:      r.scheduledAt,
+    scheduledHasTime: r.scheduledHasTime,
     createdAt:        r.createdAt,
     completedAt:      r.completedAt,
   }))

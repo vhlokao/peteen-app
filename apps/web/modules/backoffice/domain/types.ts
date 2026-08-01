@@ -75,6 +75,9 @@ export type AdminRequestRow = {
   serviceType: string
   status: string
   scheduledAt: Date | null
+  /** Agenda Foundation V0.3 — precisão temporal de `scheduledAt`. Ver
+   *  apps/web/docs/AGENDA_TEMPORAL_PRECISION_CONTRACT.md. */
+  scheduledHasTime: boolean
   createdAt: Date
   completedAt: Date | null
 }

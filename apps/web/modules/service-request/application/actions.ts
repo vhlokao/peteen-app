@@ -63,7 +63,8 @@ import { recordRequestAudit } from "../infrastructure/audit"
 const CONCURRENT_UPDATE_MESSAGE =
   "Esta solicitação já foi atualizada. Recarregue a página para ver o status mais recente."
 import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
-import { CIVIL_DAY_TIME_ZONE } from "@/lib/date/civil-day"
+import { CIVIL_DAY_TIME_ZONE, isCivilDayInThePast } from "@/lib/date/civil-day"
+import { zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
 
 /** Data/hora de liberação do cooldown na mensagem de erro do aceite — fuso fixo do piloto. */
 const ACCEPT_COOLDOWN_DATETIME_FORMAT = new Intl.DateTimeFormat("pt-BR", {
@@ -146,6 +147,45 @@ export async function createServiceRequestAction(
       }
     }
 
+    // ── Agenda Foundation V0.3 — data + horário civis → instante UTC ─────────
+    // A conversão acontece AQUI, no servidor, a partir dos componentes civis
+    // crus. O client nunca envia um instante pronto, então o resultado não
+    // depende do fuso do dispositivo do tutor.
+    const scheduledAt = zonedCivilDateTimeToInstant(
+      parsed.data.scheduledDate,
+      parsed.data.scheduledTime
+    )
+    if (!scheduledAt) {
+      return {
+        success: false,
+        error: "Data ou horário inválidos.",
+        fieldErrors: { scheduledTime: ["Data ou horário inválidos."] },
+      }
+    }
+
+    const now = new Date()
+
+    // Regra preservada da V0.2 — dia civil no passado é sempre inválido.
+    if (isCivilDayInThePast(scheduledAt, now)) {
+      return {
+        success: false,
+        error: "A data agendada não pode estar no passado.",
+        fieldErrors: { scheduledDate: ["A data agendada não pode estar no passado."] },
+      }
+    }
+
+    // Regra nova — agora que existe horário real, o instante também não pode
+    // estar no passado. Isso permite qualquer horário FUTURO no mesmo dia e
+    // rejeita um horário de hoje que já passou.
+    if (scheduledAt.getTime() < now.getTime()) {
+      return {
+        success: false,
+        error: "O horário escolhido já passou. Escolha um horário futuro.",
+        fieldErrors: { scheduledTime: ["O horário escolhido já passou."] },
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Guardrail operacional: solicitação duplicada em aberto ───────────────
     // Impede que o tutor abra múltiplas solicitações ativas para o mesmo profissional.
     // Bypassável em development via DEV_BYPASS_OPERATIONAL_GUARDRAILS=true (.env.local).
@@ -203,7 +243,10 @@ export async function createServiceRequestAction(
       professionalId: parsed.data.professionalId,
       petId: parsed.data.petId,
       serviceType: parsed.data.serviceType,
-      scheduledAt: parsed.data.scheduledAt,
+      scheduledAt,
+      // Este fluxo capturou horário real → precisão de minuto.
+      // Nenhum outro ponto do sistema escreve este campo.
+      scheduledHasTime: true,
       notes: parsed.data.notes,
       isRecurring: parsed.data.isRecurring,
       parentRequestId: parsed.data.parentRequestId,

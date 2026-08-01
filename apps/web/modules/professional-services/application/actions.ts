@@ -15,9 +15,18 @@ import {
   createServiceRecord,
   deactivateServiceRecord,
   findServiceByIdAndProfessionalId,
+  hasActiveServiceOfType,
   reactivateServiceRecord,
   updateServiceRecord,
 } from "@/modules/professional/infrastructure/repository"
+
+/**
+ * Agenda Foundation V0.3 — guard de duplicidade.
+ * Um profissional não pode ter dois Services ativos do mesmo serviceType.
+ * Mensagem neutra: nunca revela dados de outro registro/profissional.
+ */
+const DUPLICATE_ACTIVE_SERVICE_MESSAGE =
+  "Você já possui um serviço ativo deste tipo."
 
 import { recordServiceAudit } from "../infrastructure/audit"
 import { getProfessionalServices } from "../infrastructure/queries"
@@ -38,6 +47,7 @@ function mapCreateInput(input: ProfessionalServiceFormInput): CreateServiceInput
     name: input.name,
     description: input.description,
     serviceType: input.serviceType,
+    defaultDurationMin: input.defaultDurationMin ?? null,
     priceMin: input.basePrice,
     priceMax: input.basePrice,
   }
@@ -48,6 +58,11 @@ function mapUpdateInput(input: ProfessionalServiceUpdateInput): UpdateServiceInp
   if (input.name !== undefined) mapped.name = input.name
   if (input.description !== undefined) mapped.description = input.description
   if (input.serviceType !== undefined) mapped.serviceType = input.serviceType
+  // Só propaga quando o campo veio de fato: ausência preserva a duração
+  // gravada; `null` explícito chega até o repositório e remove.
+  if (input.defaultDurationMin !== undefined) {
+    mapped.defaultDurationMin = input.defaultDurationMin
+  }
   if (input.basePrice !== undefined) {
     mapped.priceMin = input.basePrice
     mapped.priceMax = input.basePrice
@@ -81,6 +96,15 @@ export async function createProfessionalServiceAction(
         success: false,
         error: parsed.error.issues[0]?.message ?? "Dados inválidos.",
         fieldErrors,
+      }
+    }
+
+    // Guard de duplicidade (V0.3): no máximo um Service ativo por tipo.
+    if (await hasActiveServiceOfType(profile.id, parsed.data.serviceType)) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
       }
     }
 
@@ -132,6 +156,21 @@ export async function updateProfessionalServiceAction(
       }
     }
 
+    // Guard de duplicidade (V0.3): editar o serviceType não pode gerar dois
+    // Services ativos do mesmo tipo. Só importa se ESTE registro está ativo;
+    // ignora o próprio id. Registro inativo pode coexistir livremente.
+    const effectiveType = parsed.data.serviceType ?? existing.serviceType
+    if (
+      existing.isActive &&
+      (await hasActiveServiceOfType(profile.id, effectiveType, serviceId))
+    ) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
+
     const updated = await updateServiceRecord(serviceId, parsed.data)
     await recordServiceAudit(session.id, "professional.service_updated", updated, existing)
 
@@ -156,6 +195,16 @@ export async function activateProfessionalServiceAction(
 
     if (existing.isActive) {
       return { success: false, error: "Serviço já está ativo." }
+    }
+
+    // Guard de duplicidade (V0.3): reativar não pode gerar dois ativos do
+    // mesmo tipo. Ignora o próprio id (ainda inativo neste ponto).
+    if (await hasActiveServiceOfType(profile.id, existing.serviceType, serviceId)) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
     }
 
     const activated = await reactivateServiceRecord(serviceId)

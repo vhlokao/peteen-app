@@ -1,5 +1,5 @@
 import type { UseFormRegister, FieldErrors } from "react-hook-form"
-import { CalendarDays, Info } from "lucide-react"
+import { CalendarDays, Clock, Info } from "lucide-react"
 
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -12,33 +12,60 @@ type RequestScheduleStepProps = {
   todayStr: string
 }
 
+const fieldClass =
+  "h-11 w-full rounded-xl border border-input bg-background px-3.5 text-sm shadow-xs focus:outline-none focus:ring-2 focus:ring-ring/40"
+
 /**
- * Etapa 3 — data e observações. Mesmos campos reais de sempre
- * (scheduledAt como input type="date", notes opcional) — só o visual mudou.
- * Não adiciona horário: a lógica atual só suporta data (ver auditoria).
+ * Etapa 3 — data, horário e observações (Agenda Foundation V0.3).
+ *
+ * Data e horário são campos SEPARADOS (`type="date"` + `type="time"`), não um
+ * `datetime-local`: os dois nativos têm melhor suporte e acessibilidade em
+ * mobile, e o servidor recebe os componentes civis crus — nunca um instante
+ * já convertido pelo fuso do dispositivo.
  */
 export function RequestScheduleStep({ register, errors, todayStr }: RequestScheduleStepProps) {
   return (
     <div className="flex flex-col gap-5">
-      <div className="space-y-1.5">
-        <Label htmlFor="scheduledAt" className="flex items-center gap-1.5">
-          <CalendarDays className="size-3.5 text-muted-foreground" />
-          Data desejada
-        </Label>
-        <input
-          id="scheduledAt"
-          type="date"
-          min={todayStr}
-          className={cn(
-            "h-11 w-full rounded-xl border border-input bg-background px-3.5 text-sm shadow-xs",
-            "focus:outline-none focus:ring-2 focus:ring-ring/40",
-            errors.scheduledAt && "border-destructive focus:ring-destructive/30"
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="scheduledDate" className="flex items-center gap-1.5">
+            <CalendarDays className="size-3.5 text-muted-foreground" />
+            Data desejada
+          </Label>
+          <input
+            id="scheduledDate"
+            type="date"
+            min={todayStr}
+            className={cn(
+              fieldClass,
+              errors.scheduledDate && "border-destructive focus:ring-destructive/30"
+            )}
+            {...register("scheduledDate")}
+          />
+          {errors.scheduledDate && (
+            <p className="text-xs text-destructive">{errors.scheduledDate.message}</p>
           )}
-          {...register("scheduledAt")}
-        />
-        {errors.scheduledAt && (
-          <p className="text-xs text-destructive">{errors.scheduledAt.message}</p>
-        )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="scheduledTime" className="flex items-center gap-1.5">
+            <Clock className="size-3.5 text-muted-foreground" />
+            Horário
+          </Label>
+          <input
+            id="scheduledTime"
+            type="time"
+            step={300}
+            className={cn(
+              fieldClass,
+              errors.scheduledTime && "border-destructive focus:ring-destructive/30"
+            )}
+            {...register("scheduledTime")}
+          />
+          {errors.scheduledTime && (
+            <p className="text-xs text-destructive">{errors.scheduledTime.message}</p>
+          )}
+        </div>
       </div>
 
       <div className="space-y-1.5">
@@ -48,7 +75,7 @@ export function RequestScheduleStep({ register, errors, todayStr }: RequestSched
         </Label>
         <Textarea
           id="notes"
-          placeholder="Necessidades especiais, horário preferido, instruções do pet..."
+          placeholder="Necessidades especiais, instruções do pet..."
           rows={4}
           className="rounded-xl"
           {...register("notes")}

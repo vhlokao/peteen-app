@@ -42,7 +42,9 @@ export default async function ProfessionalAgendaPage() {
   const accepted = requests.filter((r) => r.status === "ACCEPTED")
   const active = [...inProgress, ...accepted]
 
-  const todayCount = active.filter((r) => classifyAgendaBucket(r.scheduledAt) === "today").length
+  const todayCount = active.filter(
+    (r) => classifyAgendaBucket(r.scheduledAt, r.scheduledHasTime) === "today"
+  ).length
   const groups = groupRequestsByAgendaBucket(accepted)
 
   const hasAnyAppointment = active.length > 0
@@ -80,7 +82,7 @@ export default async function ProfessionalAgendaPage() {
       <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
         <h2 className="mb-1 text-sm font-semibold text-foreground">Disponibilidade semanal</h2>
         <p className="mb-4 text-xs text-muted-foreground">
-          Esta agenda é indicativa. O atendimento só é confirmado após você aceitar a solicitação.
+          Disponibilidade é indicativa. Compromissos confirmados aparecem aqui após o aceite.
         </p>
         <ProfessionalAvailabilityForm initialDays={availabilityDays} />
       </section>

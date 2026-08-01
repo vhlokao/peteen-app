@@ -44,12 +44,20 @@ import {
   createServiceRecord,
   findServicesByProfessionalId,
   findServiceByIdAndProfessionalId,
+  hasActiveServiceOfType,
   updateServiceRecord,
   deactivateServiceRecord,
   reactivateServiceRecord,
 } from "../infrastructure/repository"
 import { recordProfessionalProfileAudit } from "../infrastructure/audit"
 import { normalizeCityName, normalizeNeighborhoodName, normalizeLocationInput } from "@/modules/location"
+
+/**
+ * Agenda Foundation V0.3 — guard de duplicidade (onboarding e gestão legada).
+ * Mensagem neutra: nunca revela dados de outro registro/profissional.
+ */
+const DUPLICATE_ACTIVE_SERVICE_MESSAGE =
+  "Você já possui um serviço ativo deste tipo."
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROFESSIONAL PROFILE
@@ -332,6 +340,15 @@ export async function createServiceAction(
       }
     }
 
+    // Guard de duplicidade (V0.3): no máximo um Service ativo por tipo.
+    if (await hasActiveServiceOfType(professionalProfile.id, parsed.data.serviceType)) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
+
     const service = await createServiceRecord(professionalProfile.id, parsed.data)
 
     revalidatePath("/(professional)/services")
@@ -393,6 +410,20 @@ export async function updateServiceAction(
         success: false,
         error: "Preço máximo deve ser maior ou igual ao mínimo.",
         fieldErrors: { priceMax: ["Preço máximo deve ser maior ou igual ao mínimo."] },
+      }
+    }
+
+    // Guard de duplicidade (V0.3): editar o tipo não pode gerar dois ativos do
+    // mesmo tipo. Só importa se este registro está ativo; ignora o próprio id.
+    const effectiveType = parsed.data.serviceType ?? service.serviceType
+    if (
+      service.isActive &&
+      (await hasActiveServiceOfType(professionalProfile.id, effectiveType, serviceId))
+    ) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
       }
     }
 
@@ -479,6 +510,16 @@ export async function reactivateServiceAction(
 
     if (service.isActive) {
       return { success: false, error: "Serviço já está ativo." }
+    }
+
+    // Guard de duplicidade (V0.3): reativar não pode gerar dois ativos do
+    // mesmo tipo. Ignora o próprio id (ainda inativo neste ponto).
+    if (await hasActiveServiceOfType(professionalProfile.id, service.serviceType, serviceId)) {
+      return {
+        success: false,
+        error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
+        fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
     }
 
     const reactivated = await reactivateServiceRecord(serviceId)

@@ -1,8 +1,13 @@
 import Link from "next/link"
-import { CalendarDays, MapPin, PawPrint } from "lucide-react"
+import { CalendarDays, Clock, MapPin, PawPrint } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { buttonVariants } from "@/components/ui/button"
+import { formatScheduledCivilDate, formatZonedTime } from "@/lib/date/zoned-datetime"
+import {
+  canDisplayScheduledTime,
+  canDisplayEndTime,
+} from "@/modules/service-request/domain/schedule-precision"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { SPECIES_LABELS } from "@/modules/tutor/domain/types"
@@ -12,13 +17,27 @@ import {
 } from "../domain/request-status-display"
 import { ProfessionalRequestStatusPill } from "./professional-request-status-pill"
 
-function formatDate(date: Date | null): string {
+function formatDate(date: Date | null, scheduledHasTime: boolean): string {
   if (!date) return "—"
-  return new Intl.DateTimeFormat("pt-BR", {
+  // O fuso vem da precisão: date-only legado renderiza em UTC (recupera o dia
+  // civil gravado); horário real renderiza no fuso do piloto. Ver
+  // scheduledDayTimeZone.
+  return formatScheduledCivilDate(new Date(date), scheduledHasTime, {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(date))
+  })
+}
+
+/**
+ * Faixa de horário do compromisso, ou null quando não há horário confiável.
+ * A decisão de exibir vem SÓ do contrato de precisão — nunca da hora em si.
+ */
+function formatTimeRange(request: ServiceRequestWithParticipants): string | null {
+  if (!canDisplayScheduledTime(request)) return null
+  const start = formatZonedTime(request.scheduledAt!)
+  if (!canDisplayEndTime(request)) return start
+  return `${start}–${formatZonedTime(request.endAt!)}`
 }
 
 /**
@@ -31,6 +50,7 @@ export function ProfessionalRequestCard({
 }: {
   request: ServiceRequestWithParticipants
 }) {
+  const timeRange = formatTimeRange(request)
   const tutor = request.tutor
   const initials = tutor.displayName
     .split(" ")
@@ -82,8 +102,19 @@ export function ProfessionalRequestCard({
         <span className="text-border">·</span>
         <span className="inline-flex items-center gap-1">
           <CalendarDays className="size-3 shrink-0" />
-          {formatDate(request.scheduledAt)}
+          {formatDate(request.scheduledAt, request.scheduledHasTime)}
         </span>
+        {/* Horário só aparece quando o request nasceu com horário real —
+            compromissos legados mostram apenas a data. */}
+        {timeRange && (
+          <>
+            <span className="text-border">·</span>
+            <span className="inline-flex items-center gap-1 font-medium text-foreground">
+              <Clock className="size-3 shrink-0" />
+              {timeRange}
+            </span>
+          </>
+        )}
       </div>
 
       {nextStep && <p className="text-xs font-medium text-primary">{nextStep}</p>}

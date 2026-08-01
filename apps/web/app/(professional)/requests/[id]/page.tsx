@@ -10,6 +10,7 @@ import { findRequestAcceptedAt } from "@/modules/service-request/infrastructure/
 import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 import { findRelationship } from "@/modules/relationship/infrastructure/repository"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
+import { formatScheduledCivilDate } from "@/lib/date/zoned-datetime"
 import { RequestTimeline } from "@/components/requests/RequestTimeline"
 import { RequestActions } from "@/components/requests/RequestActions"
 import { findDisputeForProfessionalRequest } from "@/modules/disputes/infrastructure/queries"
@@ -27,14 +28,16 @@ type DetailPageProps = {
   params: Promise<{ id: string }>
 }
 
-function formatDate(date: Date | null): string {
+function formatDate(date: Date | null, scheduledHasTime: boolean): string {
   if (!date) return "—"
-  return new Intl.DateTimeFormat("pt-BR", {
+  // Fuso pela precisão: date-only legado em UTC (recupera o dia gravado),
+  // horário real no fuso do piloto. Ver scheduledDayTimeZone.
+  return formatScheduledCivilDate(new Date(date), scheduledHasTime, {
     weekday: "long",
     day: "2-digit",
     month: "long",
     year: "numeric",
-  }).format(new Date(date))
+  })
 }
 
 /**
@@ -199,7 +202,7 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
           tutor={request.tutor}
           pet={request.pet}
           serviceType={request.serviceType as ServiceType}
-          scheduledAtLabel={formatDate(request.scheduledAt)}
+          scheduledAtLabel={formatDate(request.scheduledAt, request.scheduledHasTime)}
           notes={request.notes}
           isRecurring={request.isRecurring}
           priorRelationship={priorRelationship}

@@ -11,6 +11,8 @@ import { createServiceAction } from "@/modules/professional/application/actions"
 import {
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
+  SERVICE_DURATION_LIMITS,
+  SERVICE_DURATION_SUGGESTIONS,
   type CreateServiceInput,
   type ServiceType,
 } from "@/modules/professional/domain/types";
@@ -39,10 +41,34 @@ const serviceFormSchema = z
     serviceType: z.enum(SERVICE_TYPES, {
       error: () => "Selecione um tipo de serviço",
     }),
+    defaultDurationMin: z.union([z.literal(""), z.string()]).optional(),
     priceMin: z.string().min(1, "Informe o preço mínimo"),
     priceMax: z.union([z.literal(""), z.string()]).optional(),
   })
   .superRefine((data, ctx) => {
+    // Mesma validação de professional-service-form.tsx (gestão) — mesmos
+    // limites (SERVICE_DURATION_LIMITS) e mesmas mensagens, para que
+    // onboarding e gestão deem feedback idêntico antes do envio.
+    if (data.defaultDurationMin) {
+      const duration = Number(data.defaultDurationMin);
+      if (!Number.isInteger(duration)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["defaultDurationMin"],
+          message: "Informe minutos inteiros",
+        });
+      } else if (
+        duration < SERVICE_DURATION_LIMITS.MIN_MINUTES ||
+        duration > SERVICE_DURATION_LIMITS.MAX_MINUTES
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["defaultDurationMin"],
+          message: `Entre ${SERVICE_DURATION_LIMITS.MIN_MINUTES} e ${SERVICE_DURATION_LIMITS.MAX_MINUTES} minutos`,
+        });
+      }
+    }
+
     const min = data.priceMin ? parseFloat(data.priceMin) : undefined;
     const max = data.priceMax ? parseFloat(data.priceMax) : undefined;
 
@@ -92,12 +118,18 @@ export function ServiceForm({
       name: "",
       description: "",
       serviceType: undefined,
+      defaultDurationMin: "",
       priceMin: "",
       priceMax: "",
     },
   });
 
   const watchedType = watch("serviceType");
+
+  // Sugestão puramente visual — nunca gravada automaticamente.
+  const suggestedDuration = watchedType
+    ? SERVICE_DURATION_SUGGESTIONS[watchedType as ServiceType]
+    : undefined;
 
   async function onSubmit(values: ServiceFormValues) {
     setServerError(null);
@@ -106,6 +138,12 @@ export function ServiceForm({
       name: values.name,
       description: values.description || undefined,
       serviceType: values.serviceType as ServiceType,
+      // Vazio = sem duração (null explícito). Onboarding é criação, então
+      // null e "não enviar" têm o mesmo efeito, mas mantemos null para
+      // deixar a intenção explícita e coerente com a edição.
+      defaultDurationMin: values.defaultDurationMin
+        ? Number(values.defaultDurationMin)
+        : null,
       priceMin: values.priceMin ? parseFloat(values.priceMin) : undefined,
       priceMax: values.priceMax ? parseFloat(values.priceMax) : undefined,
     };
@@ -230,6 +268,33 @@ export function ServiceForm({
             rows={3}
             disabled={isSubmitting}
             aria-invalid={field["aria-invalid"]}
+          />
+        )}
+      </FormField>
+
+      {/* ── Duração padrão (Agenda V0.3) ──────────────────────────────────── */}
+      <FormField
+        name="defaultDurationMin"
+        label="Duração padrão (minutos)"
+        error={errors.defaultDurationMin?.message}
+        description={
+          suggestedDuration
+            ? `Opcional. Sugestão para este tipo: ${suggestedDuration} min. Deixe vazio se a duração varia muito.`
+            : "Opcional. Deixe vazio se a duração varia muito."
+        }
+      >
+        {(field) => (
+          <Input
+            {...field}
+            {...register("defaultDurationMin")}
+            type="number"
+            inputMode="numeric"
+            min={SERVICE_DURATION_LIMITS.MIN_MINUTES}
+            max={SERVICE_DURATION_LIMITS.MAX_MINUTES}
+            step="5"
+            placeholder={suggestedDuration ? String(suggestedDuration) : "60"}
+            className="max-w-xs"
+            disabled={isSubmitting}
           />
         )}
       </FormField>

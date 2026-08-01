@@ -12,6 +12,7 @@ import { getReviewForRequestAction } from "@/modules/review/application/actions"
 import { getMyRelationshipWithProfessional } from "@/modules/relationship/application/actions"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { SPECIES_LABELS } from "@/modules/tutor/domain/types"
+import { formatScheduledCivilDate } from "@/lib/date/zoned-datetime"
 import { RequestTimeline } from "@/components/requests/RequestTimeline"
 import { ReviewForm } from "@/components/reviews/ReviewForm"
 import { TutorRequestActions } from "@/modules/tutor-portal/components/tutor-request-actions"
@@ -31,14 +32,16 @@ type PageProps = {
   params: Promise<{ requestId: string }>
 }
 
-function formatDate(date: Date | null): string {
+function formatDate(date: Date | null, scheduledHasTime: boolean): string {
   if (!date) return "—"
-  return new Intl.DateTimeFormat("pt-BR", {
+  // Fuso pela precisão: date-only legado em UTC (recupera o dia gravado),
+  // horário real no fuso do piloto. Ver scheduledDayTimeZone.
+  return formatScheduledCivilDate(new Date(date), scheduledHasTime, {
     weekday: "long",
     day: "2-digit",
     month: "long",
     year: "numeric",
-  }).format(new Date(date))
+  })
 }
 
 function formatDateShort(date: Date): string {
@@ -264,7 +267,7 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
           }}
           pet={request.pet}
           serviceType={request.serviceType as ServiceType}
-          scheduledAtLabel={formatDate(request.scheduledAt)}
+          scheduledAtLabel={formatDate(request.scheduledAt, request.scheduledHasTime)}
           notes={request.notes}
           isRecurring={request.isRecurring}
           myRelationship={myRelationship}

@@ -3,6 +3,7 @@ import { CalendarDays, PawPrint, User } from "lucide-react"
 
 import { buttonVariants } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { formatScheduledCivilDate } from "@/lib/date/zoned-datetime"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { SPECIES_LABELS } from "@/modules/tutor/domain/types"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
@@ -12,13 +13,15 @@ import {
   PROFESSIONAL_REQUEST_STATUS_TONE_CLASS,
 } from "../domain/request-status-display"
 
-function formatDate(date: Date | null): string {
+function formatDate(date: Date | null, scheduledHasTime: boolean): string {
   if (!date) return "Data a combinar"
-  return new Intl.DateTimeFormat("pt-BR", {
+  // Fuso pela precisão: date-only legado em UTC, horário real no fuso do
+  // piloto. Ver scheduledDayTimeZone.
+  return formatScheduledCivilDate(new Date(date), scheduledHasTime, {
     weekday: "short",
     day: "2-digit",
     month: "short",
-  }).format(new Date(date))
+  })
 }
 
 /**
@@ -88,7 +91,7 @@ export function ProfessionalNextAppointmentCard({
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/70 pt-3">
         <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
           <CalendarDays className="size-3.5 shrink-0" />
-          {formatDate(appointment.scheduledAt)}
+          {formatDate(appointment.scheduledAt, appointment.scheduledHasTime)}
         </span>
         <Link
           href={`/requests/${appointment.id}`}

@@ -374,6 +374,9 @@ export async function createServiceRecord(
       name: input.name,
       description: input.description ?? null,
       serviceType: input.serviceType,
+      // Ausente na criação = sem duração. Nada é inventado por serviceType —
+      // as sugestões existem só como assistência no formulário.
+      defaultDurationMin: input.defaultDurationMin ?? null,
       priceMin: input.priceMin ?? null,
       priceMax: input.priceMax ?? null,
       isActive: true,
@@ -428,6 +431,34 @@ export async function findServiceByIdAndProfessionalId(
   }) as Promise<ServiceData | null>
 }
 
+/**
+ * Existe outro Service ATIVO do mesmo serviceType para este profissional?
+ *
+ * Agenda Foundation V0.3 — guard de duplicidade. Como o ServiceRequest guarda
+ * apenas `serviceType` (não `serviceId`), dois Services ativos do mesmo tipo
+ * tornariam ambígua a resolução de duração no aceite. Este guard garante, na
+ * camada de aplicação, no máximo um Service ativo por (profissional, tipo).
+ *
+ * `excludeServiceId` ignora o próprio registro — necessário em edição e
+ * reativação para não colidir consigo mesmo. Registros INATIVOS não contam:
+ * o histórico pode ter vários do mesmo tipo, desde que só um esteja ativo.
+ */
+export async function hasActiveServiceOfType(
+  professionalId: string,
+  serviceType: ServiceType,
+  excludeServiceId?: string
+): Promise<boolean> {
+  const count = await prisma.service.count({
+    where: {
+      professionalId,
+      serviceType,
+      isActive: true,
+      ...(excludeServiceId ? { id: { not: excludeServiceId } } : {}),
+    },
+  })
+  return count > 0
+}
+
 export async function updateServiceRecord(
   id: string,
   input: UpdateServiceInput
@@ -438,6 +469,12 @@ export async function updateServiceRecord(
       ...(input.name !== undefined && { name: input.name }),
       ...(input.description !== undefined && { description: input.description ?? null }),
       ...(input.serviceType !== undefined && { serviceType: input.serviceType }),
+      // Update parcial explícito: campo ausente NÃO apaga a duração gravada;
+      // `null` explícito remove. Editar aqui nunca altera compromissos já
+      // aceitos — a duração deles foi congelada no aceite.
+      ...(input.defaultDurationMin !== undefined && {
+        defaultDurationMin: input.defaultDurationMin,
+      }),
       ...(input.priceMin !== undefined && { priceMin: input.priceMin ?? null }),
       ...(input.priceMax !== undefined && { priceMax: input.priceMax ?? null }),
     },

@@ -17,7 +17,8 @@ type RequestReviewStepProps = {
   professionalName: string
   pet: PetData | undefined
   service: ServiceOption | undefined
-  scheduledAt: string
+  scheduledDate: string
+  scheduledTime: string
   notes?: string
   errorMessage?: string | null
 }
@@ -46,7 +47,8 @@ export function RequestReviewStep({
   professionalName,
   pet,
   service,
-  scheduledAt,
+  scheduledDate,
+  scheduledTime,
   notes,
   errorMessage,
 }: RequestReviewStepProps) {
@@ -83,8 +85,11 @@ export function RequestReviewStep({
         <div className="flex items-center gap-3 px-4 py-3">
           <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
-            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Data</p>
-            <p className="text-sm font-medium text-foreground">{formatDate(scheduledAt)}</p>
+            <p className="text-[0.65rem] uppercase tracking-wide text-muted-foreground">Data e horário</p>
+            <p className="text-sm font-medium text-foreground">
+              {formatDate(scheduledDate)}
+              {scheduledTime ? ` · ${scheduledTime}` : ""}
+            </p>
           </div>
         </div>
 

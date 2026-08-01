@@ -8,6 +8,12 @@ import { ptBR } from "date-fns/locale"
 import { requireAdminOrRedirect } from "@/modules/identity/application/get-session"
 import { findServiceRequestWithParticipants } from "@/modules/service-request/infrastructure/repository"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
+import { formatScheduledCivilDate, formatZonedTime } from "@/lib/date/zoned-datetime"
+import {
+  canDisplayScheduledTime,
+  canDisplayEndTime,
+  type ScheduleTemporalShape,
+} from "@/modules/service-request/domain/schedule-precision"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
 import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge"
 import { getAdminCareTimelineInspectionAction } from "@/modules/care-timeline/application/admin-actions"
@@ -19,9 +25,30 @@ type Props = {
   params: Promise<{ requestId: string }>
 }
 
+/** startedAt/completedAt são sempre instantes reais — não passam pelo
+ *  contrato de precisão (esse é exclusivo de scheduledAt/endAt). */
 function formatDateTime(date: Date | null): string {
   if (!date) return "—"
   return format(new Date(date), "dd/MM/yy HH:mm", { locale: ptBR })
+}
+
+/**
+ * `scheduledAt` — precisão dependente de `scheduledHasTime` (ver
+ * apps/web/docs/AGENDA_TEMPORAL_PRECISION_CONTRACT.md): date-only legado em
+ * UTC sem horário; horário real em America/Sao_Paulo, com faixa até `endAt`
+ * quando confiável.
+ */
+function formatScheduledAt(request: ScheduleTemporalShape): string {
+  if (!request.scheduledAt) return "—"
+  const day = formatScheduledCivilDate(request.scheduledAt, request.scheduledHasTime, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  })
+  if (!canDisplayScheduledTime(request)) return day
+  const start = formatZonedTime(request.scheduledAt)
+  if (!canDisplayEndTime(request)) return `${day} — ${start}`
+  return `${day} — ${start}–${formatZonedTime(request.endAt!)}`
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -92,7 +119,7 @@ export default async function AdminRequestDetailPage({ params }: Props) {
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Agendado para</dt>
-            <dd className="text-foreground">{formatDateTime(request.scheduledAt)}</dd>
+            <dd className="text-foreground">{formatScheduledAt(request)}</dd>
           </div>
           <div>
             <dt className="text-xs text-muted-foreground">Iniciado em</dt>

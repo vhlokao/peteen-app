@@ -13,6 +13,8 @@ export type ProfessionalServiceFormInput = {
   serviceType: ServiceType
   /** Preço base — mapeado para priceMin no modelo */
   basePrice?: number
+  /** Duração padrão em minutos (Agenda V0.3). Ausente = serviço sem duração. */
+  defaultDurationMin?: number | null
 }
 
 export type ProfessionalServiceUpdateInput = {
@@ -20,6 +22,13 @@ export type ProfessionalServiceUpdateInput = {
   description?: string
   serviceType?: ServiceType
   basePrice?: number
+  /**
+   * Duração padrão em minutos (Agenda V0.3), com semântica de update parcial:
+   *   undefined → não altera o valor gravado
+   *   null      → remove a duração do serviço
+   *   number    → define a duração
+   */
+  defaultDurationMin?: number | null
 }
 
 export function formatServiceBasePrice(service: Pick<ServiceData, "priceMin" | "priceMax">): string {

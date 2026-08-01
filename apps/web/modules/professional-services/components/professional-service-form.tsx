@@ -15,6 +15,8 @@ import {
 import {
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
+  SERVICE_DURATION_LIMITS,
+  SERVICE_DURATION_SUGGESTIONS,
   type ServiceType,
 } from "@/modules/professional/domain/types"
 import type { ProfessionalServiceRow } from "../domain/types"
@@ -40,8 +42,30 @@ const formSchema = z
       error: () => "Selecione uma categoria",
     }),
     basePrice: z.union([z.literal(""), z.string()]).optional(),
+    // Campo de texto: "" significa "sem duração" (e, na edição, remove a
+    // duração gravada). Validação numérica no superRefine abaixo.
+    defaultDurationMin: z.union([z.literal(""), z.string()]).optional(),
   })
   .superRefine((data, ctx) => {
+    if (data.defaultDurationMin) {
+      const duration = Number(data.defaultDurationMin)
+      if (!Number.isInteger(duration)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["defaultDurationMin"],
+          message: "Informe minutos inteiros",
+        })
+      } else if (
+        duration < SERVICE_DURATION_LIMITS.MIN_MINUTES ||
+        duration > SERVICE_DURATION_LIMITS.MAX_MINUTES
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["defaultDurationMin"],
+          message: `Entre ${SERVICE_DURATION_LIMITS.MIN_MINUTES} e ${SERVICE_DURATION_LIMITS.MAX_MINUTES} minutos`,
+        })
+      }
+    }
     if (!data.basePrice) return
     const price = parseFloat(data.basePrice)
     if (isNaN(price)) {
@@ -100,15 +124,30 @@ export function ProfessionalServiceForm({
       description: service?.description ?? "",
       serviceType: service?.serviceType,
       basePrice: defaultBasePrice,
+      defaultDurationMin:
+        service?.defaultDurationMin != null ? String(service.defaultDurationMin) : "",
     },
   })
 
   const watchedType = watch("serviceType")
 
+  // Sugestão é só assistência visual (placeholder/descrição). Nunca é
+  // gravada automaticamente: campo vazio continua significando "sem duração".
+  const suggestedDuration = watchedType
+    ? SERVICE_DURATION_SUGGESTIONS[watchedType as ServiceType]
+    : undefined
+
   async function onSubmit(values: FormValues) {
     setServerError(null)
 
     const basePrice = values.basePrice ? parseFloat(values.basePrice) : undefined
+
+    // Campo vazio = "sem duração". Na edição isso vira `null` explícito, que o
+    // repositório interpreta como REMOVER a duração (diferente de "não enviar",
+    // que preservaria o valor gravado).
+    const defaultDurationMin = values.defaultDurationMin
+      ? Number(values.defaultDurationMin)
+      : null
 
     if (mode === "create") {
       const result = await createProfessionalServiceAction({
@@ -116,6 +155,7 @@ export function ProfessionalServiceForm({
         description: values.description || undefined,
         serviceType: values.serviceType as ServiceType,
         basePrice,
+        defaultDurationMin,
       })
 
       if (!result.success) {
@@ -142,6 +182,7 @@ export function ProfessionalServiceForm({
       description: values.description || undefined,
       serviceType: values.serviceType as ServiceType,
       basePrice,
+      defaultDurationMin,
     })
 
     if (!result.success) {
@@ -304,6 +345,32 @@ export function ProfessionalServiceForm({
             <Info className="mt-0.5 size-3.5 shrink-0" />
             <span>Tutores veem essa faixa. O valor exato vocês combinam na conversa.</span>
           </div>
+
+          <FormField
+            name="defaultDurationMin"
+            label="Duração padrão (minutos)"
+            error={errors.defaultDurationMin?.message}
+            description={
+              suggestedDuration
+                ? `Opcional. Sugestão para este tipo: ${suggestedDuration} min. Deixe vazio se a duração varia muito.`
+                : "Opcional. Deixe vazio se a duração varia muito."
+            }
+          >
+            {(field) => (
+              <Input
+                {...field}
+                {...register("defaultDurationMin")}
+                type="number"
+                inputMode="numeric"
+                min={SERVICE_DURATION_LIMITS.MIN_MINUTES}
+                max={SERVICE_DURATION_LIMITS.MAX_MINUTES}
+                step="5"
+                placeholder={suggestedDuration ? String(suggestedDuration) : "60"}
+                className="max-w-xs"
+                disabled={isSubmitting}
+              />
+            )}
+          </FormField>
 
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={isSubmitting} style={{ background: NAVY }}>

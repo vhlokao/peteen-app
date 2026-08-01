@@ -15,7 +15,6 @@
  */
 
 import { z } from "zod"
-import { isCivilDayInThePast } from "@/lib/date/civil-day"
 import type { ActionResult } from "@/modules/tutor/domain/types"
 import type { ServiceType } from "@/modules/professional/domain/types"
 import type { Species } from "@/modules/tutor/domain/types"
@@ -215,16 +214,24 @@ export const CreateServiceRequestSchema = z.object({
     ] as const,
     { error: () => "Selecione um tipo de serviço válido" }
   ),
-  // Comparação por DIA CIVIL (America/Sao_Paulo), não por instante: o produto
-  // só captura data, então hoje é válido — horário/disponibilidade ficam com a
-  // Agenda MVP. Comparar instantes fazia o mesmo dia ser aceito de madrugada e
-  // recusado depois das 09:00 BRT.
-  scheduledAt: z.coerce
-    .date()
-    .refine(
-      (d) => !isCivilDayInThePast(d, new Date()),
-      "A data agendada não pode estar no passado."
-    ),
+  // ── Agenda Foundation V0.3 — data e horário civis, convertidos no servidor ──
+  // O client envia os componentes civis crus ("YYYY-MM-DD" + "HH:mm"), NÃO um
+  // instante já convertido: a interpretação no fuso do piloto e a conversão
+  // para UTC são responsabilidade exclusiva do servidor
+  // (ver zonedCivilDateTimeToInstant). Assim o resultado não depende do fuso do
+  // dispositivo do tutor.
+  //
+  // As duas regras temporais são aplicadas na Server Action, sobre o instante
+  // já convertido:
+  //   1. dia civil não pode estar no passado (regra preservada da V0.2);
+  //   2. o instante resultante não pode estar no passado (nova, agora que há
+  //      horário real) — permite qualquer horário FUTURO no mesmo dia.
+  scheduledDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida"),
+  scheduledTime: z
+    .string()
+    .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário válido"),
   notes: z.string().max(500, "Observações podem ter no máximo 500 caracteres").optional(),
 
   // ── Recorrência ────────────────────────────────────────────────────────────
@@ -270,6 +277,12 @@ export type ServiceRequestData = {
   startedAt: Date | null
   completedAt: Date | null
   notes: string | null
+
+  // Agenda Foundation V0.3 — precisão temporal e duração prevista.
+  // Ver domain/schedule-precision.ts para a regra de exibição.
+  scheduledHasTime: boolean
+  durationMin: number | null
+  endAt: Date | null
 
   // Recorrência
   isRecurring: boolean

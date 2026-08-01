@@ -19,6 +19,7 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { createServiceRequestAction } from "@/modules/service-request/application/actions"
 import { parseCivilDateToStableInstant } from "@/lib/date/parse-civil-date"
 import { civilDateKey, isCivilDayInThePast } from "@/lib/date/civil-day"
+import { zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
 import type { PetData } from "@/modules/tutor/domain/types"
 import {
   type ServiceType,
@@ -35,21 +36,39 @@ import { RequestSuccessState } from "./RequestSuccessState"
 // Schema — idêntico ao original. Nenhum campo, regra ou mensagem mudou.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const requestFormSchema = z.object({
-  petId: z.string().min(1, "Selecione um pet"),
-  serviceId: z.string().min(1, "Selecione um serviço"),
-  scheduledAt: z
-    .string()
-    .min(1, "Informe a data")
-    .refine((d) => {
-      // Mesma conversão usada na submissão (ver onSubmit) e MESMA regra do
-      // servidor (isCivilDayInThePast) — client e servidor não podem divergir.
-      // Comparação por dia civil: hoje é válido.
-      const date = parseCivilDateToStableInstant(d)
-      return !isNaN(date.getTime()) && !isCivilDayInThePast(date, new Date())
-    }, "A data agendada não pode estar no passado."),
-  notes: z.string().max(500, "Máximo 500 caracteres").optional(),
-})
+const requestFormSchema = z
+  .object({
+    petId: z.string().min(1, "Selecione um pet"),
+    serviceId: z.string().min(1, "Selecione um serviço"),
+    scheduledDate: z
+      .string()
+      .min(1, "Informe a data")
+      .refine((d) => {
+        // Mesma regra do servidor (isCivilDayInThePast) — client e servidor
+        // não podem divergir. Comparação por dia civil: hoje é válido.
+        const date = parseCivilDateToStableInstant(d)
+        return !isNaN(date.getTime()) && !isCivilDayInThePast(date, new Date())
+      }, "A data agendada não pode estar no passado."),
+    scheduledTime: z
+      .string()
+      .min(1, "Informe o horário")
+      .regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Informe um horário válido"),
+    notes: z.string().max(500, "Máximo 500 caracteres").optional(),
+  })
+  // Horário no passado só pode ser avaliado com data + hora juntas. Esta é a
+  // mesma checagem que o servidor refaz sobre o instante convertido — aqui é
+  // só UX antecipada; a decisão real é sempre do servidor.
+  .refine(
+    (v) => {
+      if (!v.scheduledDate || !v.scheduledTime) return true
+      const instant = zonedCivilDateTimeToInstant(v.scheduledDate, v.scheduledTime)
+      return instant === null || instant.getTime() >= Date.now()
+    },
+    {
+      message: "O horário escolhido já passou. Escolha um horário futuro.",
+      path: ["scheduledTime"],
+    }
+  )
 
 export type RequestFormValues = z.infer<typeof requestFormSchema>
 
@@ -67,7 +86,7 @@ const STEP_SUCCESS = 4
 const STEP_FIELDS: Record<number, (keyof RequestFormValues)[]> = {
   [STEP_PET]: ["petId"],
   [STEP_SERVICE]: ["serviceId"],
-  [STEP_SCHEDULE]: ["scheduledAt", "notes"],
+  [STEP_SCHEDULE]: ["scheduledDate", "scheduledTime", "notes"],
 }
 
 /**
@@ -106,7 +125,8 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
     defaultValues: {
       petId: pets.length === 1 ? pets[0]!.id : "",
       serviceId: "",
-      scheduledAt: "",
+      scheduledDate: "",
+      scheduledTime: "",
       notes: "",
     },
   })
@@ -128,7 +148,8 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
     reset({
       petId: pets.length === 1 ? pets[0]!.id : "",
       serviceId: "",
-      scheduledAt: "",
+      scheduledDate: "",
+      scheduledTime: "",
       notes: "",
     })
   }
@@ -170,7 +191,10 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
         professionalId: professional.id,
         petId: values.petId,
         serviceType: selectedService.serviceType as ServiceType,
-        scheduledAt: parseCivilDateToStableInstant(values.scheduledAt),
+        // Componentes civis crus — a conversão para instante UTC é feita no
+        // servidor, no fuso do piloto (ver zonedCivilDateTimeToInstant).
+        scheduledDate: values.scheduledDate,
+        scheduledTime: values.scheduledTime,
         notes: values.notes || undefined,
         isRecurring: false,
       })
@@ -272,7 +296,8 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
                 professionalName={professional.displayName}
                 pet={selectedPet}
                 service={selectedService}
-                scheduledAt={values.scheduledAt}
+                scheduledDate={values.scheduledDate}
+                scheduledTime={values.scheduledTime}
                 notes={values.notes}
                 errorMessage={submitError}
               />

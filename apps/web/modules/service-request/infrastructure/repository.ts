@@ -38,6 +38,10 @@ export async function createServiceRequestRecord(
     petId: string
     serviceType: ServiceType
     scheduledAt?: Date
+    /** true só quando o fluxo de origem capturou horário real (ver
+     *  domain/schedule-precision.ts). Default false preserva a semântica
+     *  legada de "precisão de dia" para qualquer chamador que não informe. */
+    scheduledHasTime?: boolean
     notes?: string
     isRecurring?: boolean
     parentRequestId?: string
@@ -54,6 +58,7 @@ export async function createServiceRequestRecord(
       serviceType: data.serviceType,
       status: "PENDING",
       scheduledAt: data.scheduledAt ?? null,
+      scheduledHasTime: data.scheduledHasTime ?? false,
       notes: data.notes ?? null,
       isRecurring: data.isRecurring ?? false,
       parentRequestId: data.parentRequestId ?? null,
@@ -394,6 +399,62 @@ export class ConcurrentStatusChangeError extends Error {
   }
 }
 
+/**
+ * Congela a duração prevista no momento do aceite.
+ *
+ * Resolução do Service: `ServiceRequest` guarda `serviceType` (enum), não um
+ * `serviceId` — não existe FK para Service no schema. Portanto a duração é
+ * resolvida por (professionalId + serviceType + isActive). Quando o
+ * profissional tem mais de um serviço ativo do mesmo tipo, a escolha é
+ * determinística (o mais antigo) para que dois aceites do mesmo request nunca
+ * divirjam. Amarrar o request a um `serviceId` real é mudança de modelo —
+ * fora do escopo desta etapa.
+ *
+ * Retorna ambos null quando: não há horário real (`scheduledHasTime` false),
+ * não há `scheduledAt`, ou o serviço não declara duração. Nesses casos o
+ * aceite prossegue normalmente.
+ */
+async function freezeDurationForAccept(
+  tx: Prisma.TransactionClient,
+  requestId: string
+): Promise<{ durationMin: number | null; endAt: Date | null }> {
+  const request = await tx.serviceRequest.findUnique({
+    where: { id: requestId },
+    select: {
+      professionalId: true,
+      serviceType: true,
+      scheduledAt: true,
+      scheduledHasTime: true,
+    },
+  })
+
+  if (!request) return { durationMin: null, endAt: null }
+
+  const service = await tx.service.findFirst({
+    where: {
+      professionalId: request.professionalId,
+      serviceType: request.serviceType,
+      isActive: true,
+    },
+    orderBy: { createdAt: "asc" },
+    select: { defaultDurationMin: true },
+  })
+
+  const durationMin = service?.defaultDurationMin ?? null
+  if (durationMin === null) return { durationMin: null, endAt: null }
+
+  // endAt só faz sentido sobre um horário real. Num request legado (precisão
+  // de dia) somar minutos a uma âncora técnica produziria um fim fictício.
+  if (!request.scheduledAt || !request.scheduledHasTime) {
+    return { durationMin, endAt: null }
+  }
+
+  return {
+    durationMin,
+    endAt: new Date(request.scheduledAt.getTime() + durationMin * 60_000),
+  }
+}
+
 export async function transitionStatus(
   requestId: string,
   fromStatus: RequestStatus,
@@ -411,6 +472,8 @@ export async function transitionStatus(
       startedAt: Date
       completedAt: Date
       nextScheduledAt: Date | null
+      durationMin: number | null
+      endAt: Date | null
     }> = {}
 
     if (toStatus === "IN_PROGRESS") {
@@ -422,6 +485,23 @@ export async function transitionStatus(
         timestampData.nextScheduledAt = options.nextScheduledAt
       }
     }
+
+    // ── Agenda Foundation V0.3 — congelamento da duração no aceite ──────────
+    // Na MESMA transação da transição para ACCEPTED, copia a duração padrão
+    // vigente do Service e deriva o fim previsto. A partir daqui o
+    // compromisso tem duração PRÓPRIA: editar o Service depois nunca
+    // reescreve compromissos já aceitos.
+    //
+    // Tudo é lido DENTRO da transação, a partir da própria linha do request
+    // (nunca de dados vindos do client). Se o serviço não declara duração, ou
+    // se o request não tem horário real, ambos os campos permanecem null e o
+    // aceite continua permitido — nenhum conflito é avaliado nesta etapa.
+    if (toStatus === "ACCEPTED") {
+      const frozen = await freezeDurationForAccept(tx, requestId)
+      timestampData.durationMin = frozen.durationMin
+      timestampData.endAt = frozen.endAt
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     // Guard atômico: só atualiza se o status ainda for `fromStatus`.
     // Se outro processo já transicionou o request (ex.: tutor cancelou e
@@ -507,6 +587,9 @@ function mapToDomain(record: {
   startedAt: Date | null
   completedAt: Date | null
   notes: string | null
+  scheduledHasTime: boolean
+  durationMin: number | null
+  endAt: Date | null
   isRecurring: boolean
   parentRequestId: string | null
   seriesId: string | null
@@ -527,6 +610,9 @@ function mapToDomain(record: {
     startedAt: record.startedAt,
     completedAt: record.completedAt,
     notes: record.notes,
+    scheduledHasTime: record.scheduledHasTime,
+    durationMin: record.durationMin,
+    endAt: record.endAt,
     isRecurring: record.isRecurring,
     parentRequestId: record.parentRequestId,
     seriesId: record.seriesId,
@@ -549,6 +635,9 @@ function mapToWithParticipants(result: {
   startedAt: Date | null
   completedAt: Date | null
   notes: string | null
+  scheduledHasTime: boolean
+  durationMin: number | null
+  endAt: Date | null
   isRecurring: boolean
   parentRequestId: string | null
   seriesId: string | null

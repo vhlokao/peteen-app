@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ChevronRight, Star } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { formatScheduledCivilDate } from "@/lib/date/zoned-datetime"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { REQUEST_STATUS_META } from "../domain/request-status-display"
@@ -9,13 +10,15 @@ import { TutorRequestStatusPill } from "./TutorRequestStatusPill"
 
 const NAVY = "#1D2F6F"
 
-function formatDate(date: Date | null): string {
+function formatDate(date: Date | null, scheduledHasTime: boolean): string {
   if (!date) return "—"
-  return new Intl.DateTimeFormat("pt-BR", {
+  // Fuso pela precisão: date-only legado em UTC (recupera o dia gravado),
+  // horário real no fuso do piloto. Ver scheduledDayTimeZone.
+  return formatScheduledCivilDate(new Date(date), scheduledHasTime, {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(date))
+  })
 }
 
 /**
@@ -67,7 +70,7 @@ export function TutorRequestCard({
           {request.pet ? request.pet.name : "Pet não informado"}
         </p>
         <p className="mt-0.5 text-[11px] text-muted-foreground/80">
-          {formatDate(request.scheduledAt)}
+          {formatDate(request.scheduledAt, request.scheduledHasTime)}
         </p>
 
         {request.review ? (

@@ -175,6 +175,30 @@ A interface deve transmitir:
 
 ---
 
+## Precisão Temporal de Agendamentos
+
+A exibição de `ServiceRequest.scheduledAt` depende **obrigatoriamente** do flag
+`scheduledHasTime` — a precisão nunca é inferida do valor armazenado.
+
+```
+date-only (scheduledHasTime=false) → formatar em UTC, sem horário
+timed     (scheduledHasTime=true)  → formatar em America/Sao_Paulo, com horário
+```
+
+Motivo: registros legados existem ancorados em 12:00 UTC **e** 00:00 UTC; converter os
+de 00:00 UTC para BRT desloca o dia para a véspera. Renderizar date-only em UTC preserva
+o dia gravado.
+
+Fonte única: `lib/date/zoned-datetime.ts` e
+`modules/service-request/domain/schedule-precision.ts`. **Proibido** formatar `scheduledAt`
+direto no componente ou chamar `toLocaleDateString`/`toLocaleString` sem `timeZone`.
+
+Toda nova tela que exiba data/horário de solicitação deve usar o contrato central e cobrir
+os 5 casos de regressão. Contrato completo e proibições:
+`apps/web/docs/AGENDA_TEMPORAL_PRECISION_CONTRACT.md`.
+
+---
+
 ## PRIORIDADE DO MVP
 
 O MVP deve focar em:

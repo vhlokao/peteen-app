@@ -8,6 +8,8 @@ import { AdminDataTable } from "@/components/admin/AdminDataTable"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
 import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge"
 import { SERVICE_TYPE_LABELS } from "@/modules/professional/domain/types"
+import { formatScheduledCivilDate, formatZonedTime } from "@/lib/date/zoned-datetime"
+import { canDisplayScheduledTime } from "@/modules/service-request/domain/schedule-precision"
 import type { AdminRequestRow } from "@/modules/backoffice/domain/types"
 import type { ServiceType } from "@/modules/professional/domain/types"
 
@@ -73,7 +75,17 @@ const COLUMNS = [
     render: (row: AdminRequestRow) =>
       row.scheduledAt ? (
         <span className="text-xs text-muted-foreground">
-          {format(new Date(row.scheduledAt), "dd/MM/yy", { locale: ptBR })}
+          {/* Precisão temporal: date-only legado em UTC (preserva o dia
+              gravado), horário real em America/Sao_Paulo. Ver
+              apps/web/docs/AGENDA_TEMPORAL_PRECISION_CONTRACT.md. */}
+          {formatScheduledCivilDate(row.scheduledAt, row.scheduledHasTime, {
+            day: "2-digit",
+            month: "2-digit",
+            year: "2-digit",
+          })}
+          {canDisplayScheduledTime(row) && (
+            <> · {formatZonedTime(row.scheduledAt)}</>
+          )}
         </span>
       ) : (
         <span className="text-xs text-muted-foreground">—</span>

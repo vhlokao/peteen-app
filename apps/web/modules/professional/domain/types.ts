@@ -128,6 +128,35 @@ export type UpdateProfessionalProfileInput = z.infer<
 // SCHEMAS DE VALIDAÇÃO — Service (catálogo de serviços)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Limites da duração padrão (Agenda Foundation V0.3).
+ *
+ * São limites TÉCNICOS/defensivos, não regra antifraude:
+ *   - mínimo evita 0 e valores sem sentido operacional;
+ *   - máximo cobre um dia inteiro; serviços de vários dias (hospedagem) não
+ *     são representáveis nesta etapa e ficam para a V1.
+ * Nenhum deles é usado para julgar duração REAL de atendimento.
+ */
+export const SERVICE_DURATION_LIMITS = {
+  MIN_MINUTES: 5,
+  MAX_MINUTES: 1440,
+} as const
+
+/**
+ * Sugestões de duração por tipo de serviço — APENAS UX (preenchimento
+ * assistido do formulário). Nunca são gravadas automaticamente: se o
+ * profissional não informar duração, o serviço fica sem duração.
+ */
+export const SERVICE_DURATION_SUGGESTIONS: Partial<Record<ServiceType, number>> = {
+  DOG_WALK: 45,
+  PET_SITTING: 60,
+  GROOMING: 90,
+  TRAINING: 60,
+  VET_ACCOMPANY: 120,
+  DAY_CARE: 480,
+  HOME_CARE: 60,
+}
+
 export const CreateServiceSchema = z
   .object({
     name: z
@@ -141,6 +170,15 @@ export const CreateServiceSchema = z
     serviceType: z.enum(SERVICE_TYPES, {
       error: () => "Selecione um tipo de serviço válido",
     }),
+    // Duração padrão opcional. `null` explícito = "sem duração"; ausente =
+    // "sem duração" na criação (não há valor anterior a preservar).
+    defaultDurationMin: z
+      .number()
+      .int("Informe a duração em minutos inteiros")
+      .min(SERVICE_DURATION_LIMITS.MIN_MINUTES, `Mínimo de ${SERVICE_DURATION_LIMITS.MIN_MINUTES} minutos`)
+      .max(SERVICE_DURATION_LIMITS.MAX_MINUTES, `Máximo de ${SERVICE_DURATION_LIMITS.MAX_MINUTES} minutos`)
+      .nullable()
+      .optional(),
     priceMin: z
       .number()
       .positive("Preço mínimo deve ser positivo")
@@ -172,6 +210,17 @@ export const UpdateServiceSchema = z
     name: z.string().min(2).max(100).optional(),
     description: z.string().max(500).optional(),
     serviceType: z.enum(SERVICE_TYPES).optional(),
+    // Semântica de update PARCIAL, explícita:
+    //   ausente (undefined) → não altera a duração já gravada
+    //   null                → remove a duração (serviço passa a não ter)
+    //   número              → define a duração
+    defaultDurationMin: z
+      .number()
+      .int("Informe a duração em minutos inteiros")
+      .min(SERVICE_DURATION_LIMITS.MIN_MINUTES, `Mínimo de ${SERVICE_DURATION_LIMITS.MIN_MINUTES} minutos`)
+      .max(SERVICE_DURATION_LIMITS.MAX_MINUTES, `Máximo de ${SERVICE_DURATION_LIMITS.MAX_MINUTES} minutos`)
+      .nullable()
+      .optional(),
     priceMin: z.number().positive().max(10000).optional(),
     priceMax: z.number().positive().max(10000).optional(),
   })
@@ -288,6 +337,8 @@ export type ServiceData = {
   name: string
   description: string | null
   serviceType: ServiceType
+  /** Duração padrão prevista, em minutos. Null = serviço sem duração declarada. */
+  defaultDurationMin: number | null
   priceMin: number | null
   priceMax: number | null
   isActive: boolean

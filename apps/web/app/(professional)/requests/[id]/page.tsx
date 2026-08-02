@@ -5,9 +5,7 @@ import { ChevronLeft, Star } from "lucide-react"
 
 import { getAuthContext } from "@/modules/identity/application/get-session"
 import { getServiceRequestDetailAction } from "@/modules/service-request/application/actions"
-import { findCooldownReleaseAt } from "@/modules/service-request/infrastructure/repository"
 import { findRequestAcceptedAt } from "@/modules/service-request/infrastructure/audit"
-import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 import { findRelationship } from "@/modules/relationship/infrastructure/repository"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { formatScheduledCivilDate } from "@/lib/date/zoned-datetime"
@@ -77,30 +75,18 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
   const isActionable =
     isProfessionalView && ["PENDING", "ACCEPTED", "IN_PROGRESS"].includes(request.status)
 
-  // cooldownReleaseAt — view model específico desta página (só profissional,
-  // só quando o botão "Aceitar" existe/importa). Não entra no DTO
-  // compartilhado com o tutor (getServiceRequestDetailAction).
-  const needsCooldownCheck = isProfessionalView && request.status === "PENDING"
-
   // acceptedAt — horário real do aceite (AuditLog), para a timeline exibir o
   // instante exato em vez de updatedAt (que muda em toda transição
   // posterior). Só relevante a partir de ACCEPTED; em PENDING nunca houve
   // aceite, então não vale a query.
   const needsAcceptedAt = request.status !== "PENDING"
 
-  const [dispute, priorRelationship, cooldownReleaseAt, acceptedAt] = await Promise.all([
+  const [dispute, priorRelationship, acceptedAt] = await Promise.all([
     isProfessionalView
       ? findDisputeForProfessionalRequest(id, request.professional.id)
       : Promise.resolve(null),
     isProfessionalView
       ? findRelationship(request.tutor.id, request.professional.id)
-      : Promise.resolve(null),
-    needsCooldownCheck
-      ? findCooldownReleaseAt(
-          request.tutor.id,
-          request.professional.id,
-          ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
-        )
       : Promise.resolve(null),
     needsAcceptedAt ? findRequestAcceptedAt(id) : Promise.resolve(null),
   ])
@@ -154,7 +140,6 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
               requestId={id}
               currentStatus={request.status}
               scheduledAt={request.scheduledAt}
-              cooldownReleaseAt={cooldownReleaseAt}
             />
           </section>
         )}

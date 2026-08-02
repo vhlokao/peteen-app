@@ -14,7 +14,7 @@ import {
   TRUST_SCORE_MAX,
   TRUST_LEVEL_THRESHOLDS,
   RECURRENCE_SESSION_BONUS,
-} from "./constants"
+} from "./constants.ts"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // resolveTrustLevel
@@ -80,6 +80,72 @@ export function totalRecurrenceBonus(sessionsByTutor: Map<string, number>): numb
     total += recurrenceBonusForCount(count)
   }
   return total
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// countEligibleCompletions
+//
+// Quantas conclusões de UM par tutor-profissional contam para o bônus de
+// recorrência. Diferente do número real de atendimentos: no máximo uma
+// conclusão gera crédito reputacional dentro de cada janela.
+//
+// Por que existir:
+//   `completedServices` é dado operacional bruto — o número verdadeiro de
+//   atendimentos, e deve continuar sendo. Mas usá-lo direto no bônus de
+//   recorrência deixava o maior ganho reputacional do motor (+1/+3/+5/+7/+10
+//   por sessão) exposto a conclusões repetidas do mesmo par em poucas horas.
+//   Aqui a contagem é DERIVADA dos instantes reais de conclusão, então:
+//     - nenhuma conclusão é escondida, apagada ou deixa de existir;
+//     - o antifraude segue contando todas (ele lê ServiceRequest direto);
+//     - o resultado é idempotente e recalculável a qualquer momento.
+//
+// Semântica da janela (deslizante a partir do último CRÉDITO):
+//   A janela reinicia apenas quando uma conclusão de fato recebe crédito.
+//   Uma conclusão não elegível NÃO empurra o relógio para frente — senão um
+//   par poderia adiar indefinidamente o próximo crédito (ou, pior, encadear
+//   conclusões a cada 23h para nunca mais creditar ninguém).
+//
+//   Exemplo (janela de 24h):
+//     08:00 dia 1 → elegível   (crédito; relógio = 08:00 dia 1)
+//     14:00 dia 1 → só operacional, sem crédito (relógio continua 08:00 dia 1)
+//     08:01 dia 2 → elegível novamente (passaram 24h01 do último crédito)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function countEligibleCompletions(
+  completedAt: readonly Date[],
+  windowMs: number
+): number {
+  const ordered = [...completedAt]
+    .map((d) => d.getTime())
+    .sort((a, b) => a - b)
+
+  let eligible = 0
+  let lastCreditedAt: number | null = null
+
+  for (const at of ordered) {
+    if (lastCreditedAt === null || at - lastCreditedAt >= windowMs) {
+      eligible++
+      lastCreditedAt = at
+    }
+  }
+
+  return eligible
+}
+
+/**
+ * Aplica `countEligibleCompletions` a vários tutores de uma vez e devolve o
+ * mapa tutorId → contagem elegível, no formato que `totalRecurrenceBonus`
+ * já consome.
+ */
+export function eligibleSessionsByTutor(
+  completionsByTutor: Map<string, Date[]>,
+  windowMs: number
+): Map<string, number> {
+  const result = new Map<string, number>()
+  for (const [tutorId, dates] of completionsByTutor) {
+    result.set(tutorId, countEligibleCompletions(dates, windowMs))
+  }
+  return result
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

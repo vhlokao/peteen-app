@@ -303,61 +303,6 @@ export async function hasInProgressRequestForProfessional(
 }
 
 /**
- * Verifica se já existe uma conclusão recente entre o mesmo par tutor-profissional.
- *
- * Guardrail antifraude MVP:
- *   Impede que um profissional registre múltiplas conclusões para o mesmo tutor
- *   em menos de `windowHours` horas, bloqueando inflação artificial de recorrência.
- */
-export async function hasRecentCompletionBetween(
-  tutorId: string,
-  professionalId: string,
-  windowHours: number
-): Promise<boolean> {
-  const windowStart = new Date(Date.now() - windowHours * 60 * 60 * 1000)
-  const count = await prisma.serviceRequest.count({
-    where: {
-      tutorId,
-      professionalId,
-      status:      "COMPLETED",
-      completedAt: { gte: windowStart },
-    },
-  })
-  return count > 0
-}
-
-/**
- * Calcula até quando o cooldown antifraude entre um par tutor-profissional
- * segue ativo, com base na conclusão mais recente.
- *
- * Mesma regra de `hasRecentCompletionBetween` (status COMPLETED,
- * completedAt dentro de `windowHours`), mas retorna o instante exato de
- * liberação em vez de um boolean — permite explicar ao profissional QUANDO
- * ele poderá aceitar novamente, em vez de só bloquear silenciosamente.
- *
- * Retorna null quando não há cooldown ativo (nenhuma conclusão na janela).
- */
-export async function findCooldownReleaseAt(
-  tutorId: string,
-  professionalId: string,
-  windowHours: number
-): Promise<Date | null> {
-  const windowStart = new Date(Date.now() - windowHours * 60 * 60 * 1000)
-  const mostRecent = await prisma.serviceRequest.findFirst({
-    where: {
-      tutorId,
-      professionalId,
-      status:      "COMPLETED",
-      completedAt: { gte: windowStart },
-    },
-    orderBy: { completedAt: "desc" },
-    select: { completedAt: true },
-  })
-  if (!mostRecent?.completedAt) return null
-  return new Date(mostRecent.completedAt.getTime() + windowHours * 60 * 60 * 1000)
-}
-
-/**
  * Verifica se um pet tem solicitações ativas (PENDING ou ACCEPTED).
  * Usado para impedir soft delete de pets com solicitações em aberto.
  */

@@ -50,6 +50,11 @@ export const RECURRENCE_SESSION_BONUS = [1, 3, 5, 7, 10] as const
 // Índices:  [0] [1] [2] [3] [4+]
 // Sessão:    1ª  2ª  3ª  4ª  5ª+
 
+// A janela de crédito reputacional vive em ./reputation-window.ts — separada
+// deste arquivo de propósito: ela importa um VALOR de outro módulo, e este
+// arquivo precisa continuar sem imports de runtime para que a suíte pura
+// (scoring.test.ts, via --experimental-strip-types) consiga carregá-lo.
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CATEGORIZAÇÃO DE TRUST EVENTS
 //

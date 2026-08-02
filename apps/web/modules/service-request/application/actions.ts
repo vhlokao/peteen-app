@@ -53,30 +53,19 @@ import {
   ConcurrentStatusChangeError,
   countCompletedRequestsBetween,
   hasPendingRequestsForPet,
-  hasRecentCompletionBetween,
-  findCooldownReleaseAt,
   hasActiveRequestBetween,
   hasInProgressRequestForProfessional,
 } from "../infrastructure/repository"
+import { isRecurrenceCreditEligible } from "@/modules/trust-engine/infrastructure/reputation-eligibility"
+import { REPUTATION_CREDIT_WINDOW_HOURS } from "@/modules/trust-engine/domain/reputation-window"
 import { recordRequestAudit } from "../infrastructure/audit"
 import { getRequestExpiryInfo } from "../domain/request-expiry"
 import { syncExpiredPendingRequests, syncExpiredPendingRequest } from "./expiry-sync"
 
 const CONCURRENT_UPDATE_MESSAGE =
   "Esta solicitação já foi atualizada. Recarregue a página para ver o status mais recente."
-import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
-import { CIVIL_DAY_TIME_ZONE, isCivilDayInThePast } from "@/lib/date/civil-day"
+import { isCivilDayInThePast } from "@/lib/date/civil-day"
 import { zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
-
-/** Data/hora de liberação do cooldown na mensagem de erro do aceite — fuso fixo do piloto. */
-const ACCEPT_COOLDOWN_DATETIME_FORMAT = new Intl.DateTimeFormat("pt-BR", {
-  timeZone: CIVIL_DAY_TIME_ZONE,
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-})
 import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
 import { isDevBypassEnabled } from "@/modules/antifraude/domain/dev-flags"
 
@@ -361,26 +350,14 @@ export async function acceptServiceRequestAction(
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // ── Guardrail antifraude: cooldown de conclusão recente bloqueia o aceite ─
-    // Move ao aceite o mesmo bloqueio que já existia só no início: se o
-    // atendimento não poderá ser iniciado por causa do cooldown, o profissional
-    // não deve nem conseguir aceitá-lo. O guard em startServiceRequestAction
-    // permanece como defesa final (ex.: requests ACCEPTED antes desta correção).
-    // Bypassável em development via DEV_BYPASS_ANTIFRAUD_GUARDRAILS=true (.env.local).
-    if (!isDevBypassEnabled("antifraud")) {
-      const cooldownReleaseAt = await findCooldownReleaseAt(
-        request.tutorId,
-        request.professionalId,
-        ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
-      )
-      if (cooldownReleaseAt) {
-        return {
-          success: false,
-          error: `Você concluiu um atendimento com este tutor há menos de 24 horas. Esta solicitação poderá ser aceita a partir de ${ACCEPT_COOLDOWN_DATETIME_FORMAT.format(cooldownReleaseAt)}.`,
-        }
-      }
-    }
-    // ─────────────────────────────────────────────────────────────────────────
+    // Nenhum cooldown de 24h aqui: uma conclusão recente entre este mesmo par
+    // não impede mais aceitar um atendimento real. Dois passeios no mesmo dia,
+    // outro pet, outro serviço ou recorrência diária são casos legítimos, e
+    // travá-los criava solicitações válidas na tela do tutor que o
+    // profissional não conseguia aceitar. A proteção contra inflação
+    // reputacional passou a viver onde o risco de fato existe — na
+    // elegibilidade do crédito de Trust, em completeServiceRequestAction e em
+    // createReviewAction (ver trust-engine/infrastructure/reputation-eligibility.ts).
 
     const fromStatus = request.status
     const updated = await transitionStatus(requestId, fromStatus, toStatus)
@@ -480,23 +457,9 @@ export async function startServiceRequestAction(
     }
     // ─────────────────────────────────────────────────────────────────────────
 
-    // ── Guardrail antifraude: conclusão recente bloqueia início ──────────────
-    // Bypassável em development via DEV_BYPASS_ANTIFRAUD_GUARDRAILS=true (.env.local).
-    if (!isDevBypassEnabled("antifraud")) {
-      const tooSoon = await hasRecentCompletionBetween(
-        request.tutorId,
-        request.professionalId,
-        ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
-      )
-      if (tooSoon) {
-        return {
-          success: false,
-          error:
-            "Este atendimento não pode ser iniciado ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para iniciar um novo atendimento recorrente.",
-        }
-      }
-    }
-    // ─────────────────────────────────────────────────────────────────────────
+    // Sem cooldown de 24h por conclusão recente do mesmo par — ver nota em
+    // acceptServiceRequestAction. Iniciar um atendimento real nunca é
+    // bloqueado por reputação.
 
     // ── Guardrail operacional: data agendada muito no passado ────────────────
     if (request.scheduledAt) {
@@ -684,52 +647,57 @@ export async function completeServiceRequestAction(
       }
     }
 
-    // ── Guardrail antifraude: conclusão muito próxima ─────────────────────────
-    // Impede que um profissional registre múltiplas conclusões para o mesmo tutor
-    // em menos de 24 horas — protege contra inflação artificial de recorrência.
-    // Bypassável em development via DEV_BYPASS_ANTIFRAUD_GUARDRAILS=true (.env.local).
-    if (!isDevBypassEnabled("antifraud")) {
-      const tooSoon = await hasRecentCompletionBetween(
-        request.tutorId,
-        request.professionalId,
-        ANTIFRAUD_GUARDRAILS.MIN_HOURS_BETWEEN_COMPLETIONS_SAME_PAIR
-      )
-      if (tooSoon) {
-        return {
-          success: false,
-          error:
-            "Este atendimento não pode ser concluído ainda porque já existe um serviço concluído recentemente entre este tutor e este profissional. Aguarde pelo menos 24 horas para registrar uma nova conclusão.",
-        }
-      }
-    }
-    // ─────────────────────────────────────────────────────────────────────────
+    // Concluir um atendimento real NUNCA é bloqueado por conclusão recente do
+    // mesmo par — a conclusão é registrada normalmente, entra no histórico e
+    // continua visível para detectArtificialRecurrence. O que a janela de 24h
+    // controla agora é só a ELEGIBILIDADE do crédito reputacional abaixo.
 
     // TrustEvent de recorrência (apenas se isRecurring com histórico)
     let trustEvent: TrustEventPayload | undefined
 
     if (request.isRecurring) {
-      // Conta quantos atendimentos concluídos já existem entre estes dois (antes deste)
-      const completedCount = await countCompletedRequestsBetween(
-        request.tutorId,
-        request.professionalId
-      )
+      // Elegibilidade reputacional: no máximo um crédito RECURRENCE_COMPLETED
+      // por par tutor-profissional dentro da janela. Consulta o TrustEvent
+      // (o que de fato já foi creditado), nunca a conclusão bruta — uma
+      // conclusão não recorrente jamais emitiu este evento, então tratá-la
+      // como "já creditada" seria falso. A conclusão em si acontece
+      // normalmente em qualquer caso.
+      const eligible = await isRecurrenceCreditEligible({
+        actorUserId: tutorUserId,
+        targetUserId: professionalUserId,
+        windowHours: REPUTATION_CREDIT_WINDOW_HOURS,
+      })
 
-      // RECURRENCE_COMPLETED: o ator é o tutor (quem retornou)
-      // O alvo é o profissional (quem recebe o crédito reputacional)
-      // Peso base: 1.5 — pode ser amplificado pelo Trust Engine com base em completedCount
-      trustEvent = {
-        actorId: tutorUserId,
-        targetId: professionalUserId,
-        type: "RECURRENCE_COMPLETED",
-        weight: 1.5,
-        context: {
+      if (eligible) {
+        // Conta quantos atendimentos concluídos já existem entre estes dois (antes deste)
+        const completedCount = await countCompletedRequestsBetween(
+          request.tutorId,
+          request.professionalId
+        )
+
+        // RECURRENCE_COMPLETED: o ator é o tutor (quem retornou)
+        // O alvo é o profissional (quem recebe o crédito reputacional)
+        // Peso base: 1.5 — pode ser amplificado pelo Trust Engine com base em completedCount
+        trustEvent = {
+          actorId: tutorUserId,
+          targetId: professionalUserId,
+          type: "RECURRENCE_COMPLETED",
+          weight: 1.5,
+          context: {
+            requestId,
+            serviceType: request.serviceType,
+            seriesId: request.seriesId,
+            completedCountInSeries: completedCount + 1, // inclui este
+            petId: request.petId,
+          },
+          relatedRequestId: requestId,
+        }
+      } else {
+        // Sem crédito desta vez — mas a conclusão segue registrada, o
+        // relacionamento segue atualizado e o antifraude segue contando.
+        console.info("[completeServiceRequestAction] recurrence credit skipped", {
           requestId,
-          serviceType: request.serviceType,
-          seriesId: request.seriesId,
-          completedCountInSeries: completedCount + 1, // inclui este
-          petId: request.petId,
-        },
-        relatedRequestId: requestId,
+        })
       }
     }
 

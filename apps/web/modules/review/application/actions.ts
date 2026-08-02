@@ -65,6 +65,8 @@ import {
   getReviewSummaryForProfessional,
 } from "../infrastructure/repository"
 import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
+import { isReviewCreditEligible } from "@/modules/trust-engine/infrastructure/reputation-eligibility"
+import { REPUTATION_CREDIT_WINDOW_HOURS } from "@/modules/trust-engine/domain/reputation-window"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRIAÇÃO — ação principal
@@ -235,6 +237,25 @@ export async function createReviewAction(
 
     const trustMapping = getTrustMappingForRating(parsed.data.rating)
 
+    // ── Elegibilidade reputacional por par ───────────────────────────────────
+    // A review é SEMPRE criada e fica visível — nada é bloqueado, apagado ou
+    // escondido; rating e comentário persistem, e ela segue disponível para
+    // moderação, disputa e auditoria. O que é limitado é só o efeito no Trust:
+    // dentro da janela, apenas a PRIMEIRA review deste par pontua.
+    //
+    // Simétrico de propósito: vale para qualquer nota. Limitar só o ganho
+    // positivo deixaria o empilhamento de avaliações negativas livre — um
+    // tutor com vários atendimentos concluídos poderia somar penalidade atrás
+    // de penalidade no mesmo dia. Antifraude não pode virar nem escudo contra
+    // crítica legítima, nem arma de retaliação.
+    const creditEligible = await isReviewCreditEligible({
+      actorUserId: session.id,
+      targetUserId: professionalUserId,
+      windowHours: REPUTATION_CREDIT_WINDOW_HOURS,
+    })
+    const effectiveTrustWeight = creditEligible ? trustMapping.weight : 0
+    // ─────────────────────────────────────────────────────────────────────────
+
     const trustEventContext = {
       reviewId: "",           // será preenchido retroativamente na transação
       rating: parsed.data.rating,
@@ -259,7 +280,7 @@ export async function createReviewAction(
         actorId: session.id,            // User.id do tutor (quem fez a avaliação)
         targetId: professionalUserId,   // User.id do profissional (quem recebe o impacto)
         type: trustMapping.type,
-        weight: trustMapping.weight,
+        weight: effectiveTrustWeight,
         context: trustEventContext,
         relatedRequestId: input.requestId,
       },

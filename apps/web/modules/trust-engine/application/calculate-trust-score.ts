@@ -18,7 +18,6 @@
 
 import { prisma } from "@/lib/prisma/client"
 import type { TrustEventType } from "@/modules/service-request/domain/types"
-import { getRelationshipsByProfessional } from "@/modules/relationship/infrastructure/repository"
 import { getEndorsementSummary } from "@/modules/trust-graph/application/get-trust-connections"
 import { getTerritorialPosition } from "@/modules/growth-engine/infrastructure/repository"
 import type { TrustScoreResult } from "../domain/types"
@@ -29,10 +28,12 @@ import {
   PENALTY_EVENT_TYPES,
   REFERENCE_WEIGHTS,
 } from "../domain/constants"
+import { REPUTATION_CREDIT_WINDOW_MS } from "../domain/reputation-window"
 import {
   resolveTrustLevel,
   clampScore,
   totalRecurrenceBonus,
+  eligibleSessionsByTutor,
   round1,
 } from "../domain/scoring"
 
@@ -63,19 +64,22 @@ export async function calculateTrustScore(
 
   if (!profile) return ZERO_RESULT
 
-  // ── 2. Busca paralela: events + relacionamentos + trust graph ─────────────
+  // ── 2. Busca paralela: events + conclusões + trust graph ──────────────────
   //
-  // Estratégia de recorrência em duas camadas:
-  //   1. TutorProfessionalRelationship (pós-5.3, mais eficiente): dados pre-agregados
-  //   2. Fallback para ServiceRequest COMPLETED (pré-5.3, histórico): se não há registros
+  // As conclusões vêm de ServiceRequest (e não do contador pré-agregado do
+  // relacionamento) porque o bônus de recorrência precisa do INSTANTE de cada
+  // conclusão para decidir elegibilidade — ver seção 4.
   //
   // Trust Graph (5.8): soma dos pesos de conexões ativas, cap em 20.
-  const [events, relationships, endorsementSummary, territorial] = await Promise.all([
+  const [events, rawCompletions, endorsementSummary, territorial] = await Promise.all([
     prisma.trustEvent.findMany({
       where: { targetId: profile.userId, isFlagged: false },
       select: { type: true, weight: true },
     }),
-    getRelationshipsByProfessional(professionalId),
+    prisma.serviceRequest.findMany({
+      where:  { professionalId, status: "COMPLETED", completedAt: { not: null } },
+      select: { tutorId: true, completedAt: true },
+    }),
     getEndorsementSummary(professionalId),
     getTerritorialPosition(professionalId),
   ])
@@ -107,26 +111,30 @@ export async function calculateTrustScore(
   // ── 4. Bônus de recorrência por tutorId ───────────────────────────────────
   // Progressão: 1º atendimento +1, 2º +3, 3º +5, 4º +7, 5º+ +10/sessão
   //
-  // Com TutorProfessionalRelationship (pós-5.3): usa completedServices por tutor
-  // Fallback para ServiceRequest (pré-5.3): computa ao vivo se sem registros
-  let sessionsByTutor: Map<string, number>
-
-  if (relationships.length > 0) {
-    // Camada 1: relacionamentos pre-agregados (mais eficiente)
-    sessionsByTutor = new Map(
-      relationships.map((r) => [r.tutorId, r.completedServices])
-    )
-  } else {
-    // Camada 2: fallback para dados históricos brutos
-    const rawRequests = await prisma.serviceRequest.findMany({
-      where:  { professionalId, status: "COMPLETED" },
-      select: { tutorId: true },
-    })
-    sessionsByTutor = new Map<string, number>()
-    for (const req of rawRequests) {
-      sessionsByTutor.set(req.tutorId, (sessionsByTutor.get(req.tutorId) ?? 0) + 1)
-    }
+  // A contagem NÃO usa `TutorProfessionalRelationship.completedServices`.
+  // Aquele contador é dado operacional bruto (número real de atendimentos,
+  // usado em CRM, histórico e métricas informativas) e aumenta em toda
+  // conclusão — inclusive várias do mesmo par no mesmo dia. Como este bônus
+  // é o maior ganho reputacional do motor, usá-lo direto deixava o Trust
+  // Score inflável por conclusões repetidas.
+  //
+  // Em vez disso, a contagem ELEGÍVEL é derivada dos instantes reais de
+  // conclusão (`ServiceRequest.completedAt`): no máximo uma conclusão por
+  // par gera crédito dentro de cada janela (ver countEligibleCompletions).
+  // Nada é escondido — o antifraude lê ServiceRequest direto e continua
+  // enxergando todas as conclusões.
+  const completionsByTutor = new Map<string, Date[]>()
+  for (const req of rawCompletions) {
+    if (!req.completedAt) continue
+    const list = completionsByTutor.get(req.tutorId)
+    if (list) list.push(req.completedAt)
+    else completionsByTutor.set(req.tutorId, [req.completedAt])
   }
+
+  const sessionsByTutor = eligibleSessionsByTutor(
+    completionsByTutor,
+    REPUTATION_CREDIT_WINDOW_MS
+  )
 
   const recurrence = totalRecurrenceBonus(sessionsByTutor)
 
@@ -159,7 +167,11 @@ export async function calculateTrustScore(
     },
     meta: {
       totalEvents:            events.length,
-      totalCompletedRequests: [...sessionsByTutor.values()].reduce((a, b) => a + b, 0),
+      // Número REAL de atendimentos concluídos — nunca a contagem elegível.
+      // Este campo alimenta o perfil público (discover/[professionalId]) e o
+      // painel admin: subnotificar o trabalho de fato realizado seria injusto
+      // com o profissional. A elegibilidade afeta só o bônus, não o histórico.
+      totalCompletedRequests: rawCompletions.length,
       uniqueRecurringTutors:  sessionsByTutor.size,
       ...(territorial && { territorial }),
     },

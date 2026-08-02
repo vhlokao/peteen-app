@@ -263,28 +263,8 @@ export async function getMyRelationshipsForProfessionals(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// getRelationshipsByProfessional
-//
-// Para recalcular o Trust Score — retorna pares (tutorId, completedServices)
-// de todos os relacionamentos de um profissional.
-// Substitui a query raw de ServiceRequest COMPLETED no Trust Engine.
-//
-// Falha silenciosa: retorna [] se a tabela não existir ou o client estiver
-// desatualizado (ex: dev server não reiniciado após prisma generate).
-// O Trust Engine possui fallback para ServiceRequest nesse caso.
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function getRelationshipsByProfessional(
-  professionalId: string
-): Promise<Array<{ tutorId: string; completedServices: number }>> {
-  try {
-    return await prisma.tutorProfessionalRelationship.findMany({
-      where:  { professionalId },
-      select: { tutorId: true, completedServices: true },
-    })
-  } catch (err) {
-    console.error("[getRelationshipsByProfessional] fallback para ServiceRequest:", err)
-    return []
-  }
-}
+// getRelationshipsByProfessional foi removida: o Trust Engine deixou de
+// derivar o bônus de recorrência de `completedServices` (contador operacional
+// bruto) e passou a derivá-lo dos instantes reais de conclusão em
+// ServiceRequest, para poder aplicar a janela de elegibilidade. As demais
+// leituras do relacionamento (CRM, analytics, ranking) seguem inalteradas.

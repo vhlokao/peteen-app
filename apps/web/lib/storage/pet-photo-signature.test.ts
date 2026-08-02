@@ -147,7 +147,7 @@ describe("validatePetPhotoSignature", () => {
       () => validatePetPhotoSignature("image/jpeg", 6 * 1024 * 1024, JPEG_HEADER),
       (err: unknown) =>
         err instanceof PetPhotoValidationError &&
-        err.message === "A imagem deve ter no máximo 5MB."
+        err.message === "Esta foto é muito grande. Escolha outra imagem ou tente reduzir o tamanho."
     )
   })
 
@@ -159,5 +159,82 @@ describe("validatePetPhotoSignature", () => {
       assert.ok(err instanceof PetPhotoValidationError)
       assert.doesNotMatch((err as Error).message, /0x|byte|stack|Uint8Array/i)
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Compatibilidade mobile — file.type vazio/genérico e HEIC/HEIF (Missão
+// "PET PHOTO UPLOAD MOBILE COMPATIBILITY")
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("validatePetPhotoSignature — file.type sem informação real", () => {
+  it("aceita JPEG real mesmo com file.type vazio (comum em galeria Android/content://)", () => {
+    const detected = validatePetPhotoSignature("", 1024, JPEG_HEADER)
+    assert.equal(detected, "image/jpeg")
+  })
+
+  it("aceita PNG real mesmo com file.type genérico 'application/octet-stream'", () => {
+    const detected = validatePetPhotoSignature("application/octet-stream", 1024, PNG_HEADER)
+    assert.equal(detected, "image/png")
+  })
+
+  it("aceita WebP real com file.type vazio", () => {
+    const detected = validatePetPhotoSignature("", 1024, WEBP_HEADER)
+    assert.equal(detected, "image/webp")
+  })
+
+  it("mesmo com file.type vazio, continua rejeitando conteúdo que não é imagem válida", () => {
+    assert.throws(
+      () => validatePetPhotoSignature("", 46, textBytes('<svg xmlns="x">')),
+      (err: unknown) =>
+        err instanceof PetPhotoValidationError &&
+        err.message === "Este arquivo não parece ser uma imagem JPEG, PNG ou WebP válida."
+    )
+  })
+
+  it("mesmo com file.type vazio, continua rejeitando acima de 5MB", () => {
+    assert.throws(
+      () => validatePetPhotoSignature("", 6 * 1024 * 1024, JPEG_HEADER),
+      (err: unknown) =>
+        err instanceof PetPhotoValidationError &&
+        err.message === "Esta foto é muito grande. Escolha outra imagem ou tente reduzir o tamanho."
+    )
+  })
+
+  it("um tipo declarado específico e errado (não vazio/genérico) continua rejeitado sem depender dos bytes", () => {
+    assert.throws(
+      () => validatePetPhotoSignature("image/gif", 1024, JPEG_HEADER),
+      (err: unknown) =>
+        err instanceof PetPhotoValidationError &&
+        err.message === "Formato não suportado. Envie uma imagem JPEG, PNG ou WEBP."
+    )
+  })
+})
+
+describe("validatePetPhotoSignature — HEIC/HEIF", () => {
+  const HEIC_HEADER = new Uint8Array([
+    0x00, 0x00, 0x00, 0x18, // box size
+    0x66, 0x74, 0x79, 0x70, // "ftyp"
+    0x68, 0x65, 0x69, 0x63, // brand "heic"
+  ])
+
+  it("rejeita HEIC declarado explicitamente (image/heic) com mensagem específica, sem checar bytes", () => {
+    assert.throws(
+      () => validatePetPhotoSignature("image/heic", 1024, HEIC_HEADER),
+      (err: unknown) =>
+        err instanceof PetPhotoValidationError &&
+        err.message ===
+          "Este formato de foto ainda não é compatível. Tente salvar ou compartilhar a imagem como JPEG."
+    )
+  })
+
+  it("rejeita HEIC com file.type vazio, reconhecendo pelos bytes (ftyp/heic) — mensagem específica, não genérica", () => {
+    assert.throws(
+      () => validatePetPhotoSignature("", 1024, HEIC_HEADER),
+      (err: unknown) =>
+        err instanceof PetPhotoValidationError &&
+        err.message ===
+          "Este formato de foto ainda não é compatível. Tente salvar ou compartilhar a imagem como JPEG."
+    )
   })
 })

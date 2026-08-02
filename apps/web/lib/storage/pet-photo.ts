@@ -2,6 +2,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server"
 import {
   PET_PHOTO_ALLOWED_TYPES,
   PET_PHOTO_MAX_BYTES,
+  PET_PHOTO_UPLOAD_FAILURE_MESSAGE,
   EXTENSION_BY_TYPE,
   PetPhotoValidationError,
   SIGNATURE_READ_LENGTH,
@@ -19,6 +20,7 @@ import {
 
 export const PET_PHOTO_BUCKET = "pets"
 export { PET_PHOTO_ALLOWED_TYPES, PET_PHOTO_MAX_BYTES, PetPhotoValidationError }
+export { PET_PHOTO_UPLOAD_FAILURE_MESSAGE }
 
 /**
  * Valida tipo declarado, tamanho e conteúdo real (magic bytes) — nunca
@@ -59,13 +61,25 @@ export async function uploadPetPhoto(file: File, authId: string): Promise<string
   const extension = EXTENSION_BY_TYPE[detectedType]
   const path = `${authId}/${crypto.randomUUID()}.${extension}`
 
+  // O SDK do Supabase Storage serializa o upload como multipart/form-data
+  // quando o corpo é um File/Blob — nesse formato, o Content-Type de cada
+  // parte vem do PRÓPRIO Blob (`file.type`), não da opção `contentType`.
+  // Passar o `File` original (com `file.type` vazio/genérico, comum em
+  // mobile) faria o multipart declarar "application/octet-stream" mesmo com
+  // `contentType: detectedType` presente — e o bucket rejeitaria. Por isso
+  // reconstruímos um Blob com o tipo REAL (detectado pelos magic bytes)
+  // antes de fazer upload; `contentType` continua explícito como reforço.
+  const bytes = await file.arrayBuffer()
+  const uploadBody = new Blob([bytes], { type: detectedType })
+
   const supabase = await createSupabaseServerClient()
-  const { error } = await supabase.storage.from(PET_PHOTO_BUCKET).upload(path, file, {
+  const { error } = await supabase.storage.from(PET_PHOTO_BUCKET).upload(path, uploadBody, {
     upsert: false,
+    contentType: detectedType,
   })
 
   if (error) {
-    throw new Error("Não foi possível enviar a foto. Tente novamente.")
+    throw new Error(PET_PHOTO_UPLOAD_FAILURE_MESSAGE)
   }
 
   const { data } = supabase.storage.from(PET_PHOTO_BUCKET).getPublicUrl(path)

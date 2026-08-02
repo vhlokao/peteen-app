@@ -10,6 +10,23 @@ const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"]
 const ACCEPTED_ATTR = "image/jpeg,image/png,image/webp"
 const MAX_BYTES = 5 * 1024 * 1024
 
+/**
+ * "file.type" que não carrega informação real do conteúdo — comum em fotos
+ * escolhidas de certos apps de galeria/content provider no Android, que
+ * devolvem o MIME vazio ou o genérico "binário desconhecido" mesmo para uma
+ * foto JPEG/PNG/WEBP válida. Nestes casos deixamos passar para o servidor
+ * decidir pelos magic bytes — nunca aceitamos aqui no cliente, só evitamos
+ * bloquear sem necessidade uma foto que na verdade é válida.
+ */
+const UNINFORMATIVE_TYPES = new Set(["", "application/octet-stream"])
+const HEIC_HEIF_TYPES = new Set(["image/heic", "image/heif"])
+
+const UNSUPPORTED_FORMAT_MESSAGE = "Formato não suportado. Envie uma imagem JPEG, PNG ou WEBP."
+const HEIC_MESSAGE =
+  "Este formato de foto ainda não é compatível. Tente salvar ou compartilhar a imagem como JPEG."
+const TOO_LARGE_MESSAGE = "Esta foto é muito grande. Escolha outra imagem ou tente reduzir o tamanho."
+const NETWORK_ERROR_MESSAGE = "Não foi possível enviar a foto. Verifique sua conexão e tente novamente."
+
 type Props = {
   /** Id do pet, quando em edição — usado só para checagem de posse no upload. */
   petId?: string
@@ -49,12 +66,12 @@ export function PetPhotoField({ petId, value, onChange, disabled, className }: P
     setError(null)
     setStatusMessage("")
 
-    if (!ACCEPTED_TYPES.includes(file.type)) {
-      setError("Formato não suportado. Envie uma imagem JPEG, PNG ou WEBP.")
+    if (!ACCEPTED_TYPES.includes(file.type) && !UNINFORMATIVE_TYPES.has(file.type)) {
+      setError(HEIC_HEIF_TYPES.has(file.type) ? HEIC_MESSAGE : UNSUPPORTED_FORMAT_MESSAGE)
       return
     }
     if (file.size > MAX_BYTES) {
-      setError("A imagem deve ter no máximo 5MB.")
+      setError(TOO_LARGE_MESSAGE)
       return
     }
 
@@ -82,7 +99,7 @@ export function PetPhotoField({ petId, value, onChange, disabled, className }: P
       onChange(result.data.url)
     } catch {
       setStatusMessage("")
-      setError("Não foi possível enviar a foto. Tente novamente.")
+      setError(NETWORK_ERROR_MESSAGE)
       resetPreview()
     } finally {
       setUploading(false)

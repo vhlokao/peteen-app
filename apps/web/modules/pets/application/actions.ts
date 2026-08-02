@@ -14,6 +14,7 @@ import {
   isPetPhotoUrl,
   uploadPetPhoto,
   PetPhotoValidationError,
+  PET_PHOTO_UPLOAD_FAILURE_MESSAGE,
 } from "@/lib/storage/pet-photo"
 import {
   CreatePetSchema,
@@ -86,7 +87,7 @@ export async function uploadPetPhotoAction(
       return { success: false, error: err.message }
     }
     console.error("[uploadPetPhotoAction]", err)
-    return { success: false, error: "Não foi possível enviar a foto. Tente novamente." }
+    return { success: false, error: PET_PHOTO_UPLOAD_FAILURE_MESSAGE }
   }
 }
 

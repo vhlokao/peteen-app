@@ -98,6 +98,11 @@ export function RequestActions({
 
       if (!result.success) {
         toast.error(result.error ?? "Erro ao processar ação. Tente novamente.")
+        // Mesmo numa falha, o servidor pode ter mudado o status por baixo
+        // (ex.: aceite bloqueado porque a request acabou de expirar) — sem
+        // isso, os botões continuariam visíveis para uma request que já não
+        // é mais PENDING.
+        router.refresh()
         return
       }
 

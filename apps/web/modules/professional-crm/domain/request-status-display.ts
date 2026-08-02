@@ -65,7 +65,7 @@ export const PROFESSIONAL_REQUEST_NOW_STEP: Record<RequestStatus, string> = {
   CANCELLED_BY_TUTOR: "O tutor cancelou esta solicitação.",
   CANCELLED_BY_PROFESSIONAL: "Você cancelou esta solicitação.",
   DISPUTED: "Este atendimento está em análise.",
-  EXPIRED: "O prazo para responder expirou.",
+  EXPIRED: "O prazo para responder a esta solicitação terminou.",
 }
 
 /** CTA principal do card — texto de navegação, não dispara transição alguma. */

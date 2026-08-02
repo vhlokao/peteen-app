@@ -76,7 +76,8 @@ export const REQUEST_STATUS_META: Record<RequestStatus, RequestStatusMeta> = {
   EXPIRED: {
     label: "Solicitação expirada",
     tone: "neutral",
-    nextStep: null,
+    nextStep:
+      "O profissional não respondeu dentro do prazo. Você pode enviar uma nova solicitação ou escolher outro profissional.",
     isActive: false,
   },
 }

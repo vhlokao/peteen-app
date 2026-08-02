@@ -59,6 +59,8 @@ import {
   hasInProgressRequestForProfessional,
 } from "../infrastructure/repository"
 import { recordRequestAudit } from "../infrastructure/audit"
+import { getRequestExpiryInfo } from "../domain/request-expiry"
+import { syncExpiredPendingRequests, syncExpiredPendingRequest } from "./expiry-sync"
 
 const CONCURRENT_UPDATE_MESSAGE =
   "Esta solicitação já foi atualizada. Recarregue a página para ver o status mais recente."
@@ -305,6 +307,43 @@ export async function acceptServiceRequestAction(
       }
     }
 
+    // ── Defesa obrigatória: nunca aceitar uma request vencida ─────────────────
+    // O cron (1x/dia) e a sincronização lazy nas listagens/detalhe cobrem a
+    // maioria dos casos, mas nenhum dos dois garante que uma request vencida
+    // nunca chegue até aqui — esta é a última linha de defesa, sempre
+    // executada, independente de quando o cron rodou por último ou de qual
+    // tela o profissional usou pra chegar na ação. Mesma fonte de verdade
+    // (getRequestExpiryInfo) usada pelo cron e pela sincronização lazy.
+    //
+    // Sem AuditLog aqui: o profissional tentou aceitar, mas quem causou a
+    // expiração foi a passagem do tempo, não a ação dele — registrar
+    // "request.expired" com ele como ator seria autoria falsa. Não existe
+    // hoje uma taxonomia de AuditLog para "tentativa de aceite bloqueada por
+    // vencimento", e criar uma nova sem aprovação está fora do escopo desta
+    // correção — por isso só log operacional estruturado, sem PII.
+    const expiryInfo = getRequestExpiryInfo(request.createdAt, request.scheduledAt)
+    if (expiryInfo.isExpired) {
+      try {
+        await transitionStatus(requestId, "PENDING", "EXPIRED")
+        console.info("[acceptServiceRequestAction] expired on accept attempt", { requestId })
+      } catch (err) {
+        // ConcurrentStatusChangeError: outro processo (cron ou outra tentativa
+        // de aceite) já decidiu o destino desta request — o resultado final já
+        // é válido e único, não precisa de nova escrita. Qualquer outro erro é
+        // só logado: mesmo que a escrita de EXPIRED falhe, o aceite abaixo
+        // continua bloqueado — nunca faz sentido aceitar uma request vencida
+        // só porque não conseguimos marcá-la como tal.
+        if (!(err instanceof ConcurrentStatusChangeError)) {
+          console.error("[acceptServiceRequestAction] falha ao expirar request vencida", err)
+        }
+      }
+      return {
+        success: false,
+        error: "O prazo para responder a esta solicitação terminou.",
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // ── Guardrail operacional: não aceitar com atendimento em andamento ───────
     // Bypassável em development via DEV_BYPASS_OPERATIONAL_GUARDRAILS=true (.env.local).
     if (!isDevBypassEnabled("operational")) {
@@ -353,15 +392,6 @@ export async function acceptServiceRequestAction(
       { status: fromStatus },
       { status: toStatus }
     )
-
-    // Observabilidade: aceite de solicitação com data agendada já no passado.
-    // Não bloqueia — só sinaliza, pois aqui ainda não há um horário de início real.
-    if (request.scheduledAt && request.scheduledAt.getTime() < Date.now()) {
-      console.info("request.accept.past_scheduled_at", {
-        requestId,
-        scheduledAt: request.scheduledAt,
-      })
-    }
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -772,7 +802,8 @@ export async function getMyRequestsAsTutorAction(filters?: {
     if (!tutorProfile) return { success: true, data: [] }
 
     const requests = await findServiceRequestsByTutorId(tutorProfile.id, filters)
-    return { success: true, data: requests }
+    const synced = await syncExpiredPendingRequests(requests)
+    return { success: true, data: synced }
   } catch (err) {
     console.error("[getMyRequestsAsTutorAction]", err)
     return { success: false, error: "Erro ao buscar solicitações." }
@@ -797,7 +828,8 @@ export async function getMyRequestsAsProfessionalAction(filters?: {
       professionalProfile.id,
       filters
     )
-    return { success: true, data: requests }
+    const synced = await syncExpiredPendingRequests(requests)
+    return { success: true, data: synced }
   } catch (err) {
     console.error("[getMyRequestsAsProfessionalAction]", err)
     return { success: false, error: "Erro ao buscar solicitações." }
@@ -828,7 +860,8 @@ export async function getServiceRequestDetailAction(
       return { success: false, error: "Solicitação não encontrada." }
     }
 
-    return { success: true, data: detail }
+    const synced = await syncExpiredPendingRequest(detail)
+    return { success: true, data: synced }
   } catch (err) {
     console.error("[getServiceRequestDetailAction]", err)
     return { success: false, error: "Erro ao buscar solicitação." }

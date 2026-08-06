@@ -33,6 +33,14 @@
  *   ligaria uma funcionalidade por via indireta. Ficam documentados como
  *   lacuna conhecida.
  *
+ *   totalRequests NÃO é reconciliado, e não é por omissão: ele deixou de ser
+ *   contador materializado. O total real é derivado de ServiceRequest na
+ *   leitura (todas as statuses do par — ver `computeFallbackSummary` em
+ *   relationship-history e `getAdminRelationships` no backoffice). A coluna
+ *   segue no schema como legado, congelada, sem leitor e sem escritor.
+ *   Reconciliá-la seria manter viva uma fonte de verdade duplicada — exatamente
+ *   o que a decisão de derivar eliminou. Uma migration futura pode removê-la.
+ *
  * Idempotente: rodar duas vezes seguidas em modo apply produz zero
  * divergências na segunda execução.
  *

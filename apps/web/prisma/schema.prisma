@@ -748,7 +748,15 @@ model TutorProfessionalRelationship {
   professional   ProfessionalProfile @relation(fields: [professionalId], references: [id], onDelete: Cascade)
 
   // Contadores atômicos — incrementados por eventos de domínio
-  totalRequests     Int @default(0)  // requests criados (inclusive cancelados)
+  //
+  // LEGADO — não use como fonte de verdade. Nunca chegou a significar o que o
+  // nome promete: só era incrementado na conclusão, então valia o mesmo que
+  // completedServices (e em registros antigos ficou até menor que ele). O total
+  // real é DERIVADO de ServiceRequest, contando todas as statuses do par:
+  // `serviceRequest.count({ where: { tutorId, professionalId } })`. Sem leitor
+  // e sem escritor hoje; mantido apenas para evitar migration. Uma migration
+  // futura pode removê-lo.
+  totalRequests     Int @default(0)
   completedServices Int @default(0)  // atendimentos COMPLETED — driver principal do nível
   reviewsGiven      Int @default(0)  // reviews criadas pelo tutor para este profissional
   cancelledByTutor  Int @default(0)  // cancelamentos feitos pelo tutor

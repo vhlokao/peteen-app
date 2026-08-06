@@ -4,11 +4,8 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
-import {
-  ANALYTICS_THRESHOLDS,
-  RELATIONSHIP_LEVEL_LABELS,
-} from "@/modules/relationship/domain/constants"
 import type { RelationshipLevel } from "@/modules/relationship/domain/types"
+import { buildRelationshipSummary } from "../domain/build-summary"
 import {
   REQUEST_STATUS_LABELS,
   type RequestStatus,
@@ -24,7 +21,6 @@ import type {
   RelationshipPetRow,
   RelationshipRequestRow,
   RelationshipReviewRow,
-  RelationshipSummary,
   TutorProfessionalHistory,
 } from "../domain/types"
 
@@ -45,31 +41,6 @@ async function hasPairHistory(
   ])
 
   return requestCount > 0 || relationship !== null
-}
-
-function buildSummary(
-  relationship: {
-    completedServices: number
-    totalRequests: number
-    lastServiceAt: Date | null
-    relationshipLevel: RelationshipLevel
-  } | null,
-  fallback: { completedServices: number; totalRequests: number; lastServiceAt: Date | null }
-): RelationshipSummary {
-  const completedServices =
-    relationship?.completedServices ?? fallback.completedServices
-  const totalRequests = relationship?.totalRequests ?? fallback.totalRequests
-  const lastServiceAt = relationship?.lastServiceAt ?? fallback.lastServiceAt
-  const level = (relationship?.relationshipLevel ?? "NEW") as RelationshipLevel
-
-  return {
-    completedServices,
-    totalRequests,
-    lastServiceAt,
-    relationshipLevel: level,
-    relationshipLevelLabel: RELATIONSHIP_LEVEL_LABELS[level] ?? level,
-    isRecurring: completedServices >= ANALYTICS_THRESHOLDS.RECURRING,
-  }
 }
 
 function mapRequestRow(
@@ -215,6 +186,16 @@ async function findReviewsForPair(
   }))
 }
 
+/**
+ * Contagens derivadas direto de ServiceRequest.
+ *
+ * Para `completedServices` e `lastServiceAt` é fallback: só valem quando o
+ * vínculo ainda não existe. Para `totalRequests` NÃO é fallback — é a fonte de
+ * verdade, sempre (ver `buildRelationshipSummary`). `totalRequests` conta TODAS as
+ * solicitações do par, sem filtro de status: pendentes, aceitas, em andamento,
+ * concluídas, canceladas, disputadas e expiradas. É o volume operacional real
+ * do par, e o denominador natural de uma taxa de sucesso.
+ */
 async function computeFallbackSummary(
   professionalId: string,
   tutorId: string
@@ -266,7 +247,6 @@ export async function getProfessionalClientHistory(
         },
         select: {
           completedServices: true,
-          totalRequests: true,
           lastServiceAt: true,
           relationshipLevel: true,
         },
@@ -286,7 +266,7 @@ export async function getProfessionalClientHistory(
       city: tutor.city,
       neighborhood: tutor.neighborhood,
     },
-    summary: buildSummary(
+    summary: buildRelationshipSummary(
       relationship
         ? {
             ...relationship,
@@ -328,7 +308,6 @@ export async function getTutorProfessionalHistory(
         },
         select: {
           completedServices: true,
-          totalRequests: true,
           lastServiceAt: true,
           relationshipLevel: true,
           firstServiceAt: true,
@@ -350,7 +329,7 @@ export async function getTutorProfessionalHistory(
     }
   )
 
-  const summary = buildSummary(
+  const summary = buildRelationshipSummary(
     relationship
       ? {
           ...relationship,

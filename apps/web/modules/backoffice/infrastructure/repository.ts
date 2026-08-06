@@ -484,8 +484,9 @@ export async function getAdminRelationships(
     },
     select: {
       id:                true,
+      tutorId:           true,
+      professionalId:    true,
       completedServices: true,
-      totalRequests:     true,
       reviewsGiven:      true,
       relationshipScore: true,
       relationshipLevel: true,
@@ -498,12 +499,35 @@ export async function getAdminRelationships(
     take: 300,
   })
 
+  if (relationships.length === 0) return []
+
+  // `totalRequests` é derivado de ServiceRequest, não do contador materializado
+  // (legado — ver comentário no schema). Um único groupBy resolve todos os
+  // pares da página: nada de uma query por linha.
+  //
+  // O filtro por tutorId/professionalId restringe a agregação aos pares
+  // efetivamente exibidos; o groupBy conta TODAS as statuses, que é a
+  // definição de volume operacional do par.
+  const volumePorPar = await prisma.serviceRequest.groupBy({
+    by: ["tutorId", "professionalId"],
+    where: {
+      tutorId:        { in: [...new Set(relationships.map((r) => r.tutorId))] },
+      professionalId: { in: [...new Set(relationships.map((r) => r.professionalId))] },
+    },
+    _count: { id: true },
+  })
+
+  const chave = (tutorId: string, professionalId: string) => `${tutorId}:${professionalId}`
+  const totalPorPar = new Map(
+    volumePorPar.map((v) => [chave(v.tutorId, v.professionalId), v._count.id])
+  )
+
   return relationships.map((r) => ({
     id:                r.id,
     tutorName:         r.tutor.displayName,
     professionalName:  r.professional.displayName,
     completedServices: r.completedServices,
-    totalRequests:     r.totalRequests,
+    totalRequests:     totalPorPar.get(chave(r.tutorId, r.professionalId)) ?? 0,
     reviewsGiven:      r.reviewsGiven,
     relationshipScore: r.relationshipScore,
     relationshipLevel: r.relationshipLevel,

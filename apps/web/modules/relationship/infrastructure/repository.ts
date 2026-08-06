@@ -72,13 +72,17 @@ export async function applyRelationshipEvent(
   const isProCancel   = event.type === "CANCELLATION_BY_PRO"
   const isDispute     = event.type === "DISPUTE"
 
+  // `totalRequests` NÃO é escrito aqui (nem no create, nem no update): passou a
+  // ser derivado de ServiceRequest na leitura. A coluna continua no schema como
+  // legado, congelada nos valores atuais, sem leitor e sem escritor — ver o
+  // comentário dela no schema.
+  //
   // ── Fase 1: cria OU incrementa, de forma atômica ──────────────────────────
   const record = await client.tutorProfessionalRelationship.upsert({
     where: { tutorId_professionalId: { tutorId, professionalId } },
     create: {
       tutorId,
       professionalId,
-      totalRequests:     isCompletion || isTutorCancel ? 1 : 0,
       completedServices: isCompletion ? 1 : 0,
       reviewsGiven:      isReview ? 1 : 0,
       cancelledByTutor:  isTutorCancel ? 1 : 0,
@@ -88,7 +92,6 @@ export async function applyRelationshipEvent(
       lastServiceAt:     isCompletion ? now : null,
     },
     update: {
-      ...(isCompletion || isTutorCancel ? { totalRequests: { increment: 1 } } : {}),
       ...(isCompletion ? { completedServices: { increment: 1 } } : {}),
       ...(isReview ? { reviewsGiven: { increment: 1 } } : {}),
       ...(isTutorCancel ? { cancelledByTutor: { increment: 1 } } : {}),

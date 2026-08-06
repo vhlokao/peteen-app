@@ -37,6 +37,11 @@ export type TutorProfessionalRelationshipData = {
   professionalId: string
 
   // Contadores
+  /**
+   * @deprecated LEGADO — não é fonte de verdade e não é mais escrito.
+   * O total real de solicitações do par é derivado de ServiceRequest (todas as
+   * statuses). Ver comentário no schema e em reconcile-relationships.ts.
+   */
   totalRequests: number
   completedServices: number
   reviewsGiven: number

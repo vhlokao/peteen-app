@@ -5,14 +5,23 @@
  * Acesso ao banco para TutorProfessionalRelationship.
  *
  * Padrão de upsert em duas fases:
- *   1. Garantir que o registro existe (upsert atômico com incremento de contadores)
- *   2. Recalcular score e level a partir do estado atual
- *   3. Persistir score e level atualizados
+ *   1. Upsert ATÔMICO que cria o vínculo ou incrementa os contadores
+ *   2. Recalcular score e level a partir do estado JÁ incrementado e persistir
  *
- * As duas fases são executadas em uma única transação para garantir consistência.
+ * Transação:
+ *   `upsertRelationship` aceita um `TransactionClient` externo. Quando o
+ *   chamador já está dentro de uma transação (é o caso da conclusão de
+ *   atendimento — ver `completeServiceRequestAtomic`), as duas fases entram
+ *   NA MESMA transação da mudança de status, de modo que ou tudo é gravado
+ *   ou nada é. Sem o client externo, a função abre a própria transação e o
+ *   comportamento é o de antes.
+ *
+ *   NUNCA aninhar: quando recebe um `tx`, esta função não abre transação
+ *   própria — Prisma não suporta transação dentro de transação.
  */
 
 import { prisma } from "@/lib/prisma/client"
+import type { Prisma } from "@prisma/client"
 import type {
   RelationshipEvent,
   TutorProfessionalRelationshipData,
@@ -24,14 +33,33 @@ import {
 } from "../domain/relationship-levels"
 import { ANALYTICS_THRESHOLDS } from "../domain/constants"
 
+/**
+ * Cliente Prisma OU client de transação — permite que o chamador injete a
+ * transação em curso e mantenha tudo num único commit.
+ */
+export type RelationshipDbClient = Prisma.TransactionClient | typeof prisma
+
 // ─────────────────────────────────────────────────────────────────────────────
-// upsertRelationship
+// applyRelationshipEvent
 //
-// Aplica um evento ao relacionamento tutor↔profissional e persiste o resultado.
-// Cria o registro se não existir. Toda a operação é atômica (transação).
+// Aplica um evento ao relacionamento tutor↔profissional usando o client
+// recebido — normalmente o `tx` de uma transação maior. NÃO abre transação
+// própria: quem chama é responsável por isso.
+//
+// Fase 1 usa `upsert`, não `findUnique` + `create`. Isso importa: o padrão
+// anterior tinha uma janela em que duas PRIMEIRAS conclusões concorrentes do
+// mesmo par liam "não existe" e ambas tentavam criar — uma violava o
+// `@@unique([tutorId, professionalId])` e o incremento se perdia (o erro era
+// engolido pelo `updateRelationship`). Com `upsert`, a decisão criar-ou-
+// incrementar é resolvida pelo próprio banco.
+//
+// Fase 2 recalcula score e level a partir do estado JÁ incrementado devolvido
+// pela fase 1 — nunca de uma leitura anterior, que estaria desatualizada sob
+// concorrência.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function upsertRelationship(
+export async function applyRelationshipEvent(
+  client: RelationshipDbClient,
   tutorId: string,
   professionalId: string,
   event: RelationshipEvent
@@ -44,67 +72,77 @@ export async function upsertRelationship(
   const isProCancel   = event.type === "CANCELLATION_BY_PRO"
   const isDispute     = event.type === "DISPUTE"
 
-  const updated = await prisma.$transaction(async (tx) => {
-    // ── Fase 1: garantir que o registro existe e buscar estado atual ──────────
-    const existing = await tx.tutorProfessionalRelationship.findUnique({
-      where: { tutorId_professionalId: { tutorId, professionalId } },
-    })
+  // ── Fase 1: cria OU incrementa, de forma atômica ──────────────────────────
+  const record = await client.tutorProfessionalRelationship.upsert({
+    where: { tutorId_professionalId: { tutorId, professionalId } },
+    create: {
+      tutorId,
+      professionalId,
+      totalRequests:     isCompletion || isTutorCancel ? 1 : 0,
+      completedServices: isCompletion ? 1 : 0,
+      reviewsGiven:      isReview ? 1 : 0,
+      cancelledByTutor:  isTutorCancel ? 1 : 0,
+      cancelledByPro:    isProCancel ? 1 : 0,
+      disputedServices:  isDispute ? 1 : 0,
+      firstServiceAt:    isCompletion ? now : null,
+      lastServiceAt:     isCompletion ? now : null,
+    },
+    update: {
+      ...(isCompletion || isTutorCancel ? { totalRequests: { increment: 1 } } : {}),
+      ...(isCompletion ? { completedServices: { increment: 1 } } : {}),
+      ...(isReview ? { reviewsGiven: { increment: 1 } } : {}),
+      ...(isTutorCancel ? { cancelledByTutor: { increment: 1 } } : {}),
+      ...(isProCancel ? { cancelledByPro: { increment: 1 } } : {}),
+      ...(isDispute ? { disputedServices: { increment: 1 } } : {}),
+      ...(isCompletion ? { lastServiceAt: now } : {}),
+    },
+  })
 
-    let record
-    if (!existing) {
-      // Cria com valores iniciais baseados no evento
-      record = await tx.tutorProfessionalRelationship.create({
-        data: {
-          tutorId,
-          professionalId,
-          totalRequests:     isCompletion || isTutorCancel ? 1 : 0,
-          completedServices: isCompletion ? 1 : 0,
-          reviewsGiven:      isReview ? 1 : 0,
-          cancelledByTutor:  isTutorCancel ? 1 : 0,
-          cancelledByPro:    isProCancel ? 1 : 0,
-          disputedServices:  isDispute ? 1 : 0,
-          firstServiceAt:    isCompletion ? now : null,
-          lastServiceAt:     isCompletion ? now : null,
-        },
-      })
-    } else {
-      // Incrementa contadores atomicamente
-      record = await tx.tutorProfessionalRelationship.update({
-        where: { id: existing.id },
-        data: {
-          ...(isCompletion || isTutorCancel ? { totalRequests: { increment: 1 } } : {}),
-          ...(isCompletion ? { completedServices: { increment: 1 } } : {}),
-          ...(isReview ? { reviewsGiven: { increment: 1 } } : {}),
-          ...(isTutorCancel ? { cancelledByTutor: { increment: 1 } } : {}),
-          ...(isProCancel ? { cancelledByPro: { increment: 1 } } : {}),
-          ...(isDispute ? { disputedServices: { increment: 1 } } : {}),
-          ...(isCompletion ? { lastServiceAt: now } : {}),
-          ...(isCompletion && !existing.firstServiceAt ? { firstServiceAt: now } : {}),
-        },
-      })
-    }
+  // `firstServiceAt` só pode ser preenchido quando ainda está null — o caso
+  // real é um vínculo criado por evento não-conclusão (review, por exemplo)
+  // recebendo depois a primeira conclusão. Nunca sobrescreve um valor já
+  // gravado, senão a data do primeiro atendimento andaria para frente.
+  const precisaFirstServiceAt = isCompletion && record.firstServiceAt === null
 
-    // ── Fase 2: recalcula score e level a partir do estado atualizado ─────────
-    const newScore = computeRelationshipScore({
-      completedServices: record.completedServices,
-      reviewsGiven:      record.reviewsGiven,
-      cancelledByTutor:  record.cancelledByTutor,
-      cancelledByPro:    record.cancelledByPro,
-      disputedServices:  record.disputedServices,
-    })
-    const newLevel = resolveRelationshipLevel(record.completedServices)
+  // ── Fase 2: derivados a partir do estado já incrementado ──────────────────
+  const newScore = computeRelationshipScore({
+    completedServices: record.completedServices,
+    reviewsGiven:      record.reviewsGiven,
+    cancelledByTutor:  record.cancelledByTutor,
+    cancelledByPro:    record.cancelledByPro,
+    disputedServices:  record.disputedServices,
+  })
+  const newLevel = resolveRelationshipLevel(record.completedServices)
 
-    // ── Fase 3: persiste score e level ────────────────────────────────────────
-    return tx.tutorProfessionalRelationship.update({
-      where: { id: record.id },
-      data: {
-        relationshipScore: newScore,
-        relationshipLevel: newLevel,
-      },
-    })
+  const updated = await client.tutorProfessionalRelationship.update({
+    where: { id: record.id },
+    data: {
+      relationshipScore: newScore,
+      relationshipLevel: newLevel,
+      ...(precisaFirstServiceAt ? { firstServiceAt: now } : {}),
+    },
   })
 
   return updated as TutorProfessionalRelationshipData
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upsertRelationship
+//
+// Variante autônoma: abre a própria transação. Usada pelos fluxos que ainda
+// não fazem parte de uma transação maior (ex.: REVIEW_GIVEN em
+// createReviewAction). A conclusão de atendimento NÃO passa por aqui — ela
+// injeta seu próprio `tx` via `applyRelationshipEvent`.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function upsertRelationship(
+  tutorId: string,
+  professionalId: string,
+  event: RelationshipEvent
+): Promise<TutorProfessionalRelationshipData> {
+  return prisma.$transaction((tx) =>
+    applyRelationshipEvent(tx, tutorId, professionalId, event)
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

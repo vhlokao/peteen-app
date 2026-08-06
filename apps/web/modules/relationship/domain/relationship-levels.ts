@@ -12,7 +12,7 @@ import {
   RELATIONSHIP_SCORE_WEIGHTS,
   RELATIONSHIP_BADGES,
   type RelationshipBadgeId,
-} from "./constants"
+} from "./constants.ts"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // resolveRelationshipLevel

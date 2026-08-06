@@ -25,7 +25,6 @@
 
 import { revalidatePath } from "next/cache"
 import { updateProfessionalTrust } from "@/modules/trust-engine/application/update-professional-trust"
-import { updateRelationship } from "@/modules/relationship/application/update-relationship"
 import { requireAuth } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { findProfessionalProfileByUserId } from "@/modules/professional/infrastructure/repository"
@@ -52,6 +51,7 @@ import {
   transitionStatus,
   ConcurrentStatusChangeError,
   countCompletedRequestsBetween,
+  completeServiceRequestAtomic,
   hasPendingRequestsForPet,
   hasActiveRequestBetween,
   hasInProgressRequestForProfessional,
@@ -705,11 +705,34 @@ export async function completeServiceRequestAction(
     const nextScheduledAt = parsed.success ? parsed.data.nextScheduledAt : undefined
 
     const fromStatus = request.status
-    const updated = await transitionStatus(requestId, fromStatus, toStatus, {
+
+    // ── DENTRO DA TRANSAÇÃO (tudo ou nada) ───────────────────────────────────
+    // status → COMPLETED (com o guard otimista por fromStatus), completedAt,
+    // TrustEvent de recorrência quando elegível, e o incremento + derivados do
+    // relacionamento. Antes, o relacionamento era atualizado FORA da transação
+    // e com o erro engolido — uma falha ali deixava a request COMPLETED com o
+    // contador defasado para sempre, silenciosamente.
+    const updated = await completeServiceRequestAtomic({
+      requestId,
+      fromStatus,
+      tutorId: request.tutorId,
+      professionalId: request.professionalId,
       trustEvent,
       nextScheduledAt,
     })
 
+    // ── DEPOIS DO COMMIT ─────────────────────────────────────────────────────
+    // Nada daqui para baixo é necessário para a consistência do
+    // relacionamento: se qualquer um falhar, request e relacionamento já estão
+    // corretos e a reconciliação (scripts/reconcile-relationships.mjs) detecta
+    // e corrige qualquer resíduo. Dois deles PRECISAM do estado commitado —
+    // updateProfessionalTrust e detectArtificialRecurrence leem as conclusões
+    // já gravadas.
+
+    // Best-effort por contrato do módulo: auditoria nunca quebra o fluxo
+    // principal (ver infrastructure/audit.ts). Por isso fica fora da
+    // transação — colocá-la dentro faria uma falha de auditoria reverter uma
+    // conclusão legítima, o que seria pior do que perder o registro.
     await recordRequestAudit(
       session.id,
       "request.completed",
@@ -724,29 +747,44 @@ export async function completeServiceRequestAction(
     revalidatePath(`/tutor/requests/${requestId}`)
     revalidatePath(`/requests/${requestId}`)
 
-    // Atualiza relacionamento ANTES do Trust Score:
-    // o Trust Engine consome TutorProfessionalRelationship para bônus de recorrência
-    await updateRelationship(request.tutorId, request.professionalId, {
-      type:      "SERVICE_COMPLETED",
-      serviceAt: new Date(),
-    })
+    // Recalcula Trust Score após a conclusão. Falha silenciosa por design —
+    // mas agora logada de forma estruturada, para não sumir sem rastro.
+    try {
+      await updateProfessionalTrust(request.professionalId)
+    } catch (err) {
+      console.error("[completeServiceRequestAction] pos-commit falhou", {
+        requestId,
+        etapa: "updateProfessionalTrust",
+        erro: String(err),
+      })
+    }
 
-    // Recalcula Trust Score após conclusão (falha silenciosa)
-    await updateProfessionalTrust(request.professionalId)
-
-    // Detector passivo de recorrência artificial — não bloqueia, falha silenciosa
+    // Detector passivo de recorrência artificial — não bloqueia.
     detectArtificialRecurrence(
       request.tutorId,
       request.professionalId,
       professionalUserId
-    ).catch(() => null)
+    ).catch((err) => {
+      console.error("[completeServiceRequestAction] pos-commit falhou", {
+        requestId,
+        etapa: "detectArtificialRecurrence",
+        erro: String(err),
+      })
+      return null
+    })
 
     return { success: true, data: updated }
   } catch (err) {
     if (err instanceof ConcurrentStatusChangeError) {
       return { success: false, error: CONCURRENT_UPDATE_MESSAGE }
     }
-    console.error("[completeServiceRequestAction]", err)
+    // Falha na transação de conclusão: nada foi gravado — nem status, nem
+    // relacionamento, nem TrustEvent. Log estruturado sem PII.
+    console.error("[completeServiceRequestAction] transacao de conclusao falhou", {
+      requestId,
+      etapa: "completeServiceRequestAtomic",
+      erro: String(err),
+    })
     return { success: false, error: "Erro interno ao concluir solicitação." }
   }
 }

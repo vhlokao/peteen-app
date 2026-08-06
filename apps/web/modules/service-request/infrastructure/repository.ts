@@ -18,6 +18,7 @@
 
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma/client"
+import { applyRelationshipEvent } from "@/modules/relationship/infrastructure/repository"
 import type { ServiceType } from "@/modules/professional/domain/types"
 import type { Species } from "@/modules/tutor/domain/types"
 import type {
@@ -410,8 +411,36 @@ export async function transitionStatus(
   }
 ): Promise<ServiceRequestData> {
   const now = new Date()
+  const result = await prisma.$transaction((tx) =>
+    transitionStatusInTx(tx, requestId, fromStatus, toStatus, now, options)
+  )
+  return mapToDomain(result)
+}
 
-  const result = await prisma.$transaction(async (tx) => {
+/**
+ * Núcleo da transição, executado DENTRO de uma transação fornecida pelo
+ * chamador. Extraído de `transitionStatus` para que a conclusão possa
+ * compartilhar a mesma transação com a atualização do relacionamento (ver
+ * `completeServiceRequestAtomic`) sem aninhar transações — Prisma não
+ * suporta transação dentro de transação.
+ *
+ * `now` vem de fora de propósito: a conclusão usa o MESMO instante para
+ * `completedAt` e para `lastServiceAt` do relacionamento, de modo que as
+ * duas fontes fiquem exatamente coerentes (antes divergiam ~1s, porque cada
+ * lado chamava `new Date()` separadamente).
+ */
+async function transitionStatusInTx(
+  tx: Prisma.TransactionClient,
+  requestId: string,
+  fromStatus: RequestStatus,
+  toStatus: RequestStatus,
+  now: Date,
+  options?: {
+    trustEvent?: TrustEventPayload
+    nextScheduledAt?: Date
+  }
+) {
+  {
     // Timestamps específicos por estado
     const timestampData: Partial<{
       startedAt: Date
@@ -482,6 +511,65 @@ export async function transitionStatus(
     }
 
     return tx.serviceRequest.findUniqueOrThrow({ where: { id: requestId } })
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// completeServiceRequestAtomic
+//
+// Conclusão de atendimento como UMA unidade atômica.
+//
+// Antes: `transitionStatus` commitava a mudança para COMPLETED e só DEPOIS,
+// fora de qualquer transação, `updateRelationship` incrementava os contadores
+// — e engolia o próprio erro. Se aquela segunda etapa falhasse, a request
+// ficava COMPLETED para sempre com o relacionamento defasado, sem alarme.
+// Foi exatamente esse tipo de lacuna que produziu a deriva histórica.
+//
+// Agora, dentro de uma única transação:
+//   1. status → COMPLETED (guard otimista por `fromStatus`, gate idempotente)
+//   2. completedAt
+//   3. TrustEvent RECURRENCE_COMPLETED, quando elegível (decidido pelo chamador)
+//   4. upsert/incremento do relacionamento + derivados (score e level)
+//
+// Ou tudo é gravado, ou nada é. Um retry da mesma request continua barrado
+// pelo mesmo guard de `fromStatus`, então nada é contado duas vezes.
+//
+// O que NÃO entra aqui (ver comentários em completeServiceRequestAction):
+// AuditLog, updateProfessionalTrust, detectArtificialRecurrence e
+// revalidatePath — nenhum deles é necessário para a consistência do
+// relacionamento, e dois deles precisam ler o estado já commitado.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function completeServiceRequestAtomic(params: {
+  requestId: string
+  fromStatus: RequestStatus
+  tutorId: string
+  professionalId: string
+  trustEvent?: TrustEventPayload
+  nextScheduledAt?: Date
+}): Promise<ServiceRequestData> {
+  const { requestId, fromStatus, tutorId, professionalId, trustEvent, nextScheduledAt } = params
+
+  // Um único instante para completedAt e lastServiceAt — as duas fontes de
+  // verdade da conclusão passam a coincidir exatamente.
+  const now = new Date()
+
+  const result = await prisma.$transaction(async (tx) => {
+    const request = await transitionStatusInTx(
+      tx,
+      requestId,
+      fromStatus,
+      "COMPLETED",
+      now,
+      { trustEvent, nextScheduledAt }
+    )
+
+    await applyRelationshipEvent(tx, tutorId, professionalId, {
+      type: "SERVICE_COMPLETED",
+      serviceAt: now,
+    })
+
+    return request
   })
 
   return mapToDomain(result)

@@ -16,7 +16,7 @@
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
     "test:location": "node --experimental-strip-types --test modules/location/domain/location.test.ts",
-    "test:agenda": "node --experimental-strip-types --test lib/date/agenda-temporal.test.ts",
+    "test:agenda": "node --experimental-strip-types --test lib/date/agenda-temporal.test.ts modules/service-request/domain/agenda-conflict.test.ts",
     "test:pet-photo": "node --experimental-strip-types --test lib/storage/pet-photo-signature.test.ts",
     "test:request-expiry": "node --experimental-strip-types --test modules/service-request/domain/request-expiry.test.ts",
     "test:trust-scoring": "node --experimental-strip-types --test modules/trust-engine/domain/scoring.test.ts",

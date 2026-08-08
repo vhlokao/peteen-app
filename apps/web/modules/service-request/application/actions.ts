@@ -60,10 +60,20 @@ import { isRecurrenceCreditEligible } from "@/modules/trust-engine/infrastructur
 import { REPUTATION_CREDIT_WINDOW_HOURS } from "@/modules/trust-engine/domain/reputation-window"
 import { recordRequestAudit } from "../infrastructure/audit"
 import { getRequestExpiryInfo } from "../domain/request-expiry"
+import { AgendaConflictError } from "../domain/agenda-conflict"
 import { syncExpiredPendingRequests, syncExpiredPendingRequest } from "./expiry-sync"
 
 const CONCURRENT_UPDATE_MESSAGE =
   "Esta solicitação já foi atualizada. Recarregue a página para ver o status mais recente."
+
+/**
+ * Agenda Conflict Safety — mensagem exibida ao PROFISSIONAL quando o aceite
+ * sobrepõe um compromisso já confirmado. Fala apenas da agenda dele: não
+ * revela tutor, pet, serviço nem id do outro atendimento. O tutor nunca vê
+ * esta mensagem (só o profissional aceita), então não há vazamento cruzado.
+ */
+const AGENDA_CONFLICT_MESSAGE =
+  "Este horário entra em conflito com outro atendimento já confirmado na sua agenda."
 import { isCivilDayInThePast } from "@/lib/date/civil-day"
 import { zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
 import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
@@ -381,6 +391,21 @@ export async function acceptServiceRequestAction(
     if (err instanceof ConcurrentStatusChangeError) {
       return { success: false, error: CONCURRENT_UPDATE_MESSAGE }
     }
+    // Conflito de agenda: a transação inteira foi abortada, nada foi gravado.
+    // Log sem PII — só o id técnico da request e o do compromisso ocupado,
+    // que pertencem à agenda do próprio profissional.
+    if (err instanceof AgendaConflictError) {
+      console.info("[acceptServiceRequestAction] conflito de agenda", {
+        requestId,
+        conflitaCom: err.conflict.conflictingRequestId,
+      })
+      return { success: false, error: AGENDA_CONFLICT_MESSAGE }
+    }
+    // Qualquer outra falha — incluindo erro ao adquirir o advisory lock da
+    // agenda ou timeout da transação — cai aqui como erro interno. Nunca é
+    // convertida em mensagem de conflito: dizer "conflito de horário" quando
+    // o banco falhou seria mentir sobre a causa e levaria o profissional a
+    // mexer na agenda em vez de tentar de novo.
     console.error("[acceptServiceRequestAction]", err)
     return { success: false, error: "Erro interno ao aceitar solicitação." }
   }

@@ -19,6 +19,11 @@
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma/client"
 import { applyRelationshipEvent } from "@/modules/relationship/infrastructure/repository"
+import {
+  AGENDA_BLOCKING_STATUSES,
+  AgendaConflictError,
+  findAgendaConflict,
+} from "../domain/agenda-conflict"
 import type { ServiceType } from "@/modules/professional/domain/types"
 import type { Species } from "@/modules/tutor/domain/types"
 import type {
@@ -346,6 +351,52 @@ export class ConcurrentStatusChangeError extends Error {
 }
 
 /**
+ * Dados do request sendo aceito, lidos UMA vez no início da transação e
+ * repassados adiante. Evita reler a mesma linha em cada etapa e garante que
+ * congelamento e checagem de conflito operem sobre exatamente o mesmo estado.
+ */
+type AcceptCandidate = {
+  professionalId: string
+  serviceType: ServiceType
+  scheduledAt: Date | null
+  scheduledHasTime: boolean
+}
+
+/**
+ * Agenda Conflict Safety — serializa os aceites de UM MESMO profissional.
+ *
+ * Por que é necessário: o guard de conflito é um check-then-write. Sob READ
+ * COMMITTED, duas transações simultâneas leem "sem conflito" e ambas commitam
+ * — comprovado em QA (6/6 execuções produziram dois compromissos sobrepostos).
+ * O lock fecha essa janela: a segunda transação espera a primeira commitar e
+ * então lê o estado já atualizado, encontrando o conflito.
+ *
+ * Por que `pg_advisory_xact_lock` e não lock de sessão: locks transacionais são
+ * liberados automaticamente no COMMIT e no ROLLBACK, sem `unlock` explícito, e
+ * são seguros sob o pgBouncer em transaction pooling que o projeto usa
+ * (DATABASE_URL porta 6543). Um lock de sessão (`pg_advisory_lock`) vazaria
+ * entre requests, porque a conexão física é reciclada entre transações.
+ *
+ * Chave: `hashtextextended(professionalId, 0)` → bigint de 64 bits, calculado
+ * pelo próprio Postgres. Espaço de 2^64 torna colisão irrelevante; uma colisão
+ * hipotética apenas serializaria dois profissionais distintos por alguns
+ * milissegundos, sem afetar correção. `hashtext` (32 bits) não foi usado por
+ * ter espaço pequeno demais para conforto.
+ *
+ * O `professionalId` vai como PARÂMETRO ($1), nunca concatenado no SQL.
+ *
+ * Adquirido para TODO aceite, inclusive sem horário: uma única ordem de
+ * operações em todos os caminhos é mais fácil de auditar do que uma
+ * bifurcação condicional, e o custo de um lock não contencioso é desprezível.
+ */
+async function lockProfessionalAgenda(
+  tx: Prisma.TransactionClient,
+  professionalId: string
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${professionalId}, 0))`
+}
+
+/**
  * Congela a duração prevista no momento do aceite.
  *
  * Resolução do Service: `ServiceRequest` guarda `serviceType` (enum), não um
@@ -362,20 +413,8 @@ export class ConcurrentStatusChangeError extends Error {
  */
 async function freezeDurationForAccept(
   tx: Prisma.TransactionClient,
-  requestId: string
+  request: AcceptCandidate
 ): Promise<{ durationMin: number | null; endAt: Date | null }> {
-  const request = await tx.serviceRequest.findUnique({
-    where: { id: requestId },
-    select: {
-      professionalId: true,
-      serviceType: true,
-      scheduledAt: true,
-      scheduledHasTime: true,
-    },
-  })
-
-  if (!request) return { durationMin: null, endAt: null }
-
   const service = await tx.service.findFirst({
     where: {
       professionalId: request.professionalId,
@@ -399,6 +438,59 @@ async function freezeDurationForAccept(
     durationMin,
     endAt: new Date(request.scheduledAt.getTime() + durationMin * 60_000),
   }
+}
+
+/**
+ * Agenda Conflict Safety — recusa o aceite quando o intervalo do candidato
+ * sobrepõe um compromisso já confirmado do MESMO profissional.
+ *
+ * Executa dentro da transação do aceite, SEMPRE depois de
+ * `lockProfessionalAgenda` e do congelamento da duração, usando o `endAt` que
+ * será efetivamente gravado. A regra de sobreposição vive em
+ * domain/agenda-conflict.ts — aqui só há I/O.
+ *
+ * A ordem importa: esta consulta nunca pode rodar antes do lock, senão volta a
+ * existir a janela de corrida que o lock elimina.
+ *
+ * Lança `AgendaConflictError`, que aborta a transação inteira: nada é
+ * gravado, nem status, nem duração.
+ */
+async function assertNoAgendaConflict(
+  tx: Prisma.TransactionClient,
+  requestId: string,
+  candidate: AcceptCandidate,
+  frozenEndAt: Date | null
+): Promise<void> {
+  // Sem horário real não há intervalo a defender — data civil não ocupa agenda.
+  if (!candidate.scheduledHasTime || !candidate.scheduledAt) return
+
+  const existing = await tx.serviceRequest.findMany({
+    where: {
+      professionalId: candidate.professionalId,
+      status: { in: [...AGENDA_BLOCKING_STATUSES] },
+      scheduledHasTime: true,
+      id: { not: requestId },
+    },
+    select: {
+      id: true,
+      status: true,
+      scheduledAt: true,
+      scheduledHasTime: true,
+      endAt: true,
+    },
+  })
+
+  const conflict = findAgendaConflict(
+    {
+      id: requestId,
+      scheduledAt: candidate.scheduledAt,
+      scheduledHasTime: candidate.scheduledHasTime,
+      endAt: frozenEndAt,
+    },
+    existing
+  )
+
+  if (conflict) throw new AgendaConflictError(conflict)
 }
 
 export async function transitionStatus(
@@ -468,12 +560,38 @@ async function transitionStatusInTx(
     //
     // Tudo é lido DENTRO da transação, a partir da própria linha do request
     // (nunca de dados vindos do client). Se o serviço não declara duração, ou
-    // se o request não tem horário real, ambos os campos permanecem null e o
-    // aceite continua permitido — nenhum conflito é avaliado nesta etapa.
+    // se o request não tem horário real, ambos os campos permanecem null.
+    //
+    // ── ORDEM OBRIGATÓRIA do aceite (não reordenar) ─────────────────────────
+    //   1. ler a identidade do profissional (própria linha do request)
+    //   2. LOCK da agenda desse profissional  ← antes de qualquer leitura de
+    //      estado de agenda, senão a janela de corrida reabre
+    //   3. congelar a duração
+    //   4. checar conflito
+    //   5. transição PENDING → ACCEPTED (updateMany com guard de fromStatus)
+    // Todas as etapas usam o MESMO `tx`.
     if (toStatus === "ACCEPTED") {
-      const frozen = await freezeDurationForAccept(tx, requestId)
-      timestampData.durationMin = frozen.durationMin
-      timestampData.endAt = frozen.endAt
+      const candidate = await tx.serviceRequest.findUnique({
+        where: { id: requestId },
+        select: {
+          professionalId: true,
+          serviceType: true,
+          scheduledAt: true,
+          scheduledHasTime: true,
+        },
+      })
+
+      // Request inexistente: nada a congelar nem a proteger. O guard de
+      // `fromStatus` abaixo falha de forma controlada.
+      if (candidate) {
+        await lockProfessionalAgenda(tx, candidate.professionalId)
+
+        const frozen = await freezeDurationForAccept(tx, candidate)
+        timestampData.durationMin = frozen.durationMin
+        timestampData.endAt = frozen.endAt
+
+        await assertNoAgendaConflict(tx, requestId, candidate, frozen.endAt)
+      }
     }
     // ────────────────────────────────────────────────────────────────────────
 

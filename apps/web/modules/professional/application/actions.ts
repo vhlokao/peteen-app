@@ -45,6 +45,7 @@ import {
   findServicesByProfessionalId,
   findServiceByIdAndProfessionalId,
   hasActiveServiceOfType,
+  hasPendingTimedRequestsForServiceType,
   updateServiceRecord,
   deactivateServiceRecord,
   reactivateServiceRecord,
@@ -59,6 +60,13 @@ import { normalizeCityName, normalizeNeighborhoodName, normalizeLocationInput } 
  */
 const DUPLICATE_ACTIVE_SERVICE_MESSAGE =
   "Você já possui um serviço ativo deste tipo."
+
+/**
+ * Service Duration Integrity — remover a duração com pedidos com horário na
+ * fila os deixaria impossíveis de aceitar.
+ */
+const PENDING_TIMED_REQUESTS_MESSAGE =
+  "Existem solicitações com horário aguardando resposta para este serviço. Resolva essas solicitações antes de remover a duração."
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROFESSIONAL PROFILE
@@ -433,6 +441,23 @@ export async function updateServiceAction(
         success: false,
         error: DUPLICATE_ACTIVE_SERVICE_MESSAGE,
         fieldErrors: { serviceType: [DUPLICATE_ACTIVE_SERVICE_MESSAGE] },
+      }
+    }
+
+    // Service Duration Integrity — mesma regra da tela de gestão: remover a
+    // duração é permitido, exceto com solicitações com horário na fila, que
+    // ficariam impossíveis de aceitar. Só PENDING conta; ACCEPTED/IN_PROGRESS
+    // têm duração congelada.
+    const removendoDuracao =
+      parsed.data.defaultDurationMin === null && service.defaultDurationMin !== null
+    if (
+      removendoDuracao &&
+      (await hasPendingTimedRequestsForServiceType(professionalProfile.id, effectiveType))
+    ) {
+      return {
+        success: false,
+        error: PENDING_TIMED_REQUESTS_MESSAGE,
+        fieldErrors: { defaultDurationMin: [PENDING_TIMED_REQUESTS_MESSAGE] },
       }
     }
 

@@ -364,7 +364,17 @@ export type ProfessionalPublicProfile = Omit<
   // qualquer coleta real desses campos (pré-requisito da Location V1).
   "userId" | "phone" | "planExpiresAt" | "deletedAt" | "updatedAt" | "lat" | "lng" | "serviceRadiusKm"
 > & {
-  services: Pick<ServiceData, "id" | "name" | "serviceType" | "priceMin" | "priceMax">[]
+  // `defaultDurationMin` é OPCIONAL de propósito: só a projeção de DETALHE
+  // (findPublicProfessionalById, que alimenta o fluxo de solicitação) o
+  // seleciona, porque só ela precisa decidir se o serviço aceita agendamento
+  // com horário (Service Duration Integrity). A listagem de descoberta segue
+  // sem o campo — não é dado reputacional nem atributo público do
+  // profissional, e não há motivo para trafegá-lo onde ninguém decide nada
+  // com ele. Ausente é tratado como "sem duração" por
+  // `isReliableServiceDuration`.
+  services: (Pick<ServiceData, "id" | "name" | "serviceType" | "priceMin" | "priceMax"> & {
+    defaultDurationMin?: number | null
+  })[]
   /** Contagem real de reviews visíveis e não-flagadas desta projeção. */
   reviewCount: number
   /** Média real de ratings — null quando não há reviews. */

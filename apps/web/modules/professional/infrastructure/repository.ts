@@ -316,6 +316,9 @@ export async function findPublicProfessionalById(
             serviceType: true,
             priceMin: true,
             priceMax: true,
+            // Necessário para o gate de agendamento com horário — ver
+            // ProfessionalPublicProfile.services e RequestServiceStep.
+            defaultDurationMin: true,
           },
         },
       },
@@ -474,6 +477,58 @@ export async function hasActiveServiceOfType(
       serviceType,
       isActive: true,
       ...(excludeServiceId ? { id: { not: excludeServiceId } } : {}),
+    },
+  })
+  return count > 0
+}
+
+/**
+ * Service Duration Integrity — resolve o serviço ATIVO que atenderá uma
+ * solicitação de (professionalId + serviceType), devolvendo só o necessário
+ * para decidir elegibilidade a agendamento com horário.
+ *
+ * Usa a MESMA resolução de `freezeDurationForAccept` (mais antigo entre os
+ * ativos do tipo). Com o Service Uniqueness em vigor há no máximo um ativo por
+ * tipo, então a escolha é determinística e o gate de criação e o guard de
+ * aceite avaliam sempre o mesmo registro.
+ */
+export async function findActiveServiceForBooking(
+  professionalId: string,
+  serviceType: ServiceType
+): Promise<{ serviceType: string; defaultDurationMin: number | null } | null> {
+  return prisma.service.findFirst({
+    where: { professionalId, serviceType, isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: { serviceType: true, defaultDurationMin: true },
+  })
+}
+
+/**
+ * Service Duration Integrity — existem solicitações PENDING COM HORÁRIO
+ * aguardando resposta para este (profissional + tipo de serviço)?
+ *
+ * Usado para bloquear a REMOÇÃO da duração: se há pedidos com horário na fila,
+ * remover a duração os tornaria inaceitáveis (o hard guard do aceite barraria),
+ * criando solicitações órfãs na tela do tutor que o profissional não consegue
+ * responder.
+ *
+ * Só PENDING conta. ACCEPTED e IN_PROGRESS têm `durationMin`/`endAt`
+ * CONGELADOS no aceite e não voltam a ler a duração do Service — verificado:
+ * os dois campos são escritos exclusivamente no branch ACCEPTED de
+ * `transitionStatusInTx`, e as transições para IN_PROGRESS/COMPLETED só tocam
+ * `startedAt`/`completedAt`. Estados terminais (COMPLETED, CANCELLED_*,
+ * EXPIRED, DISPUTED) também não dependem da duração atual.
+ */
+export async function hasPendingTimedRequestsForServiceType(
+  professionalId: string,
+  serviceType: ServiceType
+): Promise<boolean> {
+  const count = await prisma.serviceRequest.count({
+    where: {
+      professionalId,
+      serviceType,
+      status: "PENDING",
+      scheduledHasTime: true,
     },
   })
   return count > 0

@@ -24,6 +24,10 @@ import {
   AgendaConflictError,
   findAgendaConflict,
 } from "../domain/agenda-conflict"
+import {
+  ServiceDurationRequiredError,
+  isReliableServiceDuration,
+} from "../domain/service-duration"
 import type { ServiceType } from "@/modules/professional/domain/types"
 import type { Species } from "@/modules/tutor/domain/types"
 import type {
@@ -589,6 +593,28 @@ async function transitionStatusInTx(
         const frozen = await freezeDurationForAccept(tx, candidate)
         timestampData.durationMin = frozen.durationMin
         timestampData.endAt = frozen.endAt
+
+        // ── Service Duration Integrity — última barreira ────────────────────
+        // Uma request COM horário só pode ser aceita se o serviço tiver
+        // duração confiável: sem ela `endAt` fica null e a Agenda não consegue
+        // decidir sobreposição parcial. O gate na criação (ver
+        // createServiceRequestAction) cobre o caminho normal; este guard existe
+        // porque request criada ANTES de o profissional remover a duração, ou
+        // qualquer chamada fora da UI, também precisa ser barrada.
+        //
+        // Requests com precisão de DATA (scheduledHasTime=false) seguem
+        // aceitáveis sem duração — não ocupam intervalo, então não há nada a
+        // proteger. Nenhum fallback é aplicado em nenhum dos dois casos.
+        if (
+          candidate.scheduledHasTime &&
+          candidate.scheduledAt &&
+          !isReliableServiceDuration(frozen.durationMin)
+        ) {
+          throw new ServiceDurationRequiredError(
+            candidate.professionalId,
+            candidate.serviceType
+          )
+        }
 
         await assertNoAgendaConflict(tx, requestId, candidate, frozen.endAt)
       }

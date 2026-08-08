@@ -352,8 +352,8 @@ export function ProfessionalServiceForm({
             error={errors.defaultDurationMin?.message}
             description={
               suggestedDuration
-                ? `Opcional. Sugestão para este tipo: ${suggestedDuration} min. Deixe vazio se a duração varia muito.`
-                : "Opcional. Deixe vazio se a duração varia muito."
+                ? `Necessária para receber solicitações com horário. Sugestão para este tipo: ${suggestedDuration} min. Sem duração, este serviço não poderá receber novos agendamentos com horário.`
+                : "Necessária para receber solicitações com horário. Sem duração, este serviço não poderá receber novos agendamentos com horário."
             }
           >
             {(field) => (

@@ -61,6 +61,11 @@ import { REPUTATION_CREDIT_WINDOW_HOURS } from "@/modules/trust-engine/domain/re
 import { recordRequestAudit } from "../infrastructure/audit"
 import { getRequestExpiryInfo } from "../domain/request-expiry"
 import { AgendaConflictError } from "../domain/agenda-conflict"
+import {
+  ServiceDurationRequiredError,
+  canReceiveTimedBooking,
+} from "../domain/service-duration"
+import { findActiveServiceForBooking } from "@/modules/professional/infrastructure/repository"
 import { syncExpiredPendingRequests, syncExpiredPendingRequest } from "./expiry-sync"
 
 const CONCURRENT_UPDATE_MESSAGE =
@@ -74,6 +79,14 @@ const CONCURRENT_UPDATE_MESSAGE =
  */
 const AGENDA_CONFLICT_MESSAGE =
   "Este horário entra em conflito com outro atendimento já confirmado na sua agenda."
+
+/**
+ * Service Duration Integrity — exibida ao PROFISSIONAL quando o serviço da
+ * request não tem duração confiável e a request tem horário. É acionável: ele
+ * resolve preenchendo a duração em /professional/services.
+ */
+const SERVICE_DURATION_REQUIRED_MESSAGE =
+  "Defina a duração deste serviço antes de aceitar um atendimento com horário."
 import { isCivilDayInThePast } from "@/lib/date/civil-day"
 import { zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
 import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
@@ -183,6 +196,39 @@ export async function createServiceRequestAction(
         success: false,
         error: "O horário escolhido já passou. Escolha um horário futuro.",
         fieldErrors: { scheduledTime: ["O horário escolhido já passou."] },
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    // ── Service Duration Integrity — gate server-side ────────────────────────
+    // Toda request criada por este fluxo tem horário real (scheduledHasTime é
+    // gravado como true logo abaixo), então o serviço precisa ter duração
+    // confiável — sem ela a Agenda não consegue decidir sobreposição parcial.
+    //
+    // A UI já não oferece esses serviços para agendamento, mas o estado
+    // `disabled` de um <option> não é proteção: qualquer chamada direta da
+    // Server Action passaria. Este é o guard de verdade.
+    //
+    // Resolve o serviço por (professionalId + serviceType + isActive) — a mesma
+    // resolução que `freezeDurationForAccept` usa no aceite, e que o Service
+    // Uniqueness garante ser determinística (no máximo um ativo por tipo).
+    const servicoDoPedido = await findActiveServiceForBooking(
+      parsed.data.professionalId,
+      parsed.data.serviceType
+    )
+
+    if (!servicoDoPedido || !canReceiveTimedBooking(servicoDoPedido)) {
+      // Mensagem neutra: nunca culpa o profissional nem expõe configuração
+      // interna dele. Para BOARDING a limitação é do produto (hospedagem
+      // multi-dia não é representável em minutos), então o texto é diferente.
+      const ehHospedagem = parsed.data.serviceType === "BOARDING"
+      const mensagem = ehHospedagem
+        ? "Agendamento de hospedagem estará disponível em breve."
+        : "Este profissional ainda não configurou a duração deste serviço para agendamentos com horário."
+      return {
+        success: false,
+        error: mensagem,
+        fieldErrors: { serviceType: [mensagem] },
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
@@ -400,6 +446,16 @@ export async function acceptServiceRequestAction(
         conflitaCom: err.conflict.conflictingRequestId,
       })
       return { success: false, error: AGENDA_CONFLICT_MESSAGE }
+    }
+    // Serviço sem duração confiável para uma request COM horário. Transação
+    // abortada, nada gravado. Log sem PII — só ids técnicos do próprio
+    // profissional e o tipo de serviço.
+    if (err instanceof ServiceDurationRequiredError) {
+      console.info("[acceptServiceRequestAction] duracao de servico ausente", {
+        requestId,
+        serviceType: err.serviceType,
+      })
+      return { success: false, error: SERVICE_DURATION_REQUIRED_MESSAGE }
     }
     // Qualquer outra falha — incluindo erro ao adquirir o advisory lock da
     // agenda ou timeout da transação — cai aqui como erro interno. Nunca é

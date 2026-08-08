@@ -19,6 +19,7 @@ import {
   computeRelationshipScore,
   getEarnedBadges,
 } from "./relationship-levels.ts"
+import { RELATIONSHIP_SCORE_WEIGHTS } from "./constants.ts"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // resolveRelationshipLevel — limiares 1 / 2 / 3 / 5 / 10
@@ -57,12 +58,13 @@ describe("resolveRelationshipLevel", () => {
 // computeRelationshipScore
 // ─────────────────────────────────────────────────────────────────────────────
 
+// `disputedServices` NÃO faz parte da assinatura — disputa é histórico
+// operacional, não entra no score (ver constants.ts).
 const zerado = {
   completedServices: 0,
   reviewsGiven: 0,
   cancelledByTutor: 0,
   cancelledByPro: 0,
-  disputedServices: 0,
 }
 
 describe("computeRelationshipScore", () => {
@@ -75,10 +77,17 @@ describe("computeRelationshipScore", () => {
       ...zerado,
       cancelledByTutor: 10,
       cancelledByPro: 10,
-      disputedServices: 10,
     })
     assert.ok(score >= 0, `esperado >= 0, veio ${score}`)
     assert.equal(score, 0)
+  })
+
+  it("disputa NÃO entra no score — nem como parâmetro aceito", () => {
+    // A assinatura declara exatamente o que afeta o score. Se alguém tentar
+    // reintroduzir disputas aqui, o typecheck quebra — foi assim que este
+    // arquivo mesmo teve de ser ajustado quando o peso foi removido.
+    const esperado = ["completedServices", "reviewsGiven", "cancelledByTutor", "cancelledByPro"]
+    assert.deepEqual(Object.keys(zerado), esperado)
   })
 
   it("é monotônico em completedServices", () => {
@@ -110,6 +119,33 @@ describe("computeRelationshipScore", () => {
   it("arredonda a uma casa decimal", () => {
     const score = computeRelationshipScore({ ...zerado, completedServices: 3, reviewsGiven: 1 })
     assert.equal(score, Math.round(score * 10) / 10)
+  })
+
+  it("os pesos são exatamente os 4 atribuíveis — DISPUTE foi removido", () => {
+    // Trava a decisão: disputa não tem peso. Se alguém readicionar `DISPUTE`
+    // em RELATIONSHIP_SCORE_WEIGHTS, este teste falha e força ler o porquê.
+    assert.deepEqual(Object.keys(RELATIONSHIP_SCORE_WEIGHTS).sort(), [
+      "CANCELLATION_BY_PRO",
+      "CANCELLATION_BY_TUTOR",
+      "REVIEW_GIVEN",
+      "SERVICE_COMPLETED",
+    ])
+    assert.equal("DISPUTE" in RELATIONSHIP_SCORE_WEIGHTS, false)
+  })
+
+  it("cancelamentos CONTINUAM penalizando (autoria é estrutural)", () => {
+    const base = { ...zerado, completedServices: 4, reviewsGiven: 3 }
+    const semCancel = computeRelationshipScore(base)
+    const comTutor = computeRelationshipScore({ ...base, cancelledByTutor: 1 })
+    const comPro = computeRelationshipScore({ ...base, cancelledByPro: 1 })
+    assert.equal(semCancel, 9.5)
+    assert.equal(comTutor, 9, "cancelamento do tutor deve custar -0.5")
+    assert.equal(comPro, 8.5, "cancelamento do profissional deve custar -1.0")
+  })
+
+  it("conclusão e review CONTINUAM pontuando", () => {
+    assert.equal(computeRelationshipScore({ ...zerado, completedServices: 1 }), 2)
+    assert.equal(computeRelationshipScore({ ...zerado, reviewsGiven: 1 }), 0.5)
   })
 
   it("reproduz os valores reconciliados em produção", () => {

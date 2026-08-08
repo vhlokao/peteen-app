@@ -56,13 +56,40 @@ export const RELATIONSHIP_LEVEL_ORDER: RelationshipLevel[] = [
 // Mínimo: 0 (um relacionamento existe ou não existe, nunca é negativo)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Princípio: penalizar só o que é ATRIBUÍVEL por construção.
+//   Cancelamento tem autoria estrutural — o próprio status diz quem cancelou
+//   (CANCELLED_BY_TUTOR vs CANCELLED_BY_PROFESSIONAL). Penalizar é justo.
+//   Disputa NÃO tem autoria apurável — ver bloco abaixo.
 export const RELATIONSHIP_SCORE_WEIGHTS = {
   SERVICE_COMPLETED:     2.0,   // +2.0 por atendimento concluído — peso principal
   REVIEW_GIVEN:          0.5,   // +0.5 por review — engajamento ativo
   CANCELLATION_BY_TUTOR: -0.5,  // -0.5 por cancelamento do tutor — sinal de inconsistência
   CANCELLATION_BY_PRO:   -1.0,  // -1.0 por cancelamento do profissional — quebra de compromisso
-  DISPUTE:               -3.0,  // -3.0 por disputa — sinal grave de problema
 } as const
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DISPUTA NÃO TEM PESO — remoção deliberada, não esquecimento.
+//
+// Existia `DISPUTE: -3.0` aqui (maior penalidade do domínio, desde o commit
+// inicial). Foi REMOVIDO porque penalizava uma ACUSAÇÃO, não um fato apurado:
+//
+//   1. `Dispute` não tem campo de outcome/verdict/fault — auditado no schema.
+//      `resolvedBy` é o id do ADMIN que fechou o caso, não um veredito.
+//   2. `reason` é alegação unilateral do tutor, de uma lista fixa de 4 opções.
+//   3. `RESOLVED` significa apenas "caso encerrado". Não distingue quem tinha
+//      razão — e penalizava exatamente igual a uma disputa `OPEN`.
+//   4. A UI que o PROFISSIONAL lê ao receber uma disputa afirma literalmente:
+//      "Isso não significa uma penalidade automática."
+//      (ver disputes/domain/formatters.ts). O peso contradizia essa promessa.
+//
+// `disputedServices` CONTINUA sendo mantido e reconciliado como histórico
+// operacional — registra que a relação teve disputa, sem imputar culpa. A
+// separação é intencional: histórico operacional ≠ culpa reputacional.
+//
+// Quando o modelo de Dispute ganhar um veredito confiável, o caminho é
+// penalizar só disputa confirmada CONTRA o profissional — não restaurar este
+// peso cego.
+// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // THRESHOLDS DE ANALYTICS — usados em queries e filtros de UI

@@ -19,6 +19,7 @@
 import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma/client"
 import { applyRelationshipEvent } from "@/modules/relationship/infrastructure/repository"
+import { relationshipEventForStatus } from "@/modules/relationship/domain/status-to-event"
 import {
   AGENDA_BLOCKING_STATUSES,
   AgendaConflictError,
@@ -654,7 +655,33 @@ async function transitionStatusInTx(
       })
     }
 
-    return tx.serviceRequest.findUniqueOrThrow({ where: { id: requestId } })
+    const record = await tx.serviceRequest.findUniqueOrThrow({ where: { id: requestId } })
+
+    // ── Relationship Cancellation Counter Consistency ─────────────────────────
+    // Incrementa `cancelledByTutor` / `cancelledByPro` na MESMA transação da
+    // mudança de status. Não é best-effort pós-commit: se o incremento falhar,
+    // o cancelamento inteiro é revertido.
+    //
+    // Posição importa — roda DEPOIS do guard idempotente de `fromStatus`
+    // (`count === 0` acima). Um retry da mesma transição lança
+    // `ConcurrentStatusChangeError` antes de chegar aqui, então nunca há
+    // incremento duplo. Uma transição inválida é rejeitada na action, antes da
+    // transação existir.
+    //
+    // `COMPLETED` não passa por aqui: tem caminho próprio em
+    // `completeServiceRequestAtomic`. `EXPIRED` e `DISPUTED` não têm contador
+    // alimentável — ver relationship/domain/status-to-event.ts.
+    const relationshipEvent = relationshipEventForStatus(toStatus)
+    if (relationshipEvent) {
+      await applyRelationshipEvent(
+        tx,
+        record.tutorId,
+        record.professionalId,
+        relationshipEvent
+      )
+    }
+
+    return record
   }
 }
 

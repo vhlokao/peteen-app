@@ -27,11 +27,25 @@
  *   de ordem os dois divergem legitimamente. Reescrevê-lo aqui inventaria
  *   história. É reportado como informação, nunca corrigido.
  *
- *   cancelledByTutor / cancelledByPro / disputedServices também NÃO são
- *   reconciliados: nenhum fluxo os alimenta hoje (os tipos de evento existem
- *   em RelationshipEvent, mas nenhuma action os emite), então "corrigi-los"
- *   ligaria uma funcionalidade por via indireta. Ficam documentados como
- *   lacuna conhecida.
+ *   cancelledByTutor ← count(ServiceRequest status=CANCELLED_BY_TUTOR)
+ *   cancelledByPro   ← count(ServiceRequest status=CANCELLED_BY_PROFESSIONAL)
+ *
+ *   Estes dois passaram a ter writer conectado (ver
+ *   relationship/domain/status-to-event.ts, aplicado dentro da transação da
+ *   transição de status). Registros anteriores à conexão continuam defasados —
+ *   é esse drift histórico que a reconciliação corrige.
+ *
+ *   disputedServices ← requests DISTINTAS do par com ao menos uma Dispute
+ *
+ *   Fonte é `Dispute ⋈ ServiceRequest`, NUNCA COUNT(status='DISPUTED'): esse
+ *   status é inalcançável por construção (não há aresta para ele em
+ *   VALID_TRANSITIONS — disputa é a entidade `Dispute`, que coexiste com a
+ *   request e deixa o status no estado anterior). Contar por status daria 0
+ *   sempre e mascararia disputas reais.
+ *
+ *   Conta REQUESTS, não linhas de Dispute: não há unique em
+ *   `Dispute.requestId` e o guard do fluxo do tutor bloqueia apenas disputas
+ *   ATIVAS, então uma request pode acumular várias disputas ao longo do tempo.
  *
  *   totalRequests NÃO é reconciliado, e não é por omissão: ele deixou de ser
  *   contador materializado. O total real é derivado de ServiceRequest na
@@ -56,7 +70,15 @@ import {
 
 export type RelationshipDivergence = {
   relationshipId: string
-  campo: "completedServices" | "reviewsGiven" | "lastServiceAt" | "relationshipScore" | "relationshipLevel"
+  campo:
+    | "completedServices"
+    | "reviewsGiven"
+    | "cancelledByTutor"
+    | "cancelledByPro"
+    | "disputedServices"
+    | "lastServiceAt"
+    | "relationshipScore"
+    | "relationshipLevel"
   atual: string | number | null
   correto: string | number | null
 }
@@ -117,14 +139,46 @@ export async function reconcileRelationships(
         where: { request: chave },
       })
 
+      // Contadores de cancelamento — fonte de verdade é o status da própria
+      // ServiceRequest. Passaram a ter writer conectado (ver
+      // relationship/domain/status-to-event.ts), mas registros anteriores a
+      // essa conexão continuam defasados: é exatamente o drift que esta rotina
+      // corrige.
+      const cancelledByTutor = await prisma.serviceRequest.count({
+        where: { ...chave, status: "CANCELLED_BY_TUTOR" },
+      })
+      const cancelledByPro = await prisma.serviceRequest.count({
+        where: { ...chave, status: "CANCELLED_BY_PROFESSIONAL" },
+      })
+
+      // `disputedServices` = requests DISTINTAS do par com ao menos uma
+      // disputa. Fonte: Dispute ⋈ ServiceRequest — NÃO
+      // COUNT(status='DISPUTED'), que seria sempre 0 porque esse status é
+      // inalcançável por contrato (disputa é entidade separada que coexiste
+      // com a request).
+      //
+      // Conta requests, não linhas de Dispute: uma request pode acumular
+      // várias disputas (sem unique em Dispute.requestId; o guard do fluxo do
+      // tutor bloqueia só disputas ATIVAS, então uma RESOLVED/REJECTED não
+      // impede abrir outra). Contar linhas inflaria o número de serviços
+      // disputados.
+      const requestsComDisputa = await prisma.serviceRequest.count({
+        where: { ...chave, disputes: { some: {} } },
+      })
+      const disputedServices = requestsComDisputa
+
       // Derivados calculados a partir dos contadores JÁ reconciliados —
       // nunca dos valores persistidos, que podem estar defasados.
+      //
+      // `disputedServices` é reconciliado (acima) mas NÃO entra no score:
+      // corrigir o contador de disputas não mexe em `relationshipScore`. Isso
+      // é o ponto central da decisão — histórico operacional é registrado,
+      // culpa reputacional não é presumida (ver constants.ts).
       const relationshipScore = computeRelationshipScore({
         completedServices,
         reviewsGiven,
-        cancelledByTutor: rel.cancelledByTutor,
-        cancelledByPro:   rel.cancelledByPro,
-        disputedServices: rel.disputedServices,
+        cancelledByTutor,
+        cancelledByPro,
       })
       const relationshipLevel = resolveRelationshipLevel(completedServices)
 
@@ -141,6 +195,9 @@ export async function reconcileRelationships(
 
       add("completedServices", rel.completedServices, completedServices)
       add("reviewsGiven", rel.reviewsGiven, reviewsGiven)
+      add("cancelledByTutor", rel.cancelledByTutor, cancelledByTutor)
+      add("cancelledByPro", rel.cancelledByPro, cancelledByPro)
+      add("disputedServices", rel.disputedServices, disputedServices)
       add(
         "lastServiceAt",
         rel.lastServiceAt?.toISOString() ?? null,
@@ -180,9 +237,14 @@ export async function reconcileRelationships(
         data: {
           completedServices,
           reviewsGiven,
+          cancelledByTutor,
+          cancelledByPro,
+          disputedServices,
           lastServiceAt,
           relationshipScore,
           relationshipLevel,
+          // `totalRequests` NUNCA entra aqui — coluna legada congelada por
+          // contrato, derivada na leitura.
         },
       })
       report.corrigidos++

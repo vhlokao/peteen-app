@@ -108,12 +108,14 @@ export async function applyRelationshipEvent(
   const precisaFirstServiceAt = isCompletion && record.firstServiceAt === null
 
   // ── Fase 2: derivados a partir do estado já incrementado ──────────────────
+  // `record.disputedServices` continua sendo incrementado pelo upsert acima,
+  // mas NÃO entra no score: disputa é histórico operacional, não culpa
+  // reputacional (ver constants.ts).
   const newScore = computeRelationshipScore({
     completedServices: record.completedServices,
     reviewsGiven:      record.reviewsGiven,
     cancelledByTutor:  record.cancelledByTutor,
     cancelledByPro:    record.cancelledByPro,
-    disputedServices:  record.disputedServices,
   })
   const newLevel = resolveRelationshipLevel(record.completedServices)
 

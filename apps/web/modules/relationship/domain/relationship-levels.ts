@@ -43,19 +43,26 @@ export function resolveRelationshipLevel(completedServices: number): Relationshi
 // Máximo: sem limite, mas normalizado externamente se necessário.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * `disputedServices` NÃO entra na assinatura — de propósito.
+ *
+ * Disputa é histórico operacional, não culpa reputacional: o modelo `Dispute`
+ * não tem veredito, então não há como saber se o profissional errou (ver o
+ * bloco de justificativa em constants.ts). Deixar o campo fora dos parâmetros
+ * faz o compilador impedir que alguém volte a alimentar o score com disputas
+ * sem antes revisitar aquela decisão.
+ */
 export function computeRelationshipScore(params: {
   completedServices: number
   reviewsGiven:      number
   cancelledByTutor:  number
   cancelledByPro:    number
-  disputedServices:  number
 }): number {
   const raw =
     params.completedServices * RELATIONSHIP_SCORE_WEIGHTS.SERVICE_COMPLETED +
     params.reviewsGiven      * RELATIONSHIP_SCORE_WEIGHTS.REVIEW_GIVEN      +
     params.cancelledByTutor  * RELATIONSHIP_SCORE_WEIGHTS.CANCELLATION_BY_TUTOR +
-    params.cancelledByPro    * RELATIONSHIP_SCORE_WEIGHTS.CANCELLATION_BY_PRO   +
-    params.disputedServices  * RELATIONSHIP_SCORE_WEIGHTS.DISPUTE
+    params.cancelledByPro    * RELATIONSHIP_SCORE_WEIGHTS.CANCELLATION_BY_PRO
 
   // Score nunca negativo — relacionamento fraco ≠ relacionamento ruim
   return Math.max(0, Math.round(raw * 10) / 10)

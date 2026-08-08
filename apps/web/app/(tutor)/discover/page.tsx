@@ -31,6 +31,7 @@ type DiscoverPageProps = {
   searchParams: Promise<{
     city?: string
     serviceType?: string
+    neighborhood?: string
   }>
 }
 
@@ -52,46 +53,58 @@ type DiscoverPageProps = {
  *   A assinatura do componente não muda — apenas a fonte de dados.
  */
 export default async function DiscoverPage({ searchParams }: DiscoverPageProps) {
-  const { city, serviceType } = await searchParams
+  const { city, serviceType, neighborhood } = await searchParams
 
   const cleanCity = city?.trim() ?? ""
   const cleanServiceType = serviceType?.trim() ?? ""
-
-  // Location Foundation V0 — só para exibição do termo buscado (a query
-  // normaliza por conta própria na action).
-  const displayCity = normalizeCityName(cleanCity) ?? cleanCity
+  const cleanNeighborhood = neighborhood?.trim() ?? ""
 
   const hasCity = cleanCity.length >= 2
   const hasServiceType = cleanServiceType.length > 0
-  const hasActiveFilters = hasCity || hasServiceType
+  // Mesmo mínimo de FindProfessionalsSchema.neighborhood (min(2)) — evita
+  // mandar 1 caractere pra Zod rejeitar silenciosamente lá na frente.
+  const hasNeighborhood = cleanNeighborhood.length >= 2
 
   // ── 1. Contexto de auth + perfil do tutor (sequencial, antes da busca) ───
-  // Proximity V1: tutorCity cai de volta pro tutorProfile.city quando não
-  // há cidade digitada (ex: "Todas as cidades") — sem isso, locationScore/
-  // locationLabel ficariam sempre mudos pra quem não filtra por cidade.
-  // Isso exige tutorProfile disponível ANTES da busca de candidatos, então
-  // deixou de rodar em paralelo com ela — troca deliberada de latência
-  // (mais um round-trip sequencial só pra tutores autenticados) por sinal
-  // de proximidade que funciona mesmo sem filtro de cidade explícito.
+  // Precisa existir ANTES da busca porque agora decide o filtro efetivo, não
+  // só o rótulo/ranking (ver bloco de effectiveCity abaixo).
   const ctx = await getAuthContext()
   const tutorProfile = ctx.authenticated
     ? await findTutorProfileByUserId(ctx.user.id)
     : null
 
-  // Declarado aqui (não mais junto de tutorCityForRec/tutorRegionId/etc. lá
-  // embaixo) porque agora precisa existir ANTES da busca e do ranking.
-  // Mesmo valor, mesmos consumidores de antes (getRecommendations,
-  // getLocalDiscoveryContextAction).
-  const tutorCity = cleanCity || tutorProfile?.city || undefined
+  // ── Default Discovery na cidade do tutor ──────────────────────────────────
+  // effectiveCity = cidade explícita (searchParams) OU a cidade do perfil do
+  // tutor. Sem nenhuma das duas (anônimo, ou "Todas as cidades" — nenhum
+  // tutor hoje tem city vazia, campo obrigatório no schema e no Zod), a busca
+  // roda sem filtro de cidade — findPublicProfessionals já trata city ausente
+  // como "sem restrição". Nenhuma normalização acontece aqui: a action já
+  // normaliza qualquer string recebida (explícita ou o city do perfil, que já
+  // está normalizado desde a escrita) — nunca duplicar a regra no client.
+  const effectiveCity = cleanCity || tutorProfile?.city || undefined
+  const hasEffectiveCity = Boolean(effectiveCity)
+
+  // Só para exibição — reflete o filtro que REALMENTE está em vigor
+  // (explícito ou default do perfil), nunca o texto bruto da URL sozinho.
+  const displayCity = normalizeCityName(effectiveCity ?? "") ?? effectiveCity ?? cleanCity
+
+  // tutorCity mantém o nome histórico (consumido por getRecommendations,
+  // getLocalDiscoveryContextAction, rankProfessionals) — mesmo valor de
+  // effectiveCity, sem duplicar a conta.
+  const tutorCity = effectiveCity
   const tutorNeighborhood = tutorProfile?.neighborhood ?? null
 
-  // Sem cidade selecionada ("Todas as cidades") = busca sem filtro de
-  // cidade, não "não buscar" — findPublicProfessionals já trata city
-  // ausente como "sem restrição". tutorCity/tutorNeighborhood aqui não
-  // filtram a query — só alimentam locationLabel (DTO) e o ranking.
+  // `neighborhood` aqui é o filtro EXPLÍCITO da URL — distinto de
+  // `tutorNeighborhood` (perfil do tutor), que nunca filtrou a query, só
+  // alimenta locationLabel/ranking. Antes desta correção, `neighborhood` na
+  // URL não era lido pela página: o Client Component já limpava esse param
+  // ao trocar de cidade (CitySearchInput), mas o Server Component nunca o
+  // repassava para a busca — o filtro existia na action/query e nos testes,
+  // mas nunca era alcançável a partir de /discover.
   const result = await findProfessionalsAction({
-    city: hasCity ? cleanCity : undefined,
+    city: effectiveCity,
     serviceType: hasServiceType ? (cleanServiceType as ServiceType) : undefined,
+    neighborhood: hasNeighborhood ? cleanNeighborhood : undefined,
     tutorCity,
     tutorNeighborhood: tutorNeighborhood ?? undefined,
     limit: 20,
@@ -189,10 +202,10 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
         <DiscoverServiceChips activeValue={cleanServiceType} />
       </div>
 
-      {hasActiveFilters && (
+      {(hasEffectiveCity || hasServiceType) && (
         <div className="mb-4 flex items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
-            {hasCity ? (
+            {hasEffectiveCity ? (
               professionals.length > 0 ? (
                 <>
                   <strong className="text-foreground">{professionals.length}</strong>{" "}
@@ -228,12 +241,18 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
               </>
             )}
           </p>
-          <Link
-            href="/discover"
-            className="shrink-0 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
-            Limpar filtros
-          </Link>
+          {/* Só oferece "limpar" quando há algo EXPLÍCITO a limpar — clicar
+              sem filtro explícito recarregaria a mesma busca (default do
+              perfil continua valendo), então o link seria um no-op confuso.
+              `neighborhood` conta como explícito igual a city/serviceType. */}
+          {(hasCity || hasServiceType || hasNeighborhood) && (
+            <Link
+              href="/discover"
+              className="shrink-0 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Limpar filtros
+            </Link>
+          )}
         </div>
       )}
 
@@ -248,8 +267,8 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
         </div>
       )}
 
-      {/* Estado: com cidade, sem resultados */}
-      {hasCity && professionals.length === 0 && (
+      {/* Estado: com cidade (explícita ou default do perfil), sem resultados */}
+      {hasEffectiveCity && professionals.length === 0 && (
         <EmptyState
           icon={<Search className="size-7" />}
           title="Nenhum profissional encontrado"

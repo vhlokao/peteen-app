@@ -91,6 +91,10 @@ import { isCivilDayInThePast } from "@/lib/date/civil-day"
 import { zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
 import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
 import { isDevBypassEnabled } from "@/modules/antifraude/domain/dev-flags"
+import {
+  notifyRequestAccepted,
+  notifyRequestCreated,
+} from "@/modules/notifications/application/push-service-request-events"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRIAÇÃO
@@ -302,6 +306,14 @@ export async function createServiceRequestAction(
       recurrenceEndsAt: parsed.data.recurrenceEndsAt,
     })
 
+    // ── Push best-effort — a solicitação JÁ está persistida acima ────────────
+    // Roda depois da escrita e nunca lança (a própria função engole tudo), no
+    // mesmo espírito de `recordRequestAudit`. Falha de push não pode impedir a
+    // criação, causar rollback, nem tocar Trust/Relationship/Agenda.
+    // O destinatário (profissional) é resolvido server-side lá dentro, a partir
+    // da própria request — nunca vem do client.
+    await notifyRequestCreated(request.id)
+
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
     revalidatePath("/requests")
@@ -425,6 +437,14 @@ export async function acceptServiceRequestAction(
       { status: fromStatus },
       { status: toStatus }
     )
+
+    // ── Push best-effort — ACCEPTED JÁ está persistido acima ─────────────────
+    // Só o aceite VENCEDOR chega aqui: `transitionStatus` só escreve se o
+    // status ainda for PENDING, e um aceite concorrente que perca a corrida
+    // lança ConcurrentStatusChangeError antes desta linha. Conflito de agenda e
+    // duração ausente também abortam antes. Nunca lança nem bloqueia o aceite.
+    // O destinatário (tutor) é resolvido server-side a partir da request.
+    await notifyRequestAccepted(requestId)
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")

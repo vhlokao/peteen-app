@@ -23,6 +23,7 @@ import {
   isNavigationItemActive,
 } from "@/lib/navigation/app-navigation"
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
+import { revogarPushAntesDoLogout } from "@/lib/push/logout"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { cn } from "@/lib/utils"
 import type { ActorNavSection } from "@/lib/navigation/navigation-types"
@@ -93,8 +94,16 @@ export function AccountMenuContent({ variant, user }: AccountMenuContentProps) {
   const areaSwitchSection = getAreaSwitchSection(user.roles, variant)
 
   async function handleSignOut() {
+    // Ordem obrigatória: revogar push (autenticado) → unsubscribe no browser →
+    // signOut. Depois do signOut não há sessão para autorizar a revogação.
+    // Best-effort e com timeout — nunca bloqueia o logout. Ver lib/push/logout.
+    await revogarPushAntesDoLogout()
+
     const supabase = createSupabaseBrowserClient()
-    await supabase.auth.signOut()
+    // scope "local": o default do Supabase é global e derrubaria a sessão dos
+    // outros dispositivos deste usuário. "Sair de todos os dispositivos" é ação
+    // explícita separada (ainda não implementada).
+    await supabase.auth.signOut({ scope: "local" })
     router.push("/login")
     router.refresh()
   }

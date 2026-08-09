@@ -72,6 +72,11 @@ model User {
   // Care Timeline — atualizações de cuidado escritas por este usuário
   careUpdatesAuthored CareUpdate[] @relation("CareUpdateAuthor")
 
+  // Push Notifications V0 — relações inversas (virtuais, sem coluna em `users`;
+  // a FK vive na tabela filha). Ver models no fim do arquivo.
+  pushSubscriptions PushSubscription[]
+  pushDeliveries    PushDelivery[]    @relation("PushDeliveryRecipient")
+
   @@index([authId])
   @@index([email])
   @@index([activePrimaryRole])
@@ -1132,4 +1137,134 @@ model VerificationRequest {
   @@index([status])
   @@index([requestedAt])
   @@map("verification_requests")
+}
+
+// ─────────────────────────────────────────────
+// PUSH NOTIFICATIONS — Foundation V0
+//
+// Push é canal ADICIONAL e best-effort. A central in-app (modules/notifications)
+// continua sendo a fonte da verdade e o histórico operacional — ela deriva tudo
+// do domínio na leitura e não depende destas tabelas. Perder um push nunca
+// perde informação.
+//
+// Nenhuma coluna nova em `users`: as relações inversas do Prisma são virtuais,
+// as FKs vivem aqui nas tabelas filhas.
+// ─────────────────────────────────────────────
+
+// Um registro de device (browser) habilitado a receber Web Push.
+//
+// Identidade do device = `endpoint` (contrato do padrão Web Push). Não usamos
+// fingerprint de userAgent: o endpoint já é único por browser+origem e é o
+// único identificador que o push service reconhece.
+//
+// REVOGAÇÃO ANULA O ENDPOINT E AS CHAVES (endpoint/p256dh/auth → NULL). Três
+// motivos, todos deliberados:
+//   1. Libera o unique de `endpoint`. Sem isso, o mesmo device nunca poderia
+//      voltar a assinar sem apagarmos a linha antiga — e apagar destrói a
+//      trilha de auditoria de qual usuário usou este device e até quando.
+//      Prisma não suporta índice único parcial (WHERE revokedAt IS NULL) na
+//      DSL, e no Postgres NULLs são distintos por padrão — anular o endpoint
+//      resolve declarativamente, sem SQL manual e sem drift de schema.
+//   2. Remove material de chave no instante em que ele perde utilidade
+//      (minimiza segredo em repouso sem exigir criptografia de coluna).
+//   3. `endpointHash` sobrevive: permite correlacionar devices ao longo do
+//      tempo sem guardar o segredo que permitiria enviar push para eles.
+//
+// OWNERSHIP — nunca há transferência automática entre usuários. Endpoint ativo
+// pertencente a outro user devolve SUBSCRIPTION_CONFLICT sem mutação alguma; o
+// client desinscreve e negocia um endpoint novo. A tripla
+// (endpoint, p256dh, auth) é um segredo portador copiável, NÃO prova de posse
+// do device — por isso não autoriza rebind.
+model PushSubscription {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // NULL após revogação — ver bloco acima. Enquanto ativo, é a identidade do
+  // device e o alvo do envio.
+  endpoint String? @unique @db.VarChar(1000)
+
+  // Chaves de criptografia do payload (Web Push). Segredo por device:
+  // endpoint + estas duas permitem enviar push para o aparelho. NUNCA logar,
+  // nunca retornar para client, nunca serializar em resposta de action.
+  // Selecionadas por uma única função do repositório (a do envio).
+  p256dh String?
+  auth   String?
+
+  // SHA-256 do endpoint. Sobrevive à revogação para correlação e sinal de
+  // segurança (ex.: detectar o mesmo device reaparecendo em outra conta).
+  // Não é reversível na prática — endpoints são URLs de alta entropia.
+  endpointHash String @db.VarChar(64)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lastSeenAt DateTime @default(now())
+
+  revokedAt DateTime?
+  // logout | user_optout | gone | account_cleanup
+  revokedReason String? @db.VarChar(40)
+
+  // Índice quente: é exatamente o WHERE do dispatch (subscriptions ativas de
+  // um destinatário) e o do teto de devices por usuário.
+  @@index([userId, revokedAt])
+  @@index([endpointHash])
+  @@map("push_subscriptions")
+}
+
+// Registro de UM evento lógico para UM destinatário em UM canal.
+//
+// IDEMPOTÊNCIA: `eventKey` é a identidade lógica do evento, construída no
+// domínio (ex.: "request-accepted:<requestId>"). O unique composto abaixo é a
+// trava: o create acontece ANTES de qualquer envio e uma violação P2002
+// significa "já processado" — retorna em silêncio, sem segundo envio. Dá
+// at-most-once, que é o viés correto porque a central in-app é a verdade
+// (perder push é aceitável, duplicar é spam). Sem advisory lock: é um único
+// INSERT atômico, não um read-then-write.
+//
+// `eventType` e `entityId` são DESNORMALIZADOS e descritivos — existem só para
+// observabilidade (taxa por tipo, todos os pushes de uma entidade) e NUNCA
+// participam do dedup. Isso mantém `eventKey` opaco e evolutivo sem sacrificar
+// as dimensões de análise.
+//
+// NOMENCLATURA: `acceptedCount` é aceite pelo PUSH SERVICE, não entrega ao
+// device. O aparelho pode estar offline (mensagem fica na fila com TTL), o
+// usuário pode ter notificação muda no SO, o SW pode falhar ao renderizar.
+// `deliveredCount`/`readCount` não existem e não devem ser criados: não são
+// observáveis por Web Push, e afirmá-los seria mentir sobre o que sabemos.
+//
+// PRIVACIDADE: nunca armazenar title, body, URL, endpoint ou conteúdo da
+// entidade. Só ids técnicos (cuid), rótulos e contadores. `lastError` guarda
+// código/motivo curto, jamais corpo de resposta.
+model PushDelivery {
+  id String @id @default(cuid())
+
+  // Identidade lógica. Único componente do dedup (com recipient + channel).
+  eventKey String @db.VarChar(200)
+
+  // Descritivos — observabilidade apenas, nunca dedup.
+  eventType String @db.VarChar(60)
+  entityId  String
+
+  recipientUserId String
+  recipient       User   @relation("PushDeliveryRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  // Prepara e-mail/WhatsApp sem migration futura: o mesmo evento lógico em
+  // dois canais são duas linhas legítimas.
+  channel String @default("push") @db.VarChar(20)
+
+  attemptedCount Int @default(0)
+  acceptedCount  Int @default(0)
+  failedCount    Int @default(0)
+  invalidCount   Int @default(0)
+
+  lastError String? @db.VarChar(120)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([eventKey, recipientUserId, channel])
+  @@index([eventType, createdAt])
+  @@index([entityId])
+  @@index([createdAt])
+  @@map("push_deliveries")
 }

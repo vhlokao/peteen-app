@@ -18,7 +18,7 @@
     "test:location": "node --experimental-strip-types --test modules/location/domain/location.test.ts",
     "test:agenda": "node --experimental-strip-types --test lib/date/agenda-temporal.test.ts modules/service-request/domain/agenda-conflict.test.ts",
     "test:pet-photo": "node --experimental-strip-types --test lib/storage/pet-photo-signature.test.ts",
-    "test:request-expiry": "node --experimental-strip-types --test modules/service-request/domain/request-expiry.test.ts",
+    "test:request-expiry": "node --experimental-strip-types --test modules/service-request/domain/request-expiry.test.ts modules/service-request/domain/request-lead-time.test.ts",
     "test:trust-scoring": "node --experimental-strip-types --test modules/trust-engine/domain/scoring.test.ts",
     "test:relationship": "node --experimental-strip-types --test modules/relationship/domain/relationship-levels.test.ts modules/relationship/domain/status-to-event.test.ts modules/relationship-history/domain/build-summary.test.ts",
     "test:service-uniqueness": "node --experimental-strip-types --test modules/professional/domain/service-uniqueness.test.ts",

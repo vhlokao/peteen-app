@@ -21,10 +21,24 @@ export function pushSuportado(): boolean {
   )
 }
 
+/**
+ * Registra o SW e SÓ retorna quando ele está ATIVO.
+ *
+ * `register()` resolve assim que o registro é aceito — o worker pode ainda
+ * estar em `installing`. Chamar `pushManager.subscribe()` nesse instante lança
+ * `InvalidStateError` ("no active Service Worker"), que era engolido por um
+ * catch cego e virava "não foi possível ativar" sem explicação: o usuário
+ * clicava, o botão voltava ao estado inicial e nada acontecia.
+ *
+ * `navigator.serviceWorker.ready` é a espera correta — resolve com a
+ * registration cujo worker está ativo e controlando a página.
+ */
 export async function registrarServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!pushSuportado()) return null
   try {
-    return await navigator.serviceWorker.register(SW_PATH, { scope: "/" })
+    await navigator.serviceWorker.register(SW_PATH, { scope: "/" })
+    // Espera o worker ficar ativo. Sem isso, subscribe() falha de forma opaca.
+    return await navigator.serviceWorker.ready
   } catch {
     return null
   }
@@ -102,21 +116,129 @@ function serializar(sub: PushSubscription): SubscriptionSerializada | null {
  * subscription. Também é o compromisso de que todo push resulta em notificação
  * visível — nada de push silencioso de rastreamento.
  */
+export type MotivoFalhaAssinatura =
+  /** Não havia Service Worker ativo no momento do subscribe. */
+  | "sem-worker-ativo"
+  /** applicationServerKey malformada. */
+  | "chave-invalida"
+  /**
+   * Já existe uma subscription neste browser criada com OUTRA chave VAPID.
+   * Acontece sempre que o par VAPID do ambiente é trocado — o browser guarda a
+   * subscription antiga e recusa criar outra com chave diferente. Só sai desse
+   * estado com `unsubscribe()` da subscription antiga.
+   */
+  | "chave-divergente"
+  /** O push service (FCM etc.) recusou ou está inalcançável. */
+  | "push-serviço-indisponivel"
+  /** Permissão negada no momento da chamada. */
+  | "recusado"
+  | "desconhecido"
+
+export type ResultadoAssinatura =
+  | { ok: true; subscription: SubscriptionSerializada }
+  | { ok: false; motivo: MotivoFalhaAssinatura }
+
+/**
+ * Classifica a falha do `subscribe()` pelo nome do erro do browser, em vez de
+ * engolir tudo como "não deu". Cada causa exige uma ação diferente do usuário,
+ * e mostrar a mesma frase para todas foi o que tornou o problema indiagnosticável.
+ */
+function classificarErroAssinatura(err: unknown): ResultadoAssinatura {
+  const nome = typeof err === "object" && err !== null && "name" in err ? String(err.name) : ""
+  const msg =
+    typeof err === "object" && err !== null && "message" in err ? String(err.message) : ""
+
+  // Preserva o erro ORIGINAL no console. Um catch que classifica sem registrar
+  // o motivo cru torna a falha indiagnosticável — foi exatamente o que
+  // aconteceu aqui: "não foi possível registrar" sem nenhuma pista da causa.
+  // Não contém PII: só nome e mensagem do erro do browser.
+  console.error("[push] falha ao assinar", { name: nome, message: msg })
+
+  if (nome === "InvalidStateError") return { ok: false, motivo: "sem-worker-ativo" }
+  // Chave VAPID malformada / de outro par que o browser já registrou.
+  if (nome === "InvalidAccessError" || nome === "InvalidCharacterError") {
+    return { ok: false, motivo: "chave-invalida" }
+  }
+  if (nome === "NotAllowedError") return { ok: false, motivo: "recusado" }
+
+  // AbortError é o que o Chromium usa quando o PRÓPRIO push service recusa o
+  // registro — inclusive quando já existe uma subscription com applicationServerKey
+  // diferente, e quando o serviço não é alcançável pela rede.
+  if (nome === "AbortError") {
+    return /different applicationServerKey|already exists/i.test(msg)
+      ? { ok: false, motivo: "chave-divergente" }
+      : { ok: false, motivo: "push-serviço-indisponivel" }
+  }
+  return { ok: false, motivo: "desconhecido" }
+}
+
+/**
+ * A subscription existente foi criada com ESTA mesma chave VAPID?
+ *
+ * O browser guarda a `applicationServerKey` usada no registro. Se o ambiente
+ * trocar o par VAPID (rotação, ou simplesmente um par novo em DEV), a
+ * subscription antiga continua no browser e o `subscribe()` com a chave nova é
+ * recusado — sem que nada no servidor indique o motivo. Comparar antes evita
+ * cair nesse erro.
+ */
+function mesmaChaveVapid(sub: PushSubscription, vapidPublicKey: string): boolean {
+  const usada = sub.options?.applicationServerKey
+  if (!usada) return false
+  const atual = urlBase64ToUint8Array(vapidPublicKey)
+  const bytes = new Uint8Array(usada)
+  if (bytes.length !== atual.length) return false
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] !== atual[i]) return false
+  }
+  return true
+}
+
 export async function assinar(
   reg: ServiceWorkerRegistration,
   vapidPublicKey: string
-): Promise<SubscriptionSerializada | null> {
+): Promise<ResultadoAssinatura> {
   try {
     const existente = await reg.pushManager.getSubscription()
-    if (existente) return serializar(existente)
+
+    if (existente) {
+      // Reaproveita só se foi criada com a MESMA chave. Uma subscription de um
+      // par VAPID anterior é lixo: o servidor atual não consegue assinar
+      // mensagens para ela, e mantê-la bloqueia a criação de uma válida.
+      if (mesmaChaveVapid(existente, vapidPublicKey)) {
+        const s = serializar(existente)
+        return s ? { ok: true, subscription: s } : { ok: false, motivo: "desconhecido" }
+      }
+      console.warn("[push] subscription existente usa outra chave VAPID — descartando")
+      await existente.unsubscribe().catch(() => {})
+    }
 
     const nova = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
     })
-    return serializar(nova)
-  } catch {
-    return null
+    const s = serializar(nova)
+    return s ? { ok: true, subscription: s } : { ok: false, motivo: "desconhecido" }
+  } catch (err) {
+    const classificado = classificarErroAssinatura(err)
+
+    // Recuperação de última instância: o browser recusou por já existir uma
+    // subscription com outra chave, mas `getSubscription()` não a devolveu
+    // (estado inconsistente conhecido). Descarta e tenta UMA vez.
+    if (classificado.ok === false && classificado.motivo === "chave-divergente") {
+      try {
+        const presa = await reg.pushManager.getSubscription()
+        if (presa) await presa.unsubscribe()
+        const nova = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) as BufferSource,
+        })
+        const s = serializar(nova)
+        return s ? { ok: true, subscription: s } : { ok: false, motivo: "desconhecido" }
+      } catch (err2) {
+        return classificarErroAssinatura(err2)
+      }
+    }
+    return classificado
   }
 }
 
@@ -136,7 +258,7 @@ export async function assinar(
 export async function renegociarSubscription(
   reg: ServiceWorkerRegistration,
   vapidPublicKey: string
-): Promise<SubscriptionSerializada | null> {
+): Promise<ResultadoAssinatura> {
   try {
     const atual = await reg.pushManager.getSubscription()
     if (atual) await atual.unsubscribe()

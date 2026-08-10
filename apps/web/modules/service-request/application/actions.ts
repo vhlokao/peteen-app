@@ -60,6 +60,10 @@ import { isRecurrenceCreditEligible } from "@/modules/trust-engine/infrastructur
 import { REPUTATION_CREDIT_WINDOW_HOURS } from "@/modules/trust-engine/domain/reputation-window"
 import { recordRequestAudit } from "../infrastructure/audit"
 import { getRequestExpiryInfo } from "../domain/request-expiry"
+import {
+  LEAD_TIME_ERROR_MESSAGE,
+  respeitaAntecedenciaMinima,
+} from "../domain/request-lead-time"
 import { AgendaConflictError } from "../domain/agenda-conflict"
 import {
   ServiceDurationRequiredError,
@@ -200,6 +204,23 @@ export async function createServiceRequestAction(
         success: false,
         error: "O horário escolhido já passou. Escolha um horário futuro.",
         fieldErrors: { scheduledTime: ["O horário escolhido já passou."] },
+      }
+    }
+
+    // ── Antecedência mínima — gate de ADMISSÃO ───────────────────────────────
+    // Estar no futuro não basta. Sem este guard, uma solicitação podia nascer
+    // com segundos de janela e expirar imediatamente (caso real: criada
+    // 21:12:29 para 21:13:00, expirada 40s depois) — a regra de expiração
+    // fazia o certo, mas nunca deveria ter recebido esse pedido.
+    //
+    // O `min` do input de horário na UI já bloqueia isso visualmente, mas
+    // `min` de <input> não é proteção: qualquer chamada direta desta Server
+    // Action passaria. Este é o guard de verdade.
+    if (!respeitaAntecedenciaMinima(scheduledAt, now)) {
+      return {
+        success: false,
+        error: LEAD_TIME_ERROR_MESSAGE,
+        fieldErrors: { scheduledTime: [LEAD_TIME_ERROR_MESSAGE] },
       }
     }
     // ─────────────────────────────────────────────────────────────────────────

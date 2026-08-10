@@ -19,7 +19,8 @@ import { Button, buttonVariants } from "@/components/ui/button"
 import { createServiceRequestAction } from "@/modules/service-request/application/actions"
 import { parseCivilDateToStableInstant } from "@/lib/date/parse-civil-date"
 import { civilDateKey, isCivilDayInThePast } from "@/lib/date/civil-day"
-import { zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
+import { formatZonedTime, zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
+import { primeiroHorarioValido } from "@/modules/service-request/domain/request-lead-time"
 import type { PetData } from "@/modules/tutor/domain/types"
 import {
   type ServiceType,
@@ -134,6 +135,23 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
   const values = watch()
   const selectedPet = pets.find((p) => p.id === values.petId)
   const selectedService = professional.services.find((s) => s.id === values.serviceId)
+
+  // ── Antecedência mínima na UI ────────────────────────────────────────────
+  // Usa a MESMA função do servidor (`primeiroHorarioValido`), para a tela nunca
+  // oferecer um horário que a Server Action vai recusar.
+  //
+  // Só restringe o horário quando o DIA ESCOLHIDO é o mesmo dia do primeiro
+  // instante válido — para qualquer dia posterior, todo horário serve. Sem essa
+  // condição, o mínimo de hoje vazaria para amanhã e bloquearia horários
+  // legítimos de madrugada.
+  //
+  // `min` de <input> não é proteção (é contornável); o guard real está na
+  // action. Aqui o objetivo é só não convidar o usuário ao erro.
+  const primeiroValido = primeiroHorarioValido(new Date())
+  const minTimeStr =
+    values.scheduledDate && values.scheduledDate === civilDateKey(primeiroValido)
+      ? formatZonedTime(primeiroValido)
+      : undefined
 
   // Foco avança para o título da etapa a cada mudança — leitura de tela e
   // teclado seguem o fluxo em vez de ficarem presos na etapa anterior.
@@ -288,7 +306,12 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
             )}
 
             {step === STEP_SCHEDULE && (
-              <RequestScheduleStep register={register} errors={errors} todayStr={todayStr} />
+              <RequestScheduleStep
+                register={register}
+                errors={errors}
+                todayStr={todayStr}
+                minTimeStr={minTimeStr}
+              />
             )}
 
             {isReview && (

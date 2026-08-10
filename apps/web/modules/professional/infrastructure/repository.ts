@@ -359,6 +359,14 @@ export async function findPublicProfessionalById(
       serviceType: s.serviceType as ServiceType,
       priceMin: s.priceMin,
       priceMax: s.priceMax,
+      // BUG separado do escopo de Push, achado durante QA físico: o select
+      // acima já buscava defaultDurationMin (necessário para o gate de
+      // agendamento com horário — ver RequestServiceStep), mas este map
+      // descartava o campo antes de devolver o objeto público. Resultado:
+      // TODO profissional aparecia como "sem duração configurada" na página
+      // /discover/[professionalId], bloqueando de fato a seleção do serviço
+      // no wizard — mesmo quando o valor estava salvo corretamente no banco.
+      defaultDurationMin: s.defaultDurationMin,
     })),
   }
 }

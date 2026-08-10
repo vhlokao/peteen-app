@@ -10,6 +10,12 @@ type RequestScheduleStepProps = {
   register: UseFormRegister<RequestFormValues>
   errors: FieldErrors<RequestFormValues>
   todayStr: string
+  /**
+   * Menor horário aceitável ("HH:mm"), já com a antecedência mínima aplicada.
+   * Só vem preenchido quando a data escolhida é o dia do primeiro instante
+   * válido; para dias seguintes fica indefinido e todo horário é oferecido.
+   */
+  minTimeStr?: string
 }
 
 const fieldClass =
@@ -23,7 +29,12 @@ const fieldClass =
  * mobile, e o servidor recebe os componentes civis crus — nunca um instante
  * já convertido pelo fuso do dispositivo.
  */
-export function RequestScheduleStep({ register, errors, todayStr }: RequestScheduleStepProps) {
+export function RequestScheduleStep({
+  register,
+  errors,
+  todayStr,
+  minTimeStr,
+}: RequestScheduleStepProps) {
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -56,15 +67,23 @@ export function RequestScheduleStep({ register, errors, todayStr }: RequestSched
             id="scheduledTime"
             type="time"
             step={300}
+            min={minTimeStr}
             className={cn(
               fieldClass,
               errors.scheduledTime && "border-destructive focus:ring-destructive/30"
             )}
             {...register("scheduledTime")}
           />
-          {errors.scheduledTime && (
+          {errors.scheduledTime ? (
             <p className="text-xs text-destructive">{errors.scheduledTime.message}</p>
-          )}
+          ) : minTimeStr ? (
+            // Só aparece quando a restrição está de fato em vigor (data = hoje).
+            // `min` sozinho é silencioso em vários browsers: sem esta linha o
+            // usuário não entende por que o horário que ele quer não é aceito.
+            <p className="text-xs text-muted-foreground">
+              Para hoje, a partir de {minTimeStr}.
+            </p>
+          ) : null}
         </div>
       </div>
 

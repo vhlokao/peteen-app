@@ -149,9 +149,18 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   for (let i = 0; i < resultados.length; i++) {
     const r = resultados[i]!
     if (r.status === "rejected") {
-      // sendPush não lança por contrato; isto é defesa em profundidade.
+      // sendPush não deve lançar por contrato — mas quando lança, descartar o
+      // motivo torna a falha indiagnosticável. Foi exatamente o que aconteceu
+      // num E2E real: `lastError` gravou só "sender_threw" e a causa (VAPID de
+      // produção malformada) ficou invisível. Preserva a mensagem original,
+      // truncada para caber na coluna e sem PII.
       failed++
-      erros.push("sender_threw")
+      const motivo =
+        typeof r.reason === "object" && r.reason !== null && "message" in r.reason
+          ? String((r.reason as { message: unknown }).message)
+          : String(r.reason)
+      console.error("[push] sender lançou", { motivo: motivo.slice(0, 120) })
+      erros.push(`sender_threw: ${motivo}`.slice(0, 120))
       continue
     }
     const res = r.value

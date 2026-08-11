@@ -30,12 +30,43 @@ export type SendResult = {
  * desabilitado — o chamador trata como no-op, nunca como erro.
  */
 let vapidAplicado = false
+/** Guarda o motivo da última falha de configuração, para o chamador reportar. */
+let vapidErroConfig: string | null = null
+
+/**
+ * Aplica o VAPID uma vez por processo.
+ *
+ * `setVapidDetails` VALIDA e LANÇA quando a configuração é malformada: subject
+ * que não é mailto:/https, chave com quebra de linha ou aspas, chave truncada,
+ * valor colado junto do nome da variável. Antes, esta chamada ficava FORA do
+ * try/catch de `sendPush` — a única linha desprotegida da função —, então uma
+ * env var mal copiada derrubava o envio com uma exceção que o dispatcher só
+ * conseguia registrar como "sender_threw", sem dizer o motivo.
+ *
+ * Falha de CONFIGURAÇÃO não pode se parecer com falha de rede: aqui ela é
+ * capturada, classificada e reportada com o motivo real.
+ */
 function ensureVapid(): boolean {
   const cfg = getVapidConfig()
-  if (!cfg) return false
+  if (!cfg) {
+    vapidErroConfig = "config_ausente"
+    return false
+  }
   if (!vapidAplicado) {
-    webpush.setVapidDetails(cfg.subject, cfg.publicKey, cfg.privateKey)
-    vapidAplicado = true
+    try {
+      webpush.setVapidDetails(cfg.subject, cfg.publicKey, cfg.privateKey)
+      vapidAplicado = true
+      vapidErroConfig = null
+    } catch (err) {
+      // Mensagem da lib é descritiva e NÃO contém a chave — só diz o que está
+      // errado no formato. Seguro para log e para PushDelivery.lastError.
+      vapidErroConfig =
+        typeof err === "object" && err !== null && "message" in err
+          ? `vapid_invalido: ${String(err.message).slice(0, 90)}`
+          : "vapid_invalido"
+      console.error("[push] configuração VAPID inválida", { motivo: vapidErroConfig })
+      return false
+    }
   }
   return true
 }
@@ -70,7 +101,13 @@ export async function sendPush(
   payload: PushPayload
 ): Promise<SendResult> {
   if (!ensureVapid()) {
-    return { outcome: "failed", statusCode: null, shortError: "push_disabled" }
+    // Distingue "push desligado de propósito" (sem env) de "env presente mas
+    // inválida" — a segunda é um erro de operação que precisa ser visível.
+    return {
+      outcome: "failed",
+      statusCode: null,
+      shortError: vapidErroConfig ?? "push_disabled",
+    }
   }
 
   try {

@@ -11,6 +11,7 @@ import { createAdminAudit } from "@/modules/moderation/infrastructure/repository
 import {
   getGrowthOverviewMetrics,
   getRegionGrowthRows,
+  getCityPresenceRows,
   getNeighborhoodHeatmap,
   getDistinctCitiesForHeatmap,
   getLocalDiscoveryContext,
@@ -45,6 +46,15 @@ export async function getAdminGrowthOverviewAction() {
 export async function getAdminRegionGrowthRowsAction() {
   await assertAdmin()
   return getRegionGrowthRows()
+}
+
+/**
+ * Presença territorial REAL, derivada dos perfis normalizados — separada da
+ * leitura por Region (estratégica), que depende de FKs ainda não populadas.
+ */
+export async function getAdminCityPresenceAction() {
+  await assertAdmin()
+  return getCityPresenceRows()
 }
 
 export async function getAdminNeighborhoodHeatmapAction(city?: string) {

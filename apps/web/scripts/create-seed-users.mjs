@@ -24,16 +24,26 @@
  * que o Auth user é criado — por isso o User é gravado via upsert por
  * authId em vez de create puro.
  *
- * Nota de implementação: este script é .mjs puro (sem loader de TypeScript),
- * então não importa os repositories de apps/web/modules/**\/*.ts (usam alias
- * "@/..." que não resolve fora do Next/tsconfig). Em vez disso, espelha
- * exatamente o mapeamento de campos de cada repository usado como referência
- * (citado no comentário de cada bloco) via Prisma direto — mesmo padrão já
- * adotado em create-isolated-admin.mjs para User/AdminProfile.
+ * Nota de implementação: este script é .mjs puro, então não importa os
+ * repositories de apps/web/modules/**\/*.ts diretamente (usam alias "@/..."
+ * que não resolve fora do Next/tsconfig). Em vez disso, espelha exatamente o
+ * mapeamento de campos de cada repository usado como referência (citado no
+ * comentário de cada bloco) via Prisma direto — mesmo padrão já adotado em
+ * create-isolated-admin.mjs para User/AdminProfile.
+ *
+ * EXCEÇÃO DELIBERADA — localização: escrever city/state/neighborhood direto no
+ * Prisma fazia o seed BURLAR a normalização que todo cadastro real atravessa
+ * (`normalizeLocationInput`), podendo semear grafias que o fluxo de produto
+ * nunca produziria — e que depois aparecem como bairros duplicados
+ * ("centro" vs "Centro") nas agregações territoriais. Por isso o helper real é
+ * carregado via jiti, com o mesmo alias "@" do runtime: uma cópia da regra aqui
+ * poderia divergir da original sem ninguém perceber.
  */
 import dotenv from "dotenv";
 dotenv.config({ path: ".env" });
 dotenv.config({ path: ".env.local", override: true });
+import path from "path";
+import { createJiti } from "jiti";
 import { createClient } from "@supabase/supabase-js";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -45,6 +55,22 @@ if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "product
 }
 
 const SEED_PASSWORD = "PeteenSeed2026!";
+
+// Helper REAL de normalização de localização, carregado do domínio via jiti —
+// nunca uma reimplementação. Se a regra mudar em modules/location, o seed
+// acompanha automaticamente.
+const jiti = createJiti(import.meta.url, {
+  alias: { "@": path.resolve(import.meta.dirname, "..") },
+});
+const { normalizeLocationInput } = await jiti.import("@/modules/location/index.ts");
+
+/**
+ * Aplica a normalização de produção sobre os campos de localização do seed.
+ * Usar em TODO bloco que escreve city/state/neighborhood.
+ */
+function comLocalizacaoNormalizada({ city, state, neighborhood }) {
+  return normalizeLocationInput({ city, state, neighborhood });
+}
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -132,9 +158,11 @@ async function seedTutor() {
           displayName: "Camila Seed",
           bio: null,
           phone: null,
-          neighborhood: null,
-          city: "Carapicuíba",
-          state: "SP",
+          ...comLocalizacaoNormalizada({
+            city: "Carapicuíba",
+            state: "SP",
+            neighborhood: null,
+          }),
           lat: null,
           lng: null,
         },
@@ -175,9 +203,11 @@ async function seedProfessional() {
           displayName: "João Seed",
           bio: "Profissional de teste para QA do Peteen. Cuido de pets com carinho.",
           phone: "11999990001",
-          neighborhood: null,
-          city: "Carapicuíba",
-          state: "SP",
+          ...comLocalizacaoNormalizada({
+            city: "Carapicuíba",
+            state: "SP",
+            neighborhood: null,
+          }),
           lat: null,
           lng: null,
           avatarUrl: null,
@@ -218,8 +248,7 @@ async function seedPartner() {
           businessName: "Pet Shop Seed",
           slug: "pet-shop-seed",
           category: "PET_SHOP",
-          city: "Carapicuíba",
-          state: "SP",
+          ...comLocalizacaoNormalizada({ city: "Carapicuíba", state: "SP" }),
           phone: "11999990002",
           isVerified: false,
           isActive: true,
@@ -235,8 +264,7 @@ async function seedPartner() {
           displayName: "Pet Shop Seed",
           type: "PET_SHOP",
           phone: "11999990002",
-          city: "Carapicuíba",
-          state: "SP",
+          ...comLocalizacaoNormalizada({ city: "Carapicuíba", state: "SP" }),
           isVerified: false,
           linkedPartnerId: partner.id,
         },

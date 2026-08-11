@@ -33,6 +33,31 @@ export type RegionGrowthRow = {
   classification:     HealthClassification
 }
 
+/**
+ * PRESENÇA REAL por cidade — derivada dos campos normalizados dos perfis
+ * (`TutorProfile.city` / `ProfessionalProfile.city`), que são a fonte de
+ * verdade territorial operacional da V0.
+ *
+ * Distinta de `RegionGrowthRow`, que conta por `regionId`/`neighborhoodId`
+ * (camada ESTRATÉGICA). Essas FKs hoje estão 100% vazias, então a tabela de
+ * regiões reportava 0 profissionais e 0 tutores para Carapicuíba enquanto
+ * existiam 5 e 7 de verdade — e São Paulo, sem Region cadastrada, não
+ * aparecia de forma alguma.
+ *
+ * Presença ≠ estratégia: uma cidade com usuários reais precisa aparecer com
+ * seus números mesmo sem nenhuma associação estratégica.
+ */
+export type CityPresenceRow = {
+  city:              string
+  state:             string
+  professionalCount: number
+  tutorCount:        number
+  /** Solicitações cujo profissional está nesta cidade. */
+  requestCount:      number
+  /** true quando existe Region cadastrada para esta cidade (camada estratégica). */
+  hasStrategicRegion: boolean
+}
+
 export type NeighborhoodHeatmapRow = {
   neighborhoodId:   string
   neighborhoodName: string

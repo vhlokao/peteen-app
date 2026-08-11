@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/shared/feedback/EmptyState"
 import { CitySearchInput } from "@/components/discovery/CitySearchInput"
 import { DiscoverServiceChips } from "@/components/discovery/DiscoverServiceChips"
 import { normalizeCityName } from "@/modules/location"
+import { resolveDiscoveryCity } from "@/modules/location/domain/discovery-filter"
 
 export const metadata: Metadata = {
   title: "Descobrir profissionais",
@@ -73,15 +74,24 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
     ? await findTutorProfileByUserId(ctx.user.id)
     : null
 
-  // ── Default Discovery na cidade do tutor ──────────────────────────────────
-  // effectiveCity = cidade explícita (searchParams) OU a cidade do perfil do
-  // tutor. Sem nenhuma das duas (anônimo, ou "Todas as cidades" — nenhum
-  // tutor hoje tem city vazia, campo obrigatório no schema e no Zod), a busca
-  // roda sem filtro de cidade — findPublicProfessionals já trata city ausente
-  // como "sem restrição". Nenhuma normalização acontece aqui: a action já
-  // normaliza qualquer string recebida (explícita ou o city do perfil, que já
-  // está normalizado desde a escrita) — nunca duplicar a regra no client.
-  const effectiveCity = cleanCity || tutorProfile?.city || undefined
+  // ── Filtro de cidade — contrato único de UI + query ───────────────────────
+  // `resolveDiscoveryCity` decide ao mesmo tempo o que a busca filtra e o que
+  // o seletor mostra. Antes eram duas contas separadas, e elas divergiam: o
+  // select recebia `cleanCity` (vazio sem query param) e exibia "Todas as
+  // cidades", enquanto a query usava a cidade do perfil e escondia
+  // profissionais de outras cidades sem nenhum aviso.
+  //
+  // Três estados distintos, ver modules/location/domain/discovery-filter.ts:
+  //   ausente → default do perfil · "todas" → sem filtro · cidade → override
+  //
+  // Nenhuma normalização aqui: a action já normaliza qualquer string recebida
+  // (o city do perfil já está normalizado desde a escrita) — nunca duplicar a
+  // regra no client.
+  const filtroCidade = resolveDiscoveryCity({
+    cityParam: city,
+    tutorCity: tutorProfile?.city,
+  })
+  const effectiveCity = filtroCidade.effectiveCity
   const hasEffectiveCity = Boolean(effectiveCity)
 
   // Só para exibição — reflete o filtro que REALMENTE está em vigor
@@ -194,7 +204,10 @@ export default async function DiscoverPage({ searchParams }: DiscoverPageProps) 
 
       {/* Busca principal — cidade + bairro opcional (Location Foundation V0) */}
       <div className="mb-4 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
-        <CitySearchInput defaultValue={cleanCity} />
+        {/* Reflete o filtro REAL em vigor (default do perfil, override ou
+            "todas"), nunca o texto cru da URL — é o que fecha a divergência
+            entre o que a tela diz e o que a busca faz. */}
+        <CitySearchInput defaultValue={filtroCidade.selectValue} />
       </div>
 
       {/* Chips de serviço — sempre visíveis, escrevem serviceType na URL */}

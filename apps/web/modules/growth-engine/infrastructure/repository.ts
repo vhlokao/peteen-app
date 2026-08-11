@@ -4,7 +4,11 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
-import { normalizeLocationInput, normalizeNeighborhoodName } from "@/modules/location"
+import {
+  compareLocationText,
+  normalizeLocationInput,
+  normalizeNeighborhoodName,
+} from "@/modules/location"
 import {
   computeHealthScore,
   computeTerritoryMetrics,
@@ -13,6 +17,7 @@ import {
 } from "../domain/scoring"
 import type {
   GrowthOverviewMetrics,
+  CityPresenceRow,
   RegionGrowthRow,
   NeighborhoodHeatmapRow,
   LocalDiscoveryContext,
@@ -77,6 +82,87 @@ export async function getGrowthOverviewMetrics(): Promise<GrowthOverviewMetrics>
 }
 
 // ── Regiões ───────────────────────────────────────────────────────────────────
+
+/**
+ * PRESENÇA REAL por cidade — derivada dos campos normalizados dos perfis.
+ *
+ * Contrato V0 de Location: `TutorProfile.city/state` e
+ * `ProfessionalProfile.city/state` são a fonte de verdade territorial
+ * OPERACIONAL. `regionId`/`neighborhoodId` permanecem no schema mas não
+ * alimentam presença enquanto não houver reconciliação formal — hoje estão
+ * 100% vazios, e contar por eles reportava zero para cidades com usuários
+ * reais (Carapicuíba aparecia 0/0 tendo 5 profissionais e 7 tutores; São
+ * Paulo não aparecia).
+ *
+ * Agrupa por `(city, state)` já normalizados na escrita, então variações de
+ * caixa/acento não produzem linhas duplicadas. `deletedAt` respeitado nos dois
+ * perfis, como no restante do módulo.
+ */
+export async function getCityPresenceRows(): Promise<CityPresenceRow[]> {
+  const [profissionais, tutores, regioes] = await Promise.all([
+    prisma.professionalProfile.groupBy({
+      by: ["city", "state"],
+      where: { deletedAt: null },
+      _count: true,
+    }),
+    prisma.tutorProfile.groupBy({
+      by: ["city", "state"],
+      where: { deletedAt: null },
+      _count: true,
+    }),
+    getRegionDelegate()?.findMany({ select: { city: true, state: true } }) ?? [],
+  ])
+
+  const chave = (city: string, state: string) => `${city}|${state}`
+  const mapa = new Map<string, CityPresenceRow>()
+
+  const garantir = (city: string, state: string): CityPresenceRow => {
+    const k = chave(city, state)
+    const existente = mapa.get(k)
+    if (existente) return existente
+    const nova: CityPresenceRow = {
+      city,
+      state,
+      professionalCount: 0,
+      tutorCount: 0,
+      requestCount: 0,
+      hasStrategicRegion: false,
+    }
+    mapa.set(k, nova)
+    return nova
+  }
+
+  for (const p of profissionais) garantir(p.city, p.state).professionalCount = p._count
+  for (const t of tutores) garantir(t.city, t.state).tutorCount = t._count
+
+  // Marca quais cidades já têm camada estratégica. Comparação tolerante a
+  // caixa/acento porque `Region.city` é cadastrado à mão no backoffice e não
+  // passa pela mesma normalização dos perfis (ex.: "Carapicuiba" sem acento).
+  for (const linha of mapa.values()) {
+    linha.hasStrategicRegion = (regioes as Array<{ city: string; state: string }>).some(
+      (r) => compareLocationText(r.city, linha.city) && r.state === linha.state
+    )
+  }
+
+  // Solicitações por cidade DO PROFISSIONAL — mesmo critério territorial já
+  // usado em `getRegionGrowthRows` (a request pertence a quem atende).
+  const cidades = [...mapa.values()]
+  await Promise.all(
+    cidades.map(async (linha) => {
+      linha.requestCount = await prisma.serviceRequest.count({
+        where: {
+          professional: { deletedAt: null, city: linha.city, state: linha.state },
+        },
+      })
+    })
+  )
+
+  return cidades.sort(
+    (a, b) =>
+      b.professionalCount + b.tutorCount - (a.professionalCount + a.tutorCount) ||
+      a.city.localeCompare(b.city, "pt-BR")
+  )
+}
 
 export async function getRegionGrowthRows(): Promise<RegionGrowthRow[]> {
   const regionDelegate = getRegionDelegate()

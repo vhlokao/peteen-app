@@ -23,7 +23,8 @@
     "test:relationship": "node --experimental-strip-types --test modules/relationship/domain/relationship-levels.test.ts modules/relationship/domain/status-to-event.test.ts modules/relationship-history/domain/build-summary.test.ts",
     "test:service-uniqueness": "node --experimental-strip-types --test modules/professional/domain/service-uniqueness.test.ts",
     "test:service-duration": "node --experimental-strip-types --test modules/service-request/domain/service-duration.test.ts",
-    "test:push": "node --experimental-strip-types --test modules/notifications/domain/push-events.test.ts"
+    "test:push": "node --experimental-strip-types --test modules/notifications/domain/push-events.test.ts",
+    "test:care-media": "node --experimental-strip-types --test lib/storage/care-media-path.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

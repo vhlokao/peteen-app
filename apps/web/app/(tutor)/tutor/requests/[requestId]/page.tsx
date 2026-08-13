@@ -22,7 +22,7 @@ import { TutorRequestSummary } from "@/modules/tutor-portal/components/TutorRequ
 import { findDisputeByRequestId } from "@/modules/disputes/infrastructure/queries"
 import { DisputeReportSection } from "@/modules/disputes/components/dispute-form"
 import { DisputeStatusCard } from "@/modules/disputes/components/dispute-status-card"
-import { CareTimeline, getCareTimelineAction } from "@/modules/care-timeline"
+import { CareTimelineSummary, getCareTimelineAction } from "@/modules/care-timeline"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
@@ -174,7 +174,8 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
 
   const existingReview = existingReviewResult?.success ? existingReviewResult.data : null
 
-  // Care Timeline — visível durante e após o atendimento (V0: só leitura)
+  // Care Timeline — a Request mostra apenas um RESUMO (Care Operations R0);
+  // o histórico completo vive em /tutor/requests/[requestId]/diario.
   const showCareTimeline = ["IN_PROGRESS", "COMPLETED"].includes(request.status)
   const careTimelineResult = showCareTimeline ? await getCareTimelineAction(requestId) : null
   const careUpdates = careTimelineResult?.success ? careTimelineResult.data : []
@@ -250,10 +251,13 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
 
         {showCareTimeline ? (
           <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
-            <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Diário de cuidado
             </h2>
-            <CareTimeline updates={careUpdates} />
+            <CareTimelineSummary
+              updates={careUpdates}
+              diaryHref={`/tutor/requests/${requestId}/diario`}
+            />
           </section>
         ) : null}
 

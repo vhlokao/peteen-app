@@ -8,41 +8,8 @@
  * (decisão V0: armazenar UTC, renderizar local).
  */
 
-import {
-  DoorOpen,
-  DoorClosed,
-  UtensilsCrossed,
-  Footprints,
-  Sparkles,
-  Moon,
-  StickyNote,
-  type LucideIcon,
-} from "lucide-react"
-
-import {
-  CARE_CATEGORY_LABELS,
-  type CareUpdate,
-  type CareUpdateCategory,
-} from "../domain/types"
-
-const CATEGORY_ICON: Record<CareUpdateCategory, LucideIcon> = {
-  CHECK_IN: DoorOpen,
-  FEEDING: UtensilsCrossed,
-  WALK: Footprints,
-  ACTIVITY: Sparkles,
-  REST: Moon,
-  NOTE: StickyNote,
-  CHECK_OUT: DoorClosed,
-}
-
-function formatTime(date: Date): string {
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(date))
-}
+import { CARE_CATEGORY_LABELS, type CareUpdate } from "../domain/types"
+import { CATEGORY_ICON, formatCareUpdateTime } from "./care-update-visuals"
 
 export function CareTimeline({ updates }: { updates: CareUpdate[] }) {
   if (updates.length === 0) {
@@ -71,7 +38,7 @@ export function CareTimeline({ updates }: { updates: CareUpdate[] }) {
                   {CARE_CATEGORY_LABELS[update.category]}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {formatTime(update.occurredAt)}
+                  {formatCareUpdateTime(update.occurredAt)}
                   {update.editedAt ? " · editado" : null}
                 </span>
               </div>

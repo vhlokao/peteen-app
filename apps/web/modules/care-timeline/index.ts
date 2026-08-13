@@ -14,6 +14,8 @@ export {
 } from "./application/actions"
 
 export { CareTimeline } from "./components/CareTimeline"
+export { CareTimelineSummary } from "./components/CareTimelineSummary"
+export { CareTimelineAutoRefresh } from "./components/CareTimelineAutoRefresh"
 export { CareUpdateForm } from "./components/CareUpdateForm"
 
 export {

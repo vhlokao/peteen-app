@@ -4,7 +4,6 @@ import { redirect } from "next/navigation"
 import { PageHeader } from "@/components/layout/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { TutorProfileEditForm } from "@/modules/tutor/components/tutor-profile-edit-form"
-import { PushOptInSection } from "@/modules/notifications/components/push-opt-in-section"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { requireAuthOrRedirect } from "@/modules/identity/application/get-session"
 
@@ -32,15 +31,6 @@ export default async function TutorProfilePage() {
         </CardHeader>
         <CardContent>
           <TutorProfileEditForm profile={profile} />
-        </CardContent>
-      </Card>
-
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="text-lg">Notificações</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <PushOptInSection />
         </CardContent>
       </Card>
     </div>

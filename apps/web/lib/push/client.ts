@@ -22,6 +22,38 @@ export function pushSuportado(): boolean {
 }
 
 /**
+ * iOS/iPadOS fora do modo instalado (Tela de Início) é a causa mais comum de
+ * `pushSuportado()` retornar false — não "navegador incompatível". A partir do
+ * iOS 16.4 o WebKit suporta Web Push, mas só expõe `PushManager` quando o site
+ * roda como PWA instalada (`display-mode: standalone`); no Safari normal a API
+ * simplesmente não existe no `window`, indistinguível à primeira vista de um
+ * navegador de verdade sem suporte. Sem essa distinção, o usuário de iPhone
+ * recebia a mensagem "este navegador não suporta", que é falsa: o navegador
+ * suporta, só não neste modo de execução.
+ *
+ * Detecção por engine (WebKit em iOS), não por "Safari" — Chrome/Firefox no
+ * iOS também rodam sobre WebKit e têm a mesma restrição.
+ */
+export function iosForaDaTelaDeInicio(): boolean {
+  if (typeof window === "undefined") return false
+
+  const ua = window.navigator.userAgent
+  // iPadOS 13+ se anuncia como "Macintosh", mas expõe múltiplos touch points
+  // (um Mac de verdade não tem touch) — é o sinal padrão para diferenciar.
+  const isIOSDevice =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (ua.includes("Macintosh") && navigator.maxTouchPoints > 1)
+
+  if (!isIOSDevice) return false
+
+  const standalone =
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
+    (window.navigator as unknown as { standalone?: boolean }).standalone === true
+
+  return !standalone
+}
+
+/**
  * Registra o SW e SÓ retorna quando ele está ATIVO.
  *
  * `register()` resolve assim que o registro é aceito — o worker pode ainda

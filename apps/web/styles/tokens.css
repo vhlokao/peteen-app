@@ -21,6 +21,13 @@
   /* ── Layout ── */
   --header-height: 3.5rem;
   --bottom-nav-height: 4rem;
+  /* Rodapé real ocupado pela BottomNav — mesma fonte usada por ela mesma
+     (.safe-bottom em bottom-nav.tsx). Qualquer cálculo de espaço reservado
+     para o conteúdo rolável (ex.: padding-bottom do <main>) deve usar esta
+     variável, nunca reconstruir a soma com um número fixo — foi exatamente
+     essa duplicação divergente que deixava o último conteúdo coberto em
+     iPhones com home indicator. */
+  --bottom-nav-total-height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
   --sidebar-width: 16rem;
   --sidebar-collapsed-width: 4rem;
   --content-max-width: 72rem;

@@ -114,8 +114,11 @@ export async function AppShell({
         <main
           className={cn(
             "flex-1 overflow-y-auto",
-            // Mobile: padding-bottom para o BottomNav fixo não cobrir conteúdo
-            hasNav && "pb-[calc(var(--bottom-nav-height)+1rem)] lg:pb-0",
+            // Mobile: padding-bottom para o BottomNav fixo não cobrir conteúdo.
+            // Usa --bottom-nav-total-height (altura + safe-area), a mesma fonte
+            // que a própria BottomNav usa para se desenhar — nunca reconstruir
+            // esse valor separadamente (ver styles/tokens.css).
+            hasNav && "pb-[calc(var(--bottom-nav-total-height)+1rem)] lg:pb-0",
             className
           )}
         >

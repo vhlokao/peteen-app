@@ -8,8 +8,6 @@ import { ProfessionalProfileEditForm } from "@/modules/professional/components/p
 import { ProfessionalProfilePreview } from "@/modules/professional/components/professional-profile-preview"
 import { ProfessionalProfileChecklist } from "@/modules/professional/components/professional-profile-checklist"
 import { ProfessionalProfileTrustBlock } from "@/modules/professional/components/professional-profile-trust-block"
-import { ProfessionalProfileSignOutButton } from "@/modules/professional/components/professional-profile-sign-out-button"
-import { PushOptInSection } from "@/modules/notifications/components/push-opt-in-section"
 
 export const metadata: Metadata = {
   title: "Seu perfil profissional",
@@ -60,15 +58,6 @@ export default async function ProfessionalProfilePage() {
         </h2>
         <ProfessionalProfileEditForm profile={profile} />
       </section>
-
-      <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
-        <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Notificações
-        </h2>
-        <PushOptInSection />
-      </section>
-
-      <ProfessionalProfileSignOutButton />
     </div>
   )
 }

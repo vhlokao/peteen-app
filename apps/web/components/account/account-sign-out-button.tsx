@@ -7,21 +7,20 @@ import { revogarPushAntesDoLogout } from "@/lib/push/logout"
 import { Button } from "@/components/ui/button"
 
 /**
- * Sair da conta — mesmo padrão real já usado em AvatarMenu/AdminSignOutButton
- * (supabase.auth.signOut() + redirect para /login + refresh). Extraído em
- * Client Component próprio porque a página de perfil é Server Component.
+ * Sair da conta — ação canônica única, usada pela página Conta/Configurações
+ * de cada persona. Mesmo padrão já validado em AvatarMenu/AccountMenuContent
+ * (revogar push → unsubscribe local → signOut escopo "local" → /login).
+ *
+ * Substitui ProfessionalProfileSignOutButton, que vivia solto na página de
+ * Perfil — Sair não é dado de identidade, não pertence lá (UX R1).
  */
-export function ProfessionalProfileSignOutButton() {
+export function AccountSignOutButton() {
   const router = useRouter()
 
   async function handleSignOut() {
-    // Ordem obrigatória: revogar push (autenticado) → unsubscribe no browser →
-    // signOut. Best-effort com timeout — nunca bloqueia o logout.
     await revogarPushAntesDoLogout()
 
     const supabase = createSupabaseBrowserClient()
-    // scope "local" — o default global derrubaria as sessões dos outros
-    // dispositivos deste usuário.
     await supabase.auth.signOut({ scope: "local" })
     router.push("/login")
     router.refresh()

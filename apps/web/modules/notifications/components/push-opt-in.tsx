@@ -36,6 +36,7 @@ import { BellRing, BellOff, Check, Loader2, AlertCircle, Clock } from "lucide-re
 import { Button } from "@/components/ui/button"
 import {
   assinar,
+  iosForaDaTelaDeInicio,
   obterEndpointAtual,
   pushSuportado,
   registrarServiceWorker,
@@ -57,6 +58,10 @@ type Estado =
   | "carregando"
   /** O BROWSER não tem as APIs (ou contexto inseguro). Nada a fazer. */
   | "sem-suporte"
+  /** iOS/iPadOS compatível (16.4+), mas rodando fora da Tela de Início — a API
+   *  só é exposta em modo standalone. Distinto de "sem-suporte": aqui existe
+   *  uma ação real que o usuário pode tomar. */
+  | "ios-fora-da-tela-inicio"
   /** O AMBIENTE não tem NEXT_PUBLIC_VAPID_PUBLIC_KEY. Problema de config. */
   | "nao-configurado"
   /** permission === "default": nunca perguntamos. CTA principal. */
@@ -97,7 +102,9 @@ export function PushOptIn({ vapidPublicKey }: Props) {
 
   /** Avalia o estado real do ambiente. Só observa — nunca pede permissão. */
   const avaliar = useCallback(async (): Promise<Estado> => {
-    if (!pushSuportado()) return "sem-suporte"
+    if (!pushSuportado()) {
+      return iosForaDaTelaDeInicio() ? "ios-fora-da-tela-inicio" : "sem-suporte"
+    }
     if (!vapidPublicKey) return "nao-configurado"
 
     const permissao = Notification.permission
@@ -287,6 +294,15 @@ export function PushOptIn({ vapidPublicKey }: Props) {
     return (
       <p className="text-sm text-muted-foreground">
         Este navegador não suporta notificações push.
+      </p>
+    )
+  }
+
+  if (estado === "ios-fora-da-tela-inicio") {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Para receber notificações no iPhone, adicione o Peteen à Tela de Início
+        e abra por lá.
       </p>
     )
   }

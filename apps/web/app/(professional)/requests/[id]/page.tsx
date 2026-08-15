@@ -125,7 +125,9 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
       </div>
 
       <div className="flex flex-col gap-5">
-        {isProfessionalView && <ProfessionalRequestNextStep status={request.status} />}
+        {isProfessionalView && (
+          <ProfessionalRequestNextStep status={request.status} hasActions={isActionable} />
+        )}
 
         {isProfessionalView && isActionable && (
           <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
@@ -140,9 +142,23 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
           </section>
         )}
 
+        {/* Diário antes das etapas: durante o atendimento é onde o profissional
+            trabalha. As etapas são referência de contrato, não tarefa. */}
+        {showCareTimeline && (
+          <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Diário de cuidado
+            </h2>
+            <CareTimelineSummary updates={careUpdates} diaryHref={`/requests/${id}/diario`} />
+          </section>
+        )}
+
+        {/* "Acompanhamento" → "Etapas do atendimento": este bloco mostra marcos
+            do contrato, não o conteúdo do cuidado. Ver a nota equivalente na
+            página do tutor. */}
         <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
           <h2 className="mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Acompanhamento
+            Etapas do atendimento
           </h2>
           <RequestTimeline
             request={{
@@ -155,15 +171,6 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
             }}
           />
         </section>
-
-        {showCareTimeline && (
-          <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Diário de cuidado
-            </h2>
-            <CareTimelineSummary updates={careUpdates} diaryHref={`/requests/${id}/diario`} />
-          </section>
-        )}
 
         <ProfessionalRequestSummary
           tutor={request.tutor}

@@ -12,12 +12,15 @@ import { getReviewForRequestAction } from "@/modules/review/application/actions"
 import { getMyRelationshipWithProfessional } from "@/modules/relationship/application/actions"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { SPECIES_LABELS } from "@/modules/tutor/domain/types"
-import { formatScheduledCivilDate } from "@/lib/date/zoned-datetime"
+import { formatScheduledCivilDate, formatZonedTime } from "@/lib/date/zoned-datetime"
 import { RequestTimeline } from "@/components/requests/RequestTimeline"
 import { ReviewForm } from "@/components/reviews/ReviewForm"
 import { TutorRequestActions } from "@/modules/tutor-portal/components/tutor-request-actions"
 import { TutorRequestStatusPill } from "@/modules/tutor-portal/components/TutorRequestStatusPill"
-import { TutorRequestNextStep } from "@/modules/tutor-portal/components/TutorRequestNextStep"
+import {
+  TutorRequestNextStep,
+  REVIEW_SECTION_ID,
+} from "@/modules/tutor-portal/components/TutorRequestNextStep"
 import { TutorRequestSummary } from "@/modules/tutor-portal/components/TutorRequestSummary"
 import { findDisputeByRequestId } from "@/modules/disputes/infrastructure/queries"
 import { DisputeReportSection } from "@/modules/disputes/components/dispute-form"
@@ -42,6 +45,25 @@ function formatDate(date: Date | null, scheduledHasTime: boolean): string {
     month: "long",
     year: "numeric",
   })
+}
+
+/**
+ * Data + horário para a frase de confirmação do card de próximo passo.
+ *
+ * Respeita a regra temporal do projeto: `scheduledHasTime` é a ÚNICA fonte
+ * para decidir se o horário pode ser exibido. Sem horário real gravado, a
+ * frase fala só do dia — nunca inventa "00:00".
+ */
+function formatScheduledWithTime(date: Date | null, scheduledHasTime: boolean): string {
+  if (!date) return "a data combinada"
+
+  const dia = formatScheduledCivilDate(new Date(date), scheduledHasTime, {
+    day: "2-digit",
+    month: "long",
+  })
+
+  if (!scheduledHasTime) return dia
+  return `${dia} às ${formatZonedTime(new Date(date))}`
 }
 
 function formatDateShort(date: Date): string {
@@ -207,8 +229,92 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
         <TutorRequestStatusPill status={request.status} />
       </div>
 
+      {/*
+        ORDEM DA TELA (R2B.1) — a tarefa principal nunca fica enterrada.
+        Antes, o formulário de avaliação era a 8ª de 10 seções: um tutor real
+        concluiu o atendimento e não achou onde avaliar. Agora a hierarquia
+        segue a pergunta "o que essa pessoa precisa fazer agora?":
+          1. próximo passo (com CTA quando existe ação)
+          2. a própria ação principal, quando é a avaliação
+          3. o diário, quando o cuidado está acontecendo
+          4. etapas do atendimento (marcos)
+          5. detalhes complementares
+          6. ações secundárias e disputa
+      */}
       <div className="flex flex-col gap-5">
-        <TutorRequestNextStep status={request.status} hasReview={hasReview} />
+        <TutorRequestNextStep
+          status={request.status}
+          hasReview={hasReview}
+          requestId={requestId}
+          scheduledAtLabel={formatScheduledWithTime(request.scheduledAt, request.scheduledHasTime)}
+          professionalName={request.professional.displayName}
+        />
+
+        {/* AVALIAÇÃO — logo abaixo do próximo passo, que aponta para cá pela
+            âncora. `tabIndex={-1}` + `scroll-mt` fazem o foco acompanhar o
+            scroll: sem os dois, o link move a página mas deixa o foco para
+            trás, e quem navega por teclado/leitor de tela se perde. */}
+        {canReview ? (
+          <section
+            id={REVIEW_SECTION_ID}
+            tabIndex={-1}
+            className="scroll-mt-[calc(var(--header-height)+1rem)] rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-primary/10 focus:outline-none"
+          >
+            <h2 className="mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Avaliar atendimento
+            </h2>
+            <ReviewForm
+              requestId={requestId}
+              professionalName={pro.displayName}
+              serviceTypeLabel={SERVICE_TYPE_LABELS[request.serviceType as ServiceType]}
+              petName={request.pet ? request.pet.name : "Pet não informado"}
+              petSpeciesLabel={
+                request.pet ? SPECIES_LABELS[request.pet.species] : "espécie não informada"
+              }
+            />
+          </section>
+        ) : null}
+
+        {showCareTimeline ? (
+          <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
+            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+              Diário de cuidado
+            </h2>
+            <CareTimelineSummary
+              updates={careUpdates}
+              diaryHref={`/tutor/requests/${requestId}/diario`}
+              // "Acompanhar atendimento" é o CTA principal (card de próximo
+              // passo). Aqui o rótulo é secundário e explícito, para não
+              // parecerem dois destinos diferentes.
+              ctaLabel="Ver diário completo"
+            />
+          </section>
+        ) : null}
+
+        {/*
+          "Acompanhamento" virou "Etapas do atendimento".
+          O nome antigo prometia a mesma coisa que o Diário — e este bloco NÃO
+          mostra o cuidado, mostra os marcos do contrato (criada → aceita →
+          iniciada → concluída). Duas seções dizendo "acompanhar" foi um dos
+          motivos de o tutor não saber onde clicar. "Histórico do atendimento"
+          foi descartado de propósito: é exatamente o título usado dentro do
+          Diário, e reaproveitá-lo recriaria a colisão em outro lugar.
+        */}
+        <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
+          <h2 className="mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Etapas do atendimento
+          </h2>
+          <RequestTimeline
+            request={{
+              status: request.status,
+              createdAt: request.createdAt,
+              updatedAt: request.updatedAt,
+              startedAt: request.startedAt,
+              completedAt: request.completedAt,
+              acceptedAt,
+            }}
+          />
+        </section>
 
         <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
@@ -233,34 +339,6 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
           )}
         </section>
 
-        <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
-          <h2 className="mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-            Acompanhamento
-          </h2>
-          <RequestTimeline
-            request={{
-              status: request.status,
-              createdAt: request.createdAt,
-              updatedAt: request.updatedAt,
-              startedAt: request.startedAt,
-              completedAt: request.completedAt,
-              acceptedAt,
-            }}
-          />
-        </section>
-
-        {showCareTimeline ? (
-          <section className="rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)]">
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Diário de cuidado
-            </h2>
-            <CareTimelineSummary
-              updates={careUpdates}
-              diaryHref={`/tutor/requests/${requestId}/diario`}
-            />
-          </section>
-        ) : null}
-
         <TutorRequestSummary
           requestId={requestId}
           professional={{
@@ -283,23 +361,6 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
               Ações
             </h2>
             <TutorRequestActions requestId={requestId} currentStatus={request.status} />
-          </section>
-        ) : null}
-
-        {canReview ? (
-          <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-[var(--shadow-card)] ring-1 ring-primary/10">
-            <h2 className="mb-5 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Avaliar atendimento
-            </h2>
-            <ReviewForm
-              requestId={requestId}
-              professionalName={pro.displayName}
-              serviceTypeLabel={SERVICE_TYPE_LABELS[request.serviceType as ServiceType]}
-              petName={request.pet ? request.pet.name : "Pet não informado"}
-              petSpeciesLabel={
-                request.pet ? SPECIES_LABELS[request.pet.species] : "espécie não informada"
-              }
-            />
           </section>
         ) : null}
 

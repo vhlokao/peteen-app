@@ -32,10 +32,18 @@ const RESUMO_MAX = 2
 export function CareTimelineSummary({
   updates,
   diaryHref,
+  ctaLabel = "Abrir diário",
 }: {
   /** Timeline completa em ordem cronológica — o corte é feito aqui. */
   updates: CareUpdate[]
   diaryHref: string
+  /**
+   * Rótulo do CTA. Configurável porque a mesma tela pode ter um card principal
+   * dizendo "Acompanhar atendimento" — dois botões com nomes diferentes para o
+   * mesmo destino fazem o usuário achar que são coisas distintas. Quando existe
+   * um CTA principal, este vira o secundário ("Ver diário completo").
+   */
+  ctaLabel?: string
 }) {
   const total = updates.length
   const recentes = updates.slice(-RESUMO_MAX).reverse()
@@ -89,7 +97,7 @@ export function CareTimelineSummary({
         href={diaryHref}
         className="flex items-center justify-center gap-1 rounded-xl border border-border/70 px-4 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-muted/40"
       >
-        Abrir diário
+        {ctaLabel}
         <ChevronRight className="size-4" />
       </Link>
     </div>

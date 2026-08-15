@@ -41,7 +41,30 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
   const [formError, setFormError] = useState<string | null>(null)
   // Guard síncrono contra duplo-submit (duplo clique / Enter+clique): `isPending`
   // só chega ao `disabled` após um re-render, deixando uma janela de corrida.
+  //
+  // Este lock protege UMA instância desta tela — nada mais. Duas abas, um
+  // reload no meio do envio ou um retry de rede passam por ele sem esbarrar.
+  // Quem realmente impede a atualização duplicada é a idempotencyKey abaixo,
+  // arbitrada por um unique no banco.
   const submitLockRef = useRef(false)
+
+  /**
+   * Identidade da INTENÇÃO de publicar.
+   *
+   * Ciclo de vida deliberado:
+   *   - criada na primeira tentativa desta atualização;
+   *   - PRESERVADA em caso de erro — reenviar é a MESMA intenção, e o servidor
+   *     precisa reconhecê-la como tal em vez de criar uma segunda linha;
+   *   - RENOVADA só após sucesso, porque aí a próxima publicação é outra
+   *     intenção.
+   */
+  const idempotencyKeyRef = useRef<string | null>(null)
+  function obterChaveDeIntencao(): string {
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = crypto.randomUUID()
+    }
+    return idempotencyKeyRef.current
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -66,14 +89,19 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
           category,
           content: trimmed,
           occurredAt: occurredAtIso,
+          idempotencyKey: obterChaveDeIntencao(),
         })
 
         if (!result.success) {
+          // Chave preservada de propósito: a próxima tentativa é a mesma
+          // intenção, e o servidor precisa poder reconhecê-la.
           setFormError(result.error)
           return
         }
 
         toast.success("Atualização publicada.")
+        // Publicou: a próxima atualização é outra intenção.
+        idempotencyKeyRef.current = null
         setContent("")
         setOccurredAtLocal(toLocalInputValue(new Date()))
         router.refresh()

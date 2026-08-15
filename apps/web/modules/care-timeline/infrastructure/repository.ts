@@ -13,13 +13,27 @@ import type { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/prisma/client"
 import {
   CARE_UPDATE_EDIT_WINDOW_MS,
-  type CareUpdate,
+  CARE_UPDATE_MAX_MEDIA,
   type CareUpdateCategory,
+  type CareUpdateWithInternalMedia,
+  type CareMediaInternal,
+  type ValidatedCareMedia,
 } from "../domain/types"
+import {
+  uniqueViolationTarget,
+  matchesUniqueConstraint,
+} from "../domain/prisma-unique-violation"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAPPERS
 // ─────────────────────────────────────────────────────────────────────────────
+
+type CareMediaRow = {
+  id: string
+  type: string
+  storagePath: string
+  mimeType: string
+}
 
 type CareUpdateRow = {
   id: string
@@ -32,10 +46,39 @@ type CareUpdateRow = {
   occurredAt: Date
   createdAt: Date
   editedAt: Date | null
+  media?: CareMediaRow[]
 }
 
-/** Linha do banco → projeção pública (sem deletedAt). */
-function toPublic(row: CareUpdateRow): CareUpdate {
+/**
+ * Ordem estável da mídia dentro de uma atualização. Sem isto, a grade de fotos
+ * poderia trocar de posição entre dois carregamentos da mesma tela.
+ */
+const CARE_MEDIA_ORDER = [
+  { createdAt: "asc" },
+  { id: "asc" },
+] satisfies Prisma.CareMediaOrderByWithRelationInput[]
+
+const MEDIA_SELECT = {
+  id: true,
+  type: true,
+  storagePath: true,
+  mimeType: true,
+} satisfies Prisma.CareMediaSelect
+
+function toInternalMedia(rows: CareMediaRow[] | undefined): CareMediaInternal[] {
+  return (rows ?? []).map((m) => ({
+    id: m.id,
+    type: m.type as "PHOTO",
+    storagePath: m.storagePath,
+    mimeType: m.mimeType,
+  }))
+}
+
+/**
+ * Linha do banco → projeção interna (sem deletedAt, COM storagePath).
+ * `storagePath` só existe até a camada de aplicação trocá-lo por URL assinada.
+ */
+function toPublic(row: CareUpdateRow): CareUpdateWithInternalMedia {
   return {
     id: row.id,
     requestId: row.requestId,
@@ -47,6 +90,7 @@ function toPublic(row: CareUpdateRow): CareUpdate {
     occurredAt: row.occurredAt,
     createdAt: row.createdAt,
     editedAt: row.editedAt,
+    media: toInternalMedia(row.media),
   }
 }
 
@@ -61,6 +105,7 @@ const PUBLIC_SELECT = {
   occurredAt: true,
   createdAt: true,
   editedAt: true,
+  media: { select: MEDIA_SELECT, orderBy: CARE_MEDIA_ORDER },
 } satisfies Prisma.CareUpdateSelect
 
 /**
@@ -93,7 +138,9 @@ const CARE_TIMELINE_ORDER = [
  * Timeline de uma request — só atualizações vivas (deletedAt IS NULL), ordem
  * cronológica estável do cuidado. Visão tutor/profissional.
  */
-export async function getCareTimeline(requestId: string): Promise<CareUpdate[]> {
+export async function getCareTimeline(
+  requestId: string
+): Promise<CareUpdateWithInternalMedia[]> {
   const rows = await prisma.careUpdate.findMany({
     where: { requestId, deletedAt: null },
     orderBy: CARE_TIMELINE_ORDER,
@@ -108,7 +155,7 @@ export async function getCareTimeline(requestId: string): Promise<CareUpdate[]> 
  */
 export async function getCareTimelineAdmin(
   requestId: string
-): Promise<(CareUpdate & { deletedAt: Date | null })[]> {
+): Promise<(CareUpdateWithInternalMedia & { deletedAt: Date | null })[]> {
   const rows = await prisma.careUpdate.findMany({
     where: { requestId },
     orderBy: CARE_TIMELINE_ORDER,
@@ -150,6 +197,64 @@ export async function findCareUpdateById(id: string): Promise<{
   return { ...row, category: row.category as CareUpdateCategory }
 }
 
+/**
+ * Carrega UMA mídia com TODO o contexto necessário para autorizar sua leitura,
+ * numa única query.
+ *
+ * Os cinco elos que a autorização precisa provar saem daqui juntos — mídia,
+ * atualização-mãe, visibilidade dela, request de origem e os dois donos.
+ * Buscar em consultas separadas abriria espaço para alguém verificar quatro
+ * elos e esquecer o quinto; aqui ou vêm todos, ou não vem nada.
+ */
+export async function findCareMediaWithContext(careMediaId: string): Promise<{
+  id: string
+  storagePath: string
+  mimeType: string
+  type: string
+  careUpdateId: string
+  careUpdateDeletedAt: Date | null
+  requestId: string
+  tutorUserId: string
+  professionalUserId: string
+} | null> {
+  const row = await prisma.careMedia.findUnique({
+    where: { id: careMediaId },
+    select: {
+      id: true,
+      storagePath: true,
+      mimeType: true,
+      type: true,
+      careUpdate: {
+        select: {
+          id: true,
+          requestId: true,
+          deletedAt: true,
+          request: {
+            select: {
+              tutor: { select: { userId: true } },
+              professional: { select: { userId: true } },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!row) return null
+
+  return {
+    id: row.id,
+    storagePath: row.storagePath,
+    mimeType: row.mimeType,
+    type: row.type,
+    careUpdateId: row.careUpdate.id,
+    careUpdateDeletedAt: row.careUpdate.deletedAt,
+    requestId: row.careUpdate.requestId,
+    tutorUserId: row.careUpdate.request.tutor.userId,
+    professionalUserId: row.careUpdate.request.professional.userId,
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MUTAÇÃO
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,48 +274,122 @@ export async function findCareUpdateById(id: string): Promise<{
  * Retorna null se qualquer condição falhar no instante da escrita (estado
  * mudou entre a validação da action e aqui) — nenhuma linha é criada.
  */
+export type CreateCareUpdateOutcome =
+  /** Criada agora. */
+  | { kind: "created"; update: CareUpdateWithInternalMedia }
+  /** Já existia com esta idempotencyKey — nenhuma linha nova foi criada. */
+  | { kind: "replayed"; update: CareUpdateWithInternalMedia }
+  /** Estado mudou entre a validação da action e a escrita. Nada foi criado. */
+  | { kind: "state_changed" }
+  /** Algum path já pertence a outra atualização. Nada foi criado. */
+  | { kind: "media_conflict" }
+
+/**
+ * Publicação ATÔMICA de atualização + mídia.
+ *
+ * Storage I/O acontece INTEIRAMENTE ANTES desta função. A transação recebe
+ * apenas mídia já baixada, validada por magic bytes e medida — nenhuma chamada
+ * de rede acontece com o lock da request na mão. Uma ida ao Supabase dentro da
+ * transação seguraria o lock pelo tempo de uma requisição HTTP, transformando
+ * lentidão de rede em contenção de banco para todo mundo naquele atendimento.
+ *
+ * Dentro do lock (`SELECT ... FOR UPDATE` na request-mãe):
+ *   1. re-verifica status IN_PROGRESS, occurredAt >= startedAt e ausência de
+ *      disputa — o estado pode ter mudado desde a validação da action;
+ *   2. aplica a COTA de 3 (o array é a única fonte de contagem, então a cota é
+ *      atômica por construção: não há como duas chamadas somarem 6);
+ *   3. cria CareUpdate e as CareMedia na MESMA transação.
+ *
+ * IDEMPOTÊNCIA: o unique (requestId, idempotencyKey) é o árbitro. Se a mesma
+ * intenção chegar duas vezes — duplo clique, retry, duas abas, resposta perdida
+ * após o commit —, a segunda tentativa viola o unique, a transação inteira é
+ * revertida e devolvemos a atualização que já existe, marcada como `replayed`.
+ * Nenhuma segunda linha é criada. É o banco decidindo, não a UI.
+ */
 export async function createCareUpdateAtomic(data: {
   requestId: string
   authorId: string
   category: CareUpdateCategory
   content: string
   occurredAt: Date
-}): Promise<CareUpdate | null> {
-  return prisma.$transaction(async (tx) => {
-    const locked = await tx.$queryRaw<
-      Array<{
-        status: string
-        professionalId: string
-        petId: string | null
-        startedAt: Date | null
-      }>
-    >`SELECT "status", "professionalId", "petId", "startedAt"
-      FROM "service_requests" WHERE "id" = ${data.requestId} FOR UPDATE`
+  idempotencyKey: string
+  media: ValidatedCareMedia[]
+}): Promise<CreateCareUpdateOutcome> {
+  try {
+    const update = await prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<
+        Array<{
+          status: string
+          professionalId: string
+          petId: string | null
+          startedAt: Date | null
+        }>
+      >`SELECT "status", "professionalId", "petId", "startedAt"
+        FROM "service_requests" WHERE "id" = ${data.requestId} FOR UPDATE`
 
-    const req = locked[0]
-    if (!req) return null
-    if (req.status !== "IN_PROGRESS") return null
-    if (req.startedAt && data.occurredAt.getTime() < req.startedAt.getTime()) return null
+      const req = locked[0]
+      if (!req) return null
+      if (req.status !== "IN_PROGRESS") return null
+      if (req.startedAt && data.occurredAt.getTime() < req.startedAt.getTime()) return null
 
-    const activeDisputes = await tx.dispute.count({
-      where: { requestId: data.requestId, status: { in: ["OPEN", "UNDER_REVIEW"] } },
+      const activeDisputes = await tx.dispute.count({
+        where: { requestId: data.requestId, status: { in: ["OPEN", "UNDER_REVIEW"] } },
+      })
+      if (activeDisputes > 0) return null
+
+      // Cota, sob o lock. Redundante com a validação da action de propósito:
+      // esta é a que o banco enxerga no instante da escrita.
+      if (data.media.length > CARE_UPDATE_MAX_MEDIA) return null
+
+      const row = await tx.careUpdate.create({
+        data: {
+          requestId: data.requestId,
+          petId: req.petId, // derivado da request travada
+          professionalId: req.professionalId, // derivado da request travada
+          authorId: data.authorId,
+          category: data.category,
+          content: data.content,
+          occurredAt: data.occurredAt,
+          idempotencyKey: data.idempotencyKey,
+          media: data.media.length
+            ? {
+                create: data.media.map((m) => ({
+                  type: "PHOTO" as const,
+                  storagePath: m.storagePath,
+                  mimeType: m.mimeType,
+                  sizeBytes: m.sizeBytes,
+                })),
+              }
+            : undefined,
+        },
+        select: PUBLIC_SELECT,
+      })
+      return toPublic(row)
     })
-    if (activeDisputes > 0) return null
 
-    const row = await tx.careUpdate.create({
-      data: {
-        requestId: data.requestId,
-        petId: req.petId, // derivado da request travada
-        professionalId: req.professionalId, // derivado da request travada
-        authorId: data.authorId,
-        category: data.category,
-        content: data.content,
-        occurredAt: data.occurredAt,
-      },
-      select: PUBLIC_SELECT,
-    })
-    return toPublic(row)
-  })
+    if (!update) return { kind: "state_changed" }
+    return { kind: "created", update }
+  } catch (err) {
+    const alvo = uniqueViolationTarget(err)
+    if (!alvo) throw err
+
+    // Mesma intenção já publicada: devolve a original, sem criar nada.
+    if (matchesUniqueConstraint(alvo, "idempotencyKey")) {
+      const existente = await prisma.careUpdate.findFirst({
+        where: { requestId: data.requestId, idempotencyKey: data.idempotencyKey },
+        select: PUBLIC_SELECT,
+      })
+      if (existente) return { kind: "replayed", update: toPublic(existente) }
+      // Unique disparou mas a linha sumiu (soft delete não remove; cenário
+      // improvável). Trata como mudança de estado em vez de inventar sucesso.
+      return { kind: "state_changed" }
+    }
+
+    // Um dos paths já está anexado a outra atualização.
+    if (matchesUniqueConstraint(alvo, "storagePath")) return { kind: "media_conflict" }
+
+    throw err
+  }
 }
 
 /**
@@ -225,7 +404,7 @@ export async function editCareUpdate(
   id: string,
   content: string,
   editedAt: Date
-): Promise<CareUpdate | null> {
+): Promise<CareUpdateWithInternalMedia | null> {
   // Janela: só edita se createdAt >= agora - 15min (cutoff do servidor).
   const editWindowCutoff = new Date(Date.now() - CARE_UPDATE_EDIT_WINDOW_MS)
 

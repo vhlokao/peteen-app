@@ -39,8 +39,25 @@ export const CARE_MEDIA_ALLOWED_TYPES = Object.keys(
 /** Igual ao file_size_limit do bucket — divergir faria o Storage recusar o que a app aceitou. */
 export const CARE_MEDIA_MAX_BYTES = 5 * 1024 * 1024
 
-/** Teto de arquivos por atualização (contrato V0). Aplicado em R2, quando CareMedia existir. */
+/** Teto de arquivos por atualização (contrato V0), aplicado na publicação. */
 export const CARE_MEDIA_MAX_PER_UPDATE = 3
+
+/**
+ * Teto de OBJETOS no bucket por request. NÃO é cota de publicação — é freio de
+ * CUSTO do bucket.
+ *
+ * Por que precisa existir: a cota de 3 é aplicada na publicação, não na emissão
+ * de tickets, e ticket não deixa rastro nenhum para contar. A revisão de
+ * segurança mediu ~63 tickets/s de um único processo, com 5 MB autorizados por
+ * ticket — cerca de 0,5 GB de escrita autorizada por rajada, sem teto por
+ * usuário, por request ou por janela, e sem coletor de órfãos. O excedente não
+ * vira mídia publicada, mas vira armazenamento pago e permanente.
+ *
+ * 60 é folgado de propósito: são ~20 publicações de 3 fotos no mesmo
+ * atendimento, com margem para retentativas. Um pet-sitting longo e legítimo
+ * cabe; uma rajada automatizada, não.
+ */
+export const CARE_MEDIA_MAX_OBJECTS_PER_REQUEST = 60
 
 /** Prefixo fixo — mantém o bucket organizável e o parser previsível. */
 const PREFIXO = "requests"
@@ -132,6 +149,34 @@ export function parseCareMediaPath(path: unknown): CareMediaPathParts | null {
   }
 
   return { requestId, fileName }
+}
+
+/** Extensão → MIME. Inverso exato de CARE_MEDIA_EXTENSION_BY_TYPE. */
+const TYPE_BY_EXTENSION: Record<string, CareMediaMimeType> = {
+  jpg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+}
+
+/**
+ * Recupera o tipo DECLARADO no momento da emissão do ticket, a partir da
+ * extensão do path.
+ *
+ * Por que a extensão é fonte confiável para isso: o path inteiro é gerado pelo
+ * servidor em `buildCareMediaPath`, e a extensão sai do `mimeType` que o
+ * chamador declarou ali. O cliente não escolhe o path, então não escolhe a
+ * extensão. Guardar essa declaração em outro lugar (estado de ticket, campo
+ * extra no publish) só criaria uma segunda fonte, passível de divergir do path
+ * — ou, pior, controlável pelo cliente.
+ *
+ * É contra ESTE valor que os magic bytes são comparados na publicação.
+ */
+export function declaredMimeTypeFromCareMediaPath(path: unknown): CareMediaMimeType | null {
+  const partes = parseCareMediaPath(path)
+  if (!partes) return null
+  const ext = partes.fileName.split(".").pop()
+  if (!ext) return null
+  return TYPE_BY_EXTENSION[ext] ?? null
 }
 
 /**

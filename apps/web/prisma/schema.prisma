@@ -541,17 +541,75 @@ model CareUpdate {
   editedAt       DateTime?
   deletedAt      DateTime?
 
+  /// Chave de intenção de publicação, gerada pelo cliente (UUID) e validada no
+  /// servidor. Existe para que duplo clique, retry de rede, duas abas ou uma
+  /// resposta perdida DEPOIS do commit não criem duas atualizações idênticas.
+  /// O unique composto com requestId é quem garante isso — trava no banco, não
+  /// no componente: um lock de UI protege uma instância, não o sistema.
+  /// Nullable porque toda linha anterior a R2 não tem chave; NULLs são
+  /// distintos entre si no Postgres, então o legado não colide.
+  idempotencyKey String?
+
   request      ServiceRequest      @relation(fields: [requestId], references: [id])
   pet          Pet?                @relation(fields: [petId], references: [id])
   professional ProfessionalProfile @relation(fields: [professionalId], references: [id])
   author       User                @relation("CareUpdateAuthor", fields: [authorId], references: [id])
+  media        CareMedia[]
 
+  @@unique([requestId, idempotencyKey])
   @@index([requestId])
   @@index([requestId, occurredAt])
   @@index([requestId, deletedAt])
   @@index([authorId])
   @@index([createdAt])
   @@map("care_updates")
+}
+
+/// V0 aceita apenas foto. VIDEO não existe aqui de propósito: um valor de enum
+/// sem pipeline de validação, transcodificação e limite de duração seria uma
+/// promessa que o código não cumpre. Entra quando houver a fundação, não antes.
+enum CareMediaType {
+  PHOTO
+}
+
+/// Mídia de uma atualização de cuidado.
+///
+/// INVARIANTE CENTRAL — uma linha aqui só existe se o objeto correspondente no
+/// bucket privado JÁ FOI VALIDADO POR MAGIC BYTES. Não há coluna `validatedAt`
+/// porque ela seria redundante e enganosa: uma coluna que sempre nasce
+/// preenchida não valida nada, só dá a impressão de validar.
+///
+/// O QUE REALMENTE SUSTENTA A INVARIANTE — caminho único, verificado:
+///   1. `validateMediaPaths` (care-timeline/application/actions.ts) baixa cada
+///      objeto do Storage, confere magic bytes contra o tipo declarado no path
+///      e o tamanho real, e APAGA o reprovado. Só ela constrói `ValidatedCareMedia`.
+///   2. `createCareUpdateAtomic` (care-timeline/infrastructure/repository.ts) é
+///      o ÚNICO lugar do código que insere nesta tabela — via `media: { create }`
+///      aninhado, na mesma transação do CareUpdate, aceitando apenas
+///      `ValidatedCareMedia[]`. Não há `careMedia.create/createMany/upsert`
+///      solto, nem SQL cru, em lugar nenhum do repositório.
+///
+/// Se algum dia surgir um SEGUNDO caminho de inserção, esta decisão precisa ser
+/// reavaliada — não herdada.
+///
+/// `storagePath` é caminho RELATIVO ao bucket `care-media`, nunca URL. Não há
+/// URL persistida: toda leitura passa por uma URL assinada de curta duração,
+/// emitida na hora e só depois de a autorização completa passar.
+model CareMedia {
+  id           String        @id @default(cuid())
+  careUpdateId String
+  type         CareMediaType @default(PHOTO)
+  /// requests/<requestId>/<uuid>.<ext> — gerado no servidor, nunca aceito do cliente.
+  storagePath  String        @unique
+  /// MIME REAL, detectado por magic bytes — não o declarado pelo cliente.
+  mimeType     String
+  sizeBytes    Int
+  createdAt    DateTime      @default(now())
+
+  careUpdate CareUpdate @relation(fields: [careUpdateId], references: [id])
+
+  @@index([careUpdateId])
+  @@map("care_media")
 }
 
 // ─────────────────────────────────────────────

@@ -41,7 +41,9 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js"
 
 import {
   buildCareMediaPath,
+  isCareMediaRequestId,
   parseCareMediaPath,
+  CARE_MEDIA_MAX_OBJECTS_PER_REQUEST,
   type CareMediaMimeType,
 } from "./care-media-path"
 
@@ -95,6 +97,42 @@ function createCareMediaStorageClient(): SupabaseClient {
   return createClient(url, serviceKey, {
     auth: { autoRefreshToken: false, persistSession: false },
   })
+}
+
+/**
+ * Quantos objetos já existem sob o prefixo desta request.
+ *
+ * Único uso de `list()` neste helper, e escopado a um prefixo validado — não
+ * abre listagem arbitrária do bucket. Serve ao freio de custo descrito em
+ * CARE_MEDIA_MAX_OBJECTS_PER_REQUEST.
+ *
+ * O `limit` explícito é necessário: o default de `list()` é 100, e sem ele a
+ * contagem seria truncada silenciosamente. Pedimos TETO+1 porque só precisamos
+ * saber se o teto foi atingido, não o total exato.
+ *
+ * `null` = não foi possível contar (Storage fora, ambiente sem config,
+ * requestId inválido). Quem chama decide o que fazer — ver a justificativa de
+ * fail-open em care-media-authorization.ts.
+ */
+export async function countCareMediaObjectsForRequest(
+  requestId: string
+): Promise<number | null> {
+  if (!isCareMediaRequestId(requestId)) return null
+
+  try {
+    const supabase = createCareMediaStorageClient()
+    const { data, error } = await supabase.storage
+      .from(CARE_MEDIA_BUCKET)
+      .list(`requests/${requestId}`, { limit: CARE_MEDIA_MAX_OBJECTS_PER_REQUEST + 1 })
+
+    if (error || !data) return null
+    return data.length
+  } catch (err) {
+    console.error("[care-media] count_objects_failed", {
+      erro: String(err).slice(0, 120),
+    })
+    return null
+  }
 }
 
 export type CareMediaUploadTicket = {
@@ -206,16 +244,52 @@ export async function readCareMediaHeader(params: {
   requestId: string
   bytes?: number
 }): Promise<Uint8Array | null> {
+  const objeto = await readCareMediaForValidation(params)
+  return objeto?.header ?? null
+}
+
+/**
+ * Lê header + TAMANHO REAL de um objeto já enviado, numa única ida ao Storage.
+ *
+ * O `sizeBytes` sai do próprio objeto baixado, jamais de um campo informado
+ * pelo cliente: tamanho é entrada hostil tanto quanto o conteúdo, e é ele que
+ * vai para `CareMedia.sizeBytes` e para a checagem do teto de 5 MB.
+ *
+ * `null` cobre TODA falha — path não pertence à request, objeto inexistente,
+ * Storage indisponível ou ambiente sem configuração. O `try` externo existe
+ * porque `createCareMediaStorageClient` LANÇA quando faltam as variáveis de
+ * ambiente; sem ele o contrato "retorna null" seria mentira justamente no
+ * caminho de erro (falha apontada na revisão de segurança do R1).
+ *
+ * CUSTO CONHECIDO: `download()` traz o objeto INTEIRO (até 5 MB) para ler 12
+ * bytes de assinatura. É uma ida de rede por arquivo publicado, fora de
+ * transação. Aceito no V0 em nome de uma leitura autoritativa e simples;
+ * otimizável depois com `Range: bytes=0-11` sobre URL assinada, cujo
+ * `Content-Range` também devolveria o tamanho total.
+ */
+export async function readCareMediaForValidation(params: {
+  path: string
+  requestId: string
+  bytes?: number
+}): Promise<{ header: Uint8Array; sizeBytes: number } | null> {
   const partes = parseCareMediaPath(params.path)
   if (!partes || partes.requestId !== params.requestId) return null
 
-  const supabase = createCareMediaStorageClient()
-  const { data, error } = await supabase.storage.from(CARE_MEDIA_BUCKET).download(params.path)
+  try {
+    const supabase = createCareMediaStorageClient()
+    const { data, error } = await supabase.storage.from(CARE_MEDIA_BUCKET).download(params.path)
 
-  if (error || !data) return null
+    if (error || !data) return null
 
-  const buffer = await data.slice(0, params.bytes ?? 12).arrayBuffer()
-  return new Uint8Array(buffer)
+    const sizeBytes = data.size
+    const buffer = await data.slice(0, params.bytes ?? 12).arrayBuffer()
+    return { header: new Uint8Array(buffer), sizeBytes }
+  } catch (err) {
+    console.error("[care-media] read_for_validation_failed", {
+      erro: String(err).slice(0, 120),
+    })
+    return null
+  }
 }
 
 /**

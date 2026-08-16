@@ -41,6 +41,8 @@ import {
   type RequestStatus,
   type TrustEventPayload,
 } from "../domain/types"
+import { buildRequestSyncToken } from "../domain/active-request-sync"
+import { getRequestSyncSnapshot } from "../infrastructure/sync-snapshot"
 import {
   createServiceRequestRecord,
   findServiceRequestById,
@@ -993,6 +995,44 @@ export async function getServiceRequestDetailAction(
   } catch (err) {
     console.error("[getServiceRequestDetailAction]", err)
     return { success: false, error: "Erro ao buscar solicitação." }
+  }
+}
+
+/**
+ * Probe de auto-sync (R2B.2 hardening) — leitura mínima e autorizada, sem
+ * PII, usada por ActiveRequestAutoRefresh para decidir SE vale chamar
+ * `router.refresh()`, em vez de chamá-lo cegamente a cada timer/foco.
+ *
+ * Mesma autorização de getServiceRequestDetailAction (autenticação +
+ * ownership via findRequestWithOwnershipContext), mas devolve só um token
+ * comparável — não o detalhe completo (nome, telefone, endereço do outro
+ * participante) que a tela já tem e não precisa re-buscar a cada ciclo.
+ */
+export async function getRequestSyncProbeAction(
+  requestId: string
+): Promise<ActionResult<{ token: string }>> {
+  try {
+    const session = await requireAuth()
+
+    const ctx = await findRequestWithOwnershipContext(requestId)
+    if (!ctx) {
+      return { success: false, error: "Solicitação não encontrada." }
+    }
+
+    const { tutorUserId, professionalUserId } = ctx
+    if (tutorUserId !== session.id && professionalUserId !== session.id) {
+      return { success: false, error: "Acesso negado." }
+    }
+
+    const snapshot = await getRequestSyncSnapshot(requestId)
+    if (!snapshot) {
+      return { success: false, error: "Solicitação não encontrada." }
+    }
+
+    return { success: true, data: { token: buildRequestSyncToken(snapshot) } }
+  } catch (err) {
+    console.error("[getRequestSyncProbeAction]", err)
+    return { success: false, error: "Erro ao verificar atualização." }
   }
 }
 

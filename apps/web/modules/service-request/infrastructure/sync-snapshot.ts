@@ -1,0 +1,50 @@
+/**
+ * Módulo: service-request
+ * Camada: infrastructure — leitura mínima para o probe de auto-sync (R2B.2
+ * hardening).
+ *
+ * Deliberadamente magra: NÃO reaproveita findServiceRequestWithParticipants
+ * (retorna nomes, telefone, endereço — dados que o probe não precisa e não
+ * deveria expor a cada 20s). Cada campo aqui existe só porque afeta algo
+ * visível na tela de detalhe: status da própria request, disputa
+ * relacionada, review relacionada, última atualização do Diário.
+ */
+
+import { prisma } from "@/lib/prisma/client"
+import type { RequestSyncSnapshotInput } from "../domain/active-request-sync"
+import type { RequestStatus } from "../domain/types"
+
+export async function getRequestSyncSnapshot(
+  requestId: string
+): Promise<RequestSyncSnapshotInput | null> {
+  const [request, dispute, review, latestCareUpdate] = await Promise.all([
+    prisma.serviceRequest.findUnique({
+      where: { id: requestId },
+      select: { status: true, updatedAt: true },
+    }),
+    prisma.dispute.findFirst({
+      where: { requestId },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, status: true, resolvedAt: true },
+    }),
+    prisma.review.findUnique({
+      where: { requestId },
+      select: { id: true, updatedAt: true },
+    }),
+    prisma.careUpdate.findFirst({
+      where: { requestId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, editedAt: true },
+    }),
+  ])
+
+  if (!request) return null
+
+  return {
+    status: request.status as RequestStatus,
+    requestUpdatedAt: request.updatedAt,
+    dispute,
+    review,
+    latestCareUpdate,
+  }
+}

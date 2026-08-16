@@ -12,6 +12,7 @@ import { StarRatingInput } from "@/components/reviews/StarRatingInput"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { useSuspendAutoRefreshWhileEditing } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Props — contexto para exibição (não enviado ao action, que busca do banco)
@@ -41,6 +42,12 @@ export function ReviewForm({
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState("")
   const [formError, setFormError] = useState<string | null>(null)
+
+  // COMPLETED é terminal — o polling nem roda aqui. Isto protege contra os
+  // dois eventos que continuam ativos mesmo em estado terminal: foco e
+  // visibilidade. Sem isto, voltar à aba no meio de uma avaliação em
+  // andamento poderia acionar um refresh e apagar rating/comentário.
+  useSuspendAutoRefreshWhileEditing(rating > 0 || comment.trim().length > 0)
 
   const MAX_COMMENT = 1000
 

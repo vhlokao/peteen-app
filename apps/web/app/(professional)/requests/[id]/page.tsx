@@ -17,6 +17,9 @@ import { ProfessionalRequestStatusPill } from "@/modules/professional-crm/compon
 import { ProfessionalRequestNextStep } from "@/modules/professional-crm/components/professional-request-next-step"
 import { ProfessionalRequestSummary } from "@/modules/professional-crm/components/professional-request-summary"
 import { CareTimelineSummary, getCareTimelineAction } from "@/modules/care-timeline"
+import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import { buildRequestSyncToken } from "@/modules/service-request/domain/active-request-sync"
+import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
@@ -81,7 +84,7 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
   // aceite, então não vale a query.
   const needsAcceptedAt = request.status !== "PENDING"
 
-  const [dispute, priorRelationship, acceptedAt] = await Promise.all([
+  const [dispute, priorRelationship, acceptedAt, syncSnapshot] = await Promise.all([
     isProfessionalView
       ? findDisputeForProfessionalRequest(id, request.professional.id)
       : Promise.resolve(null),
@@ -89,7 +92,11 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
       ? findRelationship(request.tutor.id, request.professional.id)
       : Promise.resolve(null),
     needsAcceptedAt ? findRequestAcceptedAt(id) : Promise.resolve(null),
+    // Token inicial do auto-sync (R2B.2 hardening) — ver comentário
+    // equivalente na página do tutor.
+    getRequestSyncSnapshot(id),
   ])
+  const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null
 
   // Care Timeline — a Request mostra apenas um RESUMO (Care Operations R0). A
   // leitura completa e a publicação vivem em /requests/[id]/diario: inline e
@@ -100,6 +107,13 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
   const careUpdates = careTimelineResult?.success ? careTimelineResult.data : []
 
   return (
+    // Auto-sync (R2B.2): decisão explícita de incluir o profissional também —
+    // não é cópia automática do lado do tutor. A request pode mudar por ação
+    // ALHEIA enquanto esta tela está aberta: o tutor pode cancelar (PENDING/
+    // ACCEPTED) e uma disputa pode ser aberta (ACCEPTED/IN_PROGRESS) — nenhum
+    // dos dois é iniciado pelo próprio profissional, então nenhum
+    // router.refresh() próprio cobriria essas mudanças.
+    <ActiveRequestAutoRefresh requestId={id} status={request.status} initialToken={initialSyncToken}>
     <div className="page-container max-w-2xl pb-4">
       <div className="mb-5 flex items-center gap-3">
         <Link
@@ -210,5 +224,6 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
         {isProfessionalView && dispute ? <DisputeBanner dispute={dispute} /> : null}
       </div>
     </div>
+    </ActiveRequestAutoRefresh>
   )
 }

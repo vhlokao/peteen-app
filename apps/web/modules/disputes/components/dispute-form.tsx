@@ -9,10 +9,12 @@ import {
   DISPUTE_REASON_OPTIONS,
   type DisputeReason,
 } from "../domain/types"
+import { isDisputeFormDirty } from "../domain/dispute-form-state"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useSuspendAutoRefreshWhileEditing } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
 
 type Props = {
   requestId: string
@@ -20,10 +22,20 @@ type Props = {
   onCancel: () => void
 }
 
+const INITIAL_REASON = DISPUTE_REASON_OPTIONS[0]
+
 export function DisputeForm({ requestId, onSuccess, onCancel }: Props) {
-  const [reason, setReason] = useState<DisputeReason>(DISPUTE_REASON_OPTIONS[0])
+  const [reason, setReason] = useState<DisputeReason>(INITIAL_REASON)
   const [description, setDescription] = useState("")
   const [isPending, startTransition] = useTransition()
+
+  // Suspende só quando há algo que um refresh destruiria de verdade: motivo
+  // divergiu do padrão, descrição foi digitada, ou o submit está em voo.
+  // Abrir o formulário e não tocar em nada NÃO suspende — auto-sync continua
+  // rodando normalmente (gate independente pegou isto: `true` fixo travava
+  // a tela indefinidamente com o form só aberto e vazio).
+  const isDirty = isDisputeFormDirty(reason, INITIAL_REASON, description)
+  useSuspendAutoRefreshWhileEditing(isDirty || isPending)
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault()

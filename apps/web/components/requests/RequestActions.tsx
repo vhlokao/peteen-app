@@ -12,6 +12,7 @@ import {
   startServiceRequestAction,
   completeServiceRequestAction,
 } from "@/modules/service-request/application/actions"
+import { useSuspendAutoRefreshWhileEditing } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
 import type {
   RequestStatus,
   ServiceRequestData,
@@ -60,6 +61,10 @@ export function RequestActions({
 }: RequestActionsProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+
+  // Mesma razão do lado do tutor: uma transição de status em voo não pode
+  // disputar o ciclo de render com um refresh automático concorrente.
+  useSuspendAutoRefreshWhileEditing(isPending)
 
   // Bloqueio de "Iniciar atendimento" antes da data agendada (comparação por dia).
   const today = new Date()

@@ -26,6 +26,9 @@ import { findDisputeByRequestId } from "@/modules/disputes/infrastructure/querie
 import { DisputeReportSection } from "@/modules/disputes/components/dispute-form"
 import { DisputeStatusCard } from "@/modules/disputes/components/dispute-status-card"
 import { CareTimelineSummary, getCareTimelineAction } from "@/modules/care-timeline"
+import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import { buildRequestSyncToken } from "@/modules/service-request/domain/active-request-sync"
+import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
@@ -181,7 +184,7 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
   // do profissional. Só relevante a partir de ACCEPTED.
   const needsAcceptedAt = request.status !== "PENDING"
 
-  const [existingReviewResult, myRelationship, dispute, professionalPhone, acceptedAt] =
+  const [existingReviewResult, myRelationship, dispute, professionalPhone, acceptedAt, syncSnapshot] =
     await Promise.all([
       isCompleted && hasReview ? getReviewForRequestAction(requestId) : null,
       getMyRelationshipWithProfessional(request.professional.id),
@@ -192,9 +195,15 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
         ? getProfessionalPhoneByRequestId(requestId, tutorProfile.id)
         : Promise.resolve(null),
       needsAcceptedAt ? findRequestAcceptedAt(requestId) : Promise.resolve(null),
+      // Token inicial do auto-sync (R2B.2 hardening) — mesma função que o
+      // probe do cliente usa, calculado agora para que o primeiro probe do
+      // ActiveRequestAutoRefresh compare contra o que esta página JÁ mostra,
+      // não contra `null`. Ver o comentário no componente para o motivo.
+      getRequestSyncSnapshot(requestId),
     ])
 
   const existingReview = existingReviewResult?.success ? existingReviewResult.data : null
+  const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null
 
   // Care Timeline — a Request mostra apenas um RESUMO (Care Operations R0);
   // o histórico completo vive em /tutor/requests/[requestId]/diario.
@@ -205,6 +214,12 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
   const pro = request.professional
 
   return (
+    // Auto-sync (R2B.2): PENDING/ACCEPTED/IN_PROGRESS acompanham o backend a
+    // cada 20s + foco/visibilidade; terminal (COMPLETED e demais) não gera
+    // nenhum ciclo. Envolve a árvore inteira porque é dela que os formulários
+    // (ReviewForm, TutorRequestActions, DisputeReportSection) suspendem o
+    // auto-refresh via useSuspendAutoRefreshWhileEditing.
+    <ActiveRequestAutoRefresh requestId={requestId} status={request.status} initialToken={initialSyncToken}>
     <div className="page-container max-w-2xl pb-4">
       <div className="mb-5 flex items-center gap-3">
         <Link
@@ -382,5 +397,6 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
         {!dispute && canOpenDispute ? <DisputeReportSection requestId={requestId} /> : null}
       </div>
     </div>
+    </ActiveRequestAutoRefresh>
   )
 }

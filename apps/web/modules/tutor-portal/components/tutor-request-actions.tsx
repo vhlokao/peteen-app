@@ -7,6 +7,7 @@ import { Loader2, XCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cancelServiceRequestAction } from "@/modules/service-request/application/actions"
+import { useSuspendAutoRefreshWhileEditing } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
 import type { RequestStatus } from "@/modules/service-request/domain/types"
 
 const CORAL = "#E07A5F"
@@ -24,6 +25,11 @@ export function TutorRequestActions({
 }: TutorRequestActionsProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+
+  // Uma mutação em voo (o cancelamento chamando o servidor) não pode disputar
+  // com um router.refresh() automático disparado no meio do caminho — os dois
+  // acabariam competindo pelo mesmo ciclo de render.
+  useSuspendAutoRefreshWhileEditing(isPending)
 
   if (!CANCELLABLE.includes(currentStatus)) {
     return null

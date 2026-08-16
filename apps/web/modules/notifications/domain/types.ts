@@ -6,6 +6,13 @@
 export type NotificationType =
   | "request_received"
   | "request_accepted"
+  /**
+   * Início do atendimento. Existe separado de `request_accepted` porque são
+   * eventos distintos com copy distinta — antes do R2B.3 a central reusava a
+   * frase de aceite para IN_PROGRESS/COMPLETED, dizendo "aceitou sua
+   * solicitação" quando o fato real era outro.
+   */
+  | "request_started"
   | "request_completed"
   | "request_cancelled"
   | "care_update"

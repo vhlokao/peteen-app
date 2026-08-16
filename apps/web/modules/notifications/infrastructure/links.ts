@@ -18,6 +18,15 @@ export const tutorNotificationHref = {
       ? `/tutor/requests/${requestId}`
       : NOTIFICATION_FALLBACK.tutor
   },
+  /**
+   * Diário de cuidado (Care Operations R0) — rota própria, porque a Request
+   * mostra apenas o resumo. Destino de `care_update`.
+   */
+  diary(requestId?: string | null): string {
+    return requestId
+      ? `/tutor/requests/${requestId}/diario`
+      : NOTIFICATION_FALLBACK.tutor
+  },
   professional(professionalId?: string | null): string {
     return professionalId
       ? `/tutor/professionals/${professionalId}`

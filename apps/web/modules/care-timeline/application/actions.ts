@@ -22,6 +22,7 @@ import { requireAuth } from "@/modules/identity/application/get-session"
 import { requireProfessionalContext } from "@/modules/professional-crm/application/require-professional"
 import { findRequestWithOwnershipContext } from "@/modules/service-request/infrastructure/repository"
 import { findActiveDisputeByRequestId } from "@/modules/disputes/infrastructure/queries"
+import { notifyCareUpdatePublished } from "@/modules/notifications/application/push-service-request-events"
 import type { ActionResult } from "@/modules/tutor/domain/types"
 import {
   CreateCareUpdateSchema,
@@ -377,6 +378,20 @@ export async function publishCareUpdateAction(
       mediaIds: created.media.map((m) => m.id),
       mediaTypes: created.media.map((m) => m.mimeType),
     })
+
+    // ── Push best-effort — TUDO já está commitado ────────────────────────────
+    // Esta linha só é alcançada depois de: magic bytes aprovados
+    // (validateMediaPaths), CareUpdate persistido, CareMedia persistida quando
+    // houver, e a transação de createCareUpdateAtomic concluída.
+    //
+    // Fica DEPOIS do early-return de `replayed`: um retry da mesma
+    // idempotencyKey devolve a atualização original sem passar por aqui, então
+    // a intenção repetida não gera segundo push — a idempotência do R2A já
+    // cobre o canal, sem lógica própria.
+    //
+    // Uma publicação = uma intenção de notificação, independentemente de
+    // quantas fotos ela carregue. Nunca um push por mídia.
+    await notifyCareUpdatePublished(parsed.data.requestId)
 
     revalidateCarePaths(parsed.data.requestId)
 

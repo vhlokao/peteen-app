@@ -23,7 +23,7 @@
     "test:relationship": "node --experimental-strip-types --test modules/relationship/domain/relationship-levels.test.ts modules/relationship/domain/status-to-event.test.ts modules/relationship-history/domain/build-summary.test.ts",
     "test:service-uniqueness": "node --experimental-strip-types --test modules/professional/domain/service-uniqueness.test.ts",
     "test:service-duration": "node --experimental-strip-types --test modules/service-request/domain/service-duration.test.ts",
-    "test:push": "node --experimental-strip-types --test modules/notifications/domain/push-events.test.ts",
+    "test:push": "node --experimental-strip-types --test modules/notifications/domain/push-events.test.ts modules/notifications/domain/notification-contract.test.ts modules/notifications/domain/inapp-copy.test.ts modules/notifications/domain/care-update-visibility.test.ts",
     "test:care-media": "node --experimental-strip-types --test lib/storage/care-media-path.test.ts lib/storage/care-media-validation.test.ts modules/care-timeline/domain/prisma-unique-violation.test.ts",
     "test:tutor-portal": "node --experimental-strip-types --test modules/tutor-portal/components/TutorRequestNextStep.test.ts",
     "test:active-request-sync": "node --experimental-strip-types --test modules/service-request/domain/active-request-sync.test.ts modules/disputes/domain/dispute-form-state.test.ts"

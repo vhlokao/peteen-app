@@ -99,7 +99,10 @@ import { detectArtificialRecurrence } from "@/modules/antifraude/application/det
 import { isDevBypassEnabled } from "@/modules/antifraude/domain/dev-flags"
 import {
   notifyRequestAccepted,
+  notifyRequestCancelled,
   notifyRequestCreated,
+  notifyServiceCompleted,
+  notifyServiceStarted,
 } from "@/modules/notifications/application/push-service-request-events"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -609,6 +612,12 @@ export async function startServiceRequestAction(
       { status: toStatus }
     )
 
+    // ── Push best-effort — IN_PROGRESS JÁ está persistido acima ──────────────
+    // `transitionStatus` só escreve se o status ainda for ACCEPTED, então um
+    // início concorrente que perca a corrida lança antes desta linha e não
+    // notifica. Nunca lança nem bloqueia o início do atendimento.
+    await notifyServiceStarted(requestId)
+
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
     revalidatePath("/requests")
@@ -703,6 +712,12 @@ export async function cancelServiceRequestAction(
       { status: fromStatus },
       { status: toStatus }
     )
+
+    // ── Push best-effort — o cancelamento JÁ está persistido acima ───────────
+    // Destinatário é sempre a OUTRA parte: quem cancelou não precisa ser
+    // avisado do próprio ato. O ator vem do status de destino calculado no
+    // servidor, nunca do client.
+    await notifyRequestCancelled(requestId, isTutor ? "tutor" : "professional")
 
     // Recalcula Trust Score se cancelamento do profissional gerou TrustEvent (falha silenciosa)
     if (trustEvent) {
@@ -864,6 +879,11 @@ export async function completeServiceRequestAction(
       { status: fromStatus },
       { status: toStatus }
     )
+
+    // ── Push best-effort — DEPOIS do commit de completeServiceRequestAtomic ──
+    // A conclusão e o relacionamento já estão gravados; uma falha aqui não
+    // reverte nada e não impede Trust nem a detecção de recorrência abaixo.
+    await notifyServiceCompleted(requestId)
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")

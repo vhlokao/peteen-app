@@ -167,9 +167,20 @@ export function sanitizeInternalRoute(raw: unknown): string {
 export const PUSH_NOTIFICATION_KINDS = [
   /** Verificação técnica do canal. Sem evento de negócio associado. */
   "smoke",
-  /** Reservados para V0.3 — ainda NÃO conectados a nenhum evento. */
+  /** Conectados desde a integração P0. */
   "request_created",
   "request_accepted",
+  /** R2B.3 — contrato operacional do atendimento. */
+  "service_started",
+  "care_update",
+  "service_completed",
+  /**
+   * Cancelamento. Dois kinds em vez de um com parâmetro: a copy precisa dizer
+   * QUEM cancelou, e a factory não aceita interpolação por construção. Quem
+   * cancelou é fato do servidor (o status de destino), nunca texto montado.
+   */
+  "request_cancelled_by_tutor",
+  "request_cancelled_by_professional",
 ] as const
 
 export type PushNotificationKind = (typeof PUSH_NOTIFICATION_KINDS)[number]
@@ -193,6 +204,53 @@ const COPY_POR_KIND: Readonly<Record<PushNotificationKind, { title: string; body
   request_accepted: {
     title: "Solicitação aceita",
     body: "Sua solicitação foi aceita. Toque para ver os detalhes.",
+    tag: "peteen-request",
+  },
+  /**
+   * "O atendimento começou", não "o atendimento do seu pet começou": a política
+   * de copy deste módulo já proíbe as palavras "pet" e "tutor" na lockscreen
+   * (ver o teste de termos sensíveis). A missão descreve a copy como
+   * conceitual; manter a política existente vale mais que a literalidade, e o
+   * significado é idêntico.
+   */
+  service_started: {
+    title: "Atendimento iniciado",
+    body: "O atendimento começou.",
+    tag: "peteen-request",
+  },
+  /**
+   * Genérica por obrigação, não por preguiça: o conteúdo de um CareUpdate pode
+   * conter saúde, medicação, incidente ou rotina da casa — e a lockscreen é
+   * visível a qualquer um por perto. O Push diz que EXISTE novidade; o Diário
+   * autenticado mostra o quê.
+   *
+   * Tag própria: um care_update não pode substituir na bandeja do SO um aviso
+   * de conclusão (e vice-versa) — são assuntos distintos para o tutor.
+   */
+  care_update: {
+    title: "Nova atualização do atendimento",
+    body: "Há uma nova atualização no Diário de cuidado.",
+    tag: "peteen-care",
+  },
+  service_completed: {
+    title: "Atendimento concluído",
+    body: "O atendimento foi concluído. Conte como foi sua experiência.",
+    tag: "peteen-request",
+  },
+  /**
+   * Vai para o PROFISSIONAL. "Cliente" e não "tutor" por dois motivos que
+   * coincidem: é o vocabulário que a interface do profissional já usa
+   * ("Cliente recorrente", /professional/clients) e "tutor" é termo proibido
+   * na copy de push. Nenhum nome — só o papel.
+   */
+  request_cancelled_by_tutor: {
+    title: "Solicitação cancelada",
+    body: "O cliente cancelou a solicitação.",
+    tag: "peteen-request",
+  },
+  request_cancelled_by_professional: {
+    title: "Solicitação cancelada",
+    body: "O profissional cancelou a solicitação.",
     tag: "peteen-request",
   },
 }
@@ -224,4 +282,36 @@ export const SMOKE_PAYLOAD: PushPayload = buildPushPayload("smoke", PUSH_SMOKE_U
  */
 export function copyPareceInterpolada(texto: string): boolean {
   return /\$\{|\{\{|%s|\[object |undefined|null/.test(texto)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ANTI-SPAM DE care_update — bucket temporal determinístico
+//
+// Decisão de produto V0: no máximo 1 PUSH de care_update por Request por hora.
+// Limita INTERRUPÇÃO, não registro: o CareUpdate é criado normalmente, aparece
+// no Diário e na central in-app. Só o canal push é represado.
+//
+// Implementado como parte do eventKey, e não como uma tabela de rate limit
+// nova: o unique de PushDelivery (eventKey, recipientUserId, channel) JÁ é o
+// mecanismo de "só uma vez". Colocar a janela dentro da chave transforma o
+// anti-spam num caso particular do dedup que já existe e já foi testado —
+// nenhum sistema paralelo, nenhum cron, nenhum estado client-side.
+//
+// UTC de propósito. O bucket não é exibido a ninguém, nunca é comparado com
+// horário civil e não participa de nenhuma regra de agenda — ele só precisa
+// ser ESTÁVEL e monotônico. Usar America/Sao_Paulo aqui só acrescentaria
+// dependência de tz e um degrau extra em mudança de offset, sem nenhum ganho.
+// (Contraste deliberado com scheduledAt, que é horário civil de verdade e por
+// isso vive em lib/date/zoned-datetime.ts.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const CARE_UPDATE_PUSH_WINDOW_MS = 60 * 60 * 1000
+
+/**
+ * Índice inteiro da janela de 1h em que `now` cai, contado a partir da época.
+ * Determinístico e calculado SEMPRE no servidor: nenhuma entrada vem do
+ * browser.
+ */
+export function careUpdatePushBucket(now: Date): number {
+  return Math.floor(now.getTime() / CARE_UPDATE_PUSH_WINDOW_MS)
 }

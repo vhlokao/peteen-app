@@ -14,6 +14,7 @@ import {
   Bell,
   AlertTriangle,
   PawPrint,
+  PlayCircle,
 } from "lucide-react"
 
 import type { NotificationType } from "../domain/types"
@@ -21,6 +22,10 @@ import type { NotificationType } from "../domain/types"
 export const NOTIFICATION_ICONS: Record<NotificationType, LucideIcon> = {
   request_received: Inbox,
   request_accepted: CheckCircle2,
+  // Ícone distinto do aceite/conclusão de propósito: os três aparecem juntos
+  // na mesma lista quando o atendimento avança, e repetir CheckCircle2 nos
+  // três faria a central parecer três vezes o mesmo evento.
+  request_started: PlayCircle,
   request_completed: CheckCircle2,
   request_cancelled: XCircle,
   care_update: PawPrint,

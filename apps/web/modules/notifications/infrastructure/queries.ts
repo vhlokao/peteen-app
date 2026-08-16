@@ -7,13 +7,27 @@ import { subDays } from "date-fns"
 
 import { prisma } from "@/lib/prisma/client"
 import { RELATIONSHIP_LEVEL_THRESHOLDS } from "@/modules/relationship/domain/constants"
-import type { NotificationItem } from "../domain/types"
+import type { NotificationItem, NotificationType } from "../domain/types"
+import {
+  deriveTutorLifecycleEvents,
+  tutorLifecycleCopy,
+  type TutorLifecycleEventKind,
+} from "../domain/inapp-copy"
+import { isCareUpdateVisibleInNotifications } from "../domain/care-update-visibility"
 import {
   adminNotificationHref,
   partnerNotificationHref,
   professionalNotificationHref,
   tutorNotificationHref,
 } from "./links"
+
+/** Ponte entre o kind do domínio e o tipo de item da central (ícone/UI). */
+const LIFECYCLE_NOTIFICATION_TYPE: Record<TutorLifecycleEventKind, NotificationType> = {
+  accepted: "request_accepted",
+  started: "request_started",
+  completed: "request_completed",
+  cancelled_by_professional: "request_cancelled",
+}
 
 const DEFAULT_LIMIT = 40
 const RECENT_WINDOW_DAYS = 30
@@ -63,9 +77,17 @@ export async function getTutorNotifications(
         status: true,
         createdAt: true,
         updatedAt: true,
+        // startedAt/completedAt são gravados na MESMA transação da transição
+        // (ver transitionStatus) — são o horário real do evento, e é isso que
+        // permite a central distinguir aceite, início e conclusão em vez de
+        // reusar updatedAt, que se move a cada mudança posterior.
+        startedAt: true,
         completedAt: true,
         professional: { select: { id: true, displayName: true } },
-        pet: { select: { name: true } },
+        // Sem `pet`: a copy de conclusão passou a ser "O atendimento foi
+        // concluído." (contrato R2B.3), então o nome do pet deixou de ser
+        // necessário — e deixar de buscá-lo é uma linha a menos de PII
+        // trafegando por uma tela de listagem.
         review: { select: { id: true } },
       },
     }),
@@ -84,15 +106,24 @@ export async function getTutorNotifications(
         resolvedAt: true,
       },
     }),
-    // Fonte derivada: atualizações de cuidado recentes em atendimentos ativos.
-    // Privacidade: NÃO selecionamos content nem categoria — a notificação é
-    // genérica (o conteúdo livre pode conter saúde/medicação/incidente/dado
-    // privado do pet ou do tutor). createdAt define a novidade (não occurredAt).
+    // Fonte derivada: atualizações de cuidado recentes.
+    //
+    // SEM filtro de status da request (microcorreção pós-gate R2B.3) — ver
+    // domain/care-update-visibility.ts para o porquê completo (a mera
+    // existência de um CareUpdate já prova legitimidade; usar o estado ATUAL
+    // da request para decidir a visibilidade de um evento histórico foi
+    // exatamente o bug). Ownership (`tutorId`) continua sendo fronteira de
+    // segurança no WHERE — nunca decisão de domínio.
+    //
+    // Privacidade inalterada: NÃO selecionamos content nem categoria — a
+    // notificação é genérica (o conteúdo livre pode conter saúde/medicação/
+    // incidente/dado privado do pet ou do tutor). createdAt define a novidade
+    // (não occurredAt).
     prisma.careUpdate.findMany({
       where: {
         deletedAt: null,
         createdAt: { gte: careSince },
-        request: { tutorId, status: "IN_PROGRESS" },
+        request: { tutorId },
       },
       orderBy: { createdAt: "desc" },
       take: 20,
@@ -100,24 +131,63 @@ export async function getTutorNotifications(
         id: true,
         requestId: true,
         createdAt: true,
+        deletedAt: true,
       },
     }),
   ])
 
+  // Horário real do aceite, em UMA query para todas as requests da página.
+  // O aceite é o único dos três eventos de lifecycle sem coluna própria —
+  // startedAt e completedAt existem, "acceptedAt" não. O AuditLog é a fonte
+  // canônica já usada pela timeline da Request (findRequestAcceptedAt); aqui
+  // ela é lida em lote para não virar N+1.
+  const acceptedAtPorRequest = new Map<string, Date>()
+  if (requests.length > 0) {
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        entity: "ServiceRequest",
+        entityId: { in: requests.map((r) => r.id) },
+        action: "request.accepted",
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      select: { entityId: true, createdAt: true },
+    })
+    // asc + só-o-primeiro: se houver duplicidade histórica, vence o mais antigo
+    // (mesma regra de desempate de findRequestAcceptedAt).
+    for (const log of logs) {
+      if (!acceptedAtPorRequest.has(log.entityId)) {
+        acceptedAtPorRequest.set(log.entityId, log.createdAt)
+      }
+    }
+  }
+
   for (const req of requests) {
     const profName = req.professional.displayName
 
-    if (
-      ["ACCEPTED", "IN_PROGRESS", "COMPLETED"].includes(req.status) &&
-      req.updatedAt >= since &&
-      req.updatedAt.getTime() > req.createdAt.getTime() + 60_000
-    ) {
+    // Quais eventos de fato ocorreram e quando — regra pura, testada sem banco
+    // (ver domain/inapp-copy.ts). Antes do R2B.3 a inferência acontecia aqui
+    // inline e datava tudo por `updatedAt`, o que fazia IN_PROGRESS e COMPLETED
+    // reaproveitarem a copy de aceite.
+    const eventos = deriveTutorLifecycleEvents(
+      {
+        status: req.status,
+        createdAt: req.createdAt,
+        updatedAt: req.updatedAt,
+        acceptedAt: acceptedAtPorRequest.get(req.id) ?? null,
+        startedAt: req.startedAt,
+        completedAt: req.completedAt,
+      },
+      since
+    )
+
+    for (const evento of eventos) {
+      const copy = tutorLifecycleCopy(evento.kind, profName)
       items.push({
-        id: `notif-tutor-accepted-${req.id}`,
-        type: "request_accepted",
-        title: "Solicitação aceita",
-        description: `${profName} aceitou sua solicitação.`,
-        createdAt: req.updatedAt,
+        id: `notif-tutor-${evento.kind}-${req.id}`,
+        type: LIFECYCLE_NOTIFICATION_TYPE[evento.kind],
+        title: copy.title,
+        description: copy.description,
+        createdAt: evento.at,
         href: tutorNotificationHref.request(req.id),
         entityId: req.id,
         entityType: "ServiceRequest",
@@ -125,18 +195,6 @@ export async function getTutorNotifications(
     }
 
     if (req.status === "COMPLETED" && req.completedAt && req.completedAt >= since) {
-      const petPart = req.pet?.name ? ` de ${req.pet.name}` : ""
-      items.push({
-        id: `notif-tutor-completed-${req.id}`,
-        type: "request_completed",
-        title: "Atendimento concluído",
-        description: `O atendimento${petPart} foi concluído.`,
-        createdAt: req.completedAt,
-        href: tutorNotificationHref.request(req.id),
-        entityId: req.id,
-        entityType: "ServiceRequest",
-      })
-
       if (!req.review) {
         items.push({
           id: `notif-tutor-review-pending-${req.id}`,
@@ -184,14 +242,20 @@ export async function getTutorNotifications(
     }
   }
 
+  // Defesa em profundidade: o `WHERE` acima já aplica deletedAt/janela, mas
+  // reafirmar a MESMA regra aqui, via função pura e testada, garante que uma
+  // edição futura do WHERE que reintroduza acoplamento a status (o bug
+  // original) seja pega por este filtro antes de voltar a produção.
   for (const cu of careUpdates) {
+    if (!isCareUpdateVisibleInNotifications(cu, careSince)) continue
     items.push({
       id: `notif-tutor-care-${cu.id}`,
       type: "care_update",
       title: "Nova atualização do atendimento",
       description: "O profissional publicou uma nova atualização sobre o cuidado do seu pet.",
       createdAt: cu.createdAt,
-      href: tutorNotificationHref.request(cu.requestId),
+      // Diário, não a Request: a Request mostra só o resumo desde o R0.
+      href: tutorNotificationHref.diary(cu.requestId),
       entityId: cu.id,
       entityType: "CareUpdate",
     })

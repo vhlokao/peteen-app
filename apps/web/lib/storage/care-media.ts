@@ -46,8 +46,15 @@ import {
   CARE_MEDIA_MAX_OBJECTS_PER_REQUEST,
   type CareMediaMimeType,
 } from "./care-media-path"
+import { CARE_MEDIA_BUCKET_NAME } from "@/modules/care-timeline/domain/care-media-bucket"
 
-export const CARE_MEDIA_BUCKET = "care-media"
+/**
+ * Importado, não declarado: o browser também precisa do nome do bucket para o
+ * upload direto ao destino assinado (R2B.4), e este arquivo é `server-only`.
+ * A fonte única vive em modules/care-timeline/domain/care-media-bucket.ts;
+ * aqui ela é reexportada para não quebrar quem já importa daqui.
+ */
+export const CARE_MEDIA_BUCKET = CARE_MEDIA_BUCKET_NAME
 
 /**
  * Janela de vida da URL de LEITURA (1 h).

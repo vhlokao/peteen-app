@@ -9,7 +9,7 @@
  * na CareTimeline abaixo.
  */
 
-import { useRef, useState, useTransition } from "react"
+import { useEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { AlertCircle, Loader2, Send } from "lucide-react"
@@ -25,6 +25,14 @@ import {
   CARE_UPDATE_CONTENT_MAX,
   type CareUpdateCategory,
 } from "../domain/types"
+import { CarePhotoPicker, type PhotoUiItem } from "./CarePhotoPicker"
+import {
+  PHOTO_COPY,
+  careUpdateDraftKey,
+  evaluatePublishReadiness,
+  parseCareUpdateDraft,
+  serializeCareUpdateDraft,
+} from "../domain/photo-selection"
 
 /** Date → "YYYY-MM-DDTHH:mm" no fuso local (formato do input datetime-local). */
 function toLocalInputValue(d: Date): string {
@@ -39,6 +47,9 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
   const [content, setContent] = useState("")
   const [occurredAtLocal, setOccurredAtLocal] = useState(() => toLocalInputValue(new Date()))
   const [formError, setFormError] = useState<string | null>(null)
+  const [fotos, setFotos] = useState<PhotoUiItem[]>([])
+  /** Aviso de rascunho recuperado — some assim que a pessoa começa a editar. */
+  const [avisoRascunho, setAvisoRascunho] = useState<string | null>(null)
   // Guard síncrono contra duplo-submit (duplo clique / Enter+clique): `isPending`
   // só chega ao `disabled` após um re-render, deixando uma janela de corrida.
   //
@@ -66,6 +77,50 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
     return idempotencyKeyRef.current
   }
 
+  // ── Rascunho: recuperar ao montar ─────────────────────────────────────────
+  // Só texto e categoria. As fotos são File em memória e morrem com a página
+  // (ver domain/photo-selection.ts) — por isso, quando há rascunho, avisamos
+  // explicitamente que elas precisam ser reselecionadas em vez de deixar a
+  // pessoa achar que publicou com as fotos de antes.
+  useEffect(() => {
+    try {
+      const draft = parseCareUpdateDraft(
+        window.sessionStorage.getItem(careUpdateDraftKey(requestId))
+      )
+      if (!draft) return
+      setContent(draft.content)
+      if ((CARE_UPDATE_CATEGORIES as readonly string[]).includes(draft.category)) {
+        setCategory(draft.category as CareUpdateCategory)
+      }
+      setAvisoRascunho(PHOTO_COPY.rascunhoRecuperado)
+    } catch {
+      // sessionStorage indisponível (modo privado, cota, iframe bloqueado):
+      // o rascunho é conveniência, nunca requisito para publicar.
+    }
+  }, [requestId])
+
+  // ── Rascunho: salvar enquanto escreve ─────────────────────────────────────
+  useEffect(() => {
+    try {
+      const chave = careUpdateDraftKey(requestId)
+      if (content.trim().length === 0) {
+        window.sessionStorage.removeItem(chave)
+        return
+      }
+      window.sessionStorage.setItem(chave, serializeCareUpdateDraft({ content, category }))
+    } catch {
+      // idem: falha de storage não pode impedir a digitação.
+    }
+  }, [content, category, requestId])
+
+  function limparRascunho() {
+    try {
+      window.sessionStorage.removeItem(careUpdateDraftKey(requestId))
+    } catch {
+      /* nada a fazer */
+    }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
@@ -74,6 +129,24 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
     const trimmed = content.trim()
     if (trimmed.length < CARE_UPDATE_CONTENT_MIN) {
       setFormError(`Escreva pelo menos ${CARE_UPDATE_CONTENT_MIN} caracteres.`)
+      return
+    }
+
+    // ── Erro parcial (item 5 da missão) ─────────────────────────────────────
+    // NUNCA publicar só as fotos que deram certo como se estivesse tudo bem: a
+    // pessoa selecionou 3 porque queria 3. Ela decide — tentar de novo ou
+    // remover — e só então publica conscientemente.
+    const prontidao = evaluatePublishReadiness(fotos)
+    if (prontidao.kind === "bloqueado_por_erro") {
+      setFormError(
+        prontidao.comErro === 1
+          ? "Uma foto não foi enviada. Tente novamente ou remova a foto para publicar."
+          : `${prontidao.comErro} fotos não foram enviadas. Tente novamente ou remova as fotos para publicar.`
+      )
+      return
+    }
+    if (prontidao.kind === "aguardando_upload") {
+      setFormError("Aguarde o envio das fotos terminar.")
       return
     }
 
@@ -89,13 +162,20 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
           category,
           content: trimmed,
           occurredAt: occurredAtIso,
+          mediaPaths: prontidao.paths,
           idempotencyKey: obterChaveDeIntencao(),
         })
 
         if (!result.success) {
           // Chave preservada de propósito: a próxima tentativa é a mesma
           // intenção, e o servidor precisa poder reconhecê-la.
-          setFormError(result.error)
+          //
+          // Se as fotos JÁ subiram, a pessoa precisa saber que o problema foi a
+          // publicação — não o envio — para não reenviar tudo achando que
+          // perdeu os arquivos.
+          setFormError(
+            prontidao.paths.length > 0 ? PHOTO_COPY.publicacaoFalhou : result.error
+          )
           return
         }
 
@@ -104,6 +184,12 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
         idempotencyKeyRef.current = null
         setContent("")
         setOccurredAtLocal(toLocalInputValue(new Date()))
+        // As objectURLs morrem junto com os itens; o picker revoga no unmount
+        // de cada preview removido e no seu próprio unmount.
+        for (const f of fotos) URL.revokeObjectURL(f.previewUrl)
+        setFotos([])
+        setAvisoRascunho(null)
+        limparRascunho()
         router.refresh()
       } finally {
         submitLockRef.current = false
@@ -138,6 +224,7 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
           onChange={(e) => {
             setContent(e.target.value)
             if (formError) setFormError(null)
+            if (avisoRascunho) setAvisoRascunho(null)
           }}
           rows={3}
           maxLength={CARE_UPDATE_CONTENT_MAX}
@@ -161,6 +248,22 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
         />
       </div>
 
+      <CarePhotoPicker
+        requestId={requestId}
+        itens={fotos}
+        onChange={setFotos}
+        disabled={isPending}
+      />
+
+      {avisoRascunho ? (
+        <p
+          role="status"
+          className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+        >
+          {avisoRascunho}
+        </p>
+      ) : null}
+
       {formError ? (
         <div
           role="alert"
@@ -171,7 +274,10 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
         </div>
       ) : null}
 
-      <Button type="submit" className="w-full gap-2" disabled={isPending}>
+      {/* min-h-11 = 44px: alvo de toque mínimo. O tamanho padrão do Button dá
+          32px, o que o QA em 390px flagrou como abaixo do mínimo — e esta é a
+          ação principal da tela, usada com o polegar durante um atendimento. */}
+      <Button type="submit" className="min-h-11 w-full gap-2" disabled={isPending}>
         {isPending ? (
           <>
             <Loader2 className="size-4 animate-spin" />

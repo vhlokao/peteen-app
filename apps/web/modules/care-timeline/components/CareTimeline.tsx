@@ -10,6 +10,7 @@
 
 import { CARE_CATEGORY_LABELS, type CareUpdate } from "../domain/types"
 import { CATEGORY_ICON, formatCareUpdateTime } from "./care-update-visuals"
+import { CareMediaGallery } from "./CareMediaGallery"
 
 export function CareTimeline({ updates }: { updates: CareUpdate[] }) {
   if (updates.length === 0) {
@@ -45,6 +46,10 @@ export function CareTimeline({ updates }: { updates: CareUpdate[] }) {
               <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">
                 {update.content}
               </p>
+              {/* Fotos DEPOIS do relato: o texto é o núcleo da feature (é ele
+                  que vale em disputa) e a imagem complementa. `media` já vem
+                  do DTO seguro — sem storagePath, só signedUrl. */}
+              <CareMediaGallery media={update.media} />
             </div>
           </li>
         )

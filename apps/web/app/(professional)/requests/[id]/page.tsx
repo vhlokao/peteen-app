@@ -163,7 +163,21 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Diário de cuidado
             </h2>
-            <CareTimelineSummary updates={careUpdates} diaryHref={`/requests/${id}/diario`} />
+            {/* Rótulo contextual (R2B.4): durante o atendimento a ação
+                recorrente do profissional é REGISTRAR, não ler — "Abrir diário"
+                descreve leitura e escondia a tarefa. Concluído, volta a ser
+                consulta.
+
+                Deliberadamente NÃO é um segundo botão: o card de próximo passo
+                não tem CTA por decisão de R2B.1, e duplicar o caminho para o
+                diário criaria dois botões para o mesmo destino. A hierarquia
+                fica: "Atualizar diário" (recorrente, aqui) vs. "Concluir
+                atendimento" (terminal, no card de Ações acima). */}
+            <CareTimelineSummary
+              updates={careUpdates}
+              diaryHref={`/requests/${id}/diario`}
+              ctaLabel={request.status === "IN_PROGRESS" ? "Atualizar diário" : "Abrir diário"}
+            />
           </section>
         )}
 

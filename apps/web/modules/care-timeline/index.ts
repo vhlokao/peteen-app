@@ -2,8 +2,9 @@
  * Módulo: care-timeline — Care Timeline V0
  *
  * O profissional publica atualizações de cuidado durante um atendimento
- * IN_PROGRESS; o tutor visualiza. Apenas texto, sem mídia, sem impacto em
- * Trust/Ranking. Ver plano arquitetural aprovado (Fase 4).
+ * IN_PROGRESS; o tutor visualiza. Texto obrigatório, com até 3 fotos por
+ * atualização (R2B.4). Sem impacto em Trust/Ranking. Ver plano arquitetural
+ * aprovado (Fase 4).
  */
 
 export {

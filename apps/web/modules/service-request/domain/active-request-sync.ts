@@ -138,6 +138,16 @@ export type RequestSyncSnapshotInput = {
   dispute: { id: string; status: string; resolvedAt: Date | null } | null
   review: { id: string; updatedAt: Date } | null
   latestCareUpdate: { id: string; editedAt: Date | null } | null
+  /**
+   * Quantas atualizações VISÍVEIS o Diário tem agora.
+   *
+   * Existe por causa do soft delete: excluir uma atualização que não é a mais
+   * recente não muda `latestCareUpdate` nem `requestUpdatedAt`, e o Diário
+   * aberto continuaria mostrando uma entrada que já não existe. A contagem é o
+   * campo mais barato que detecta essa remoção — e, de quebra, cobre qualquer
+   * inserção que por algum motivo não altere a última.
+   */
+  careUpdateCount: number
 }
 
 /**
@@ -147,7 +157,7 @@ export type RequestSyncSnapshotInput = {
  * novo CareUpdate) produz uma string diferente. Comparação é `!==` simples.
  */
 export function buildRequestSyncToken(snapshot: RequestSyncSnapshotInput): string {
-  const { status, requestUpdatedAt, dispute, review, latestCareUpdate } = snapshot
+  const { status, requestUpdatedAt, dispute, review, latestCareUpdate, careUpdateCount } = snapshot
   const disputePart = dispute
     ? `${dispute.id}:${dispute.status}:${dispute.resolvedAt?.toISOString() ?? "-"}`
     : "-"
@@ -155,7 +165,14 @@ export function buildRequestSyncToken(snapshot: RequestSyncSnapshotInput): strin
   const carePart = latestCareUpdate
     ? `${latestCareUpdate.id}:${latestCareUpdate.editedAt?.toISOString() ?? "-"}`
     : "-"
-  return [status, requestUpdatedAt.toISOString(), disputePart, reviewPart, carePart].join("|")
+  return [
+    status,
+    requestUpdatedAt.toISOString(),
+    disputePart,
+    reviewPart,
+    carePart,
+    String(careUpdateCount),
+  ].join("|")
 }
 
 /**

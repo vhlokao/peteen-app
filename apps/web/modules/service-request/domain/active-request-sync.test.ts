@@ -181,13 +181,84 @@ function snapshot(overrides: Partial<RequestSyncSnapshotInput> = {}): RequestSyn
     dispute: null,
     review: null,
     latestCareUpdate: null,
+    careUpdateCount: 0,
     ...overrides,
   }
 }
 
+describe("probe do Diário — detecta o que a timeline mostra", () => {
+  const umaEntrada = { id: "cu_1", editedAt: null }
+
+  it("nova CareUpdate publicada muda o token", () => {
+    // O caso central: o tutor está com /diario aberto e o profissional publica.
+    assert.notEqual(
+      buildRequestSyncToken(snapshot({ latestCareUpdate: null, careUpdateCount: 0 })),
+      buildRequestSyncToken(snapshot({ latestCareUpdate: umaEntrada, careUpdateCount: 1 }))
+    )
+  })
+
+  it("edição de uma CareUpdate existente muda o token", () => {
+    assert.notEqual(
+      buildRequestSyncToken(snapshot({ latestCareUpdate: umaEntrada, careUpdateCount: 1 })),
+      buildRequestSyncToken(snapshot({
+        latestCareUpdate: { id: "cu_1", editedAt: new Date("2026-08-17T12:00:00.000Z") },
+        careUpdateCount: 1,
+      }))
+    )
+  })
+
+  it("SOFT DELETE de uma entrada que não é a mais recente muda o token", () => {
+    // Sem `careUpdateCount` este caso passava despercebido: `latestCareUpdate`
+    // continua sendo a mesma e `requestUpdatedAt` não muda, então o Diário
+    // aberto seguiria exibindo uma entrada já removida.
+    const antes = snapshot({ latestCareUpdate: umaEntrada, careUpdateCount: 3 })
+    const depois = snapshot({ latestCareUpdate: umaEntrada, careUpdateCount: 2 })
+    assert.notEqual(buildRequestSyncToken(antes), buildRequestSyncToken(depois))
+  })
+
+  it("token IGUAL → nenhum refresh (item 16: token unchanged → 0 refresh)", () => {
+    const t = buildRequestSyncToken(snapshot({ latestCareUpdate: umaEntrada, careUpdateCount: 1 }))
+    assert.equal(shouldRefreshAfterProbe(t, t), false)
+  })
+
+  it("token DIFERENTE → exatamente um refresh (item 16: token changed → 1 refresh)", () => {
+    const antes = buildRequestSyncToken(snapshot({ careUpdateCount: 1, latestCareUpdate: umaEntrada }))
+    const depois = buildRequestSyncToken(snapshot({
+      careUpdateCount: 2,
+      latestCareUpdate: { id: "cu_2", editedAt: null },
+    }))
+    assert.equal(shouldRefreshAfterProbe(antes, depois), true)
+    // Depois de sincronizar, o token novo vira referência: o MESMO estado não
+    // pode disparar um segundo refresh.
+    assert.equal(shouldRefreshAfterProbe(depois, depois), false)
+  })
+
+  it("formulário do profissional com rascunho impede qualquer probe", () => {
+    // A proteção de draft acontece ANTES do probe — `hasInteraction` é o que
+    // `formularioTemTrabalhoEmAndamento` alimenta no CareUpdateForm.
+    const comRascunho = {
+      status: "IN_PROGRESS" as const,
+      documentVisible: true,
+      hasInteraction: true,
+      isRefreshing: false,
+      lastAttemptAt: null,
+    }
+    assert.equal(shouldSync("interval", comRascunho, 1_000), false)
+    assert.equal(shouldSync("focus", comRascunho, 1_000), false)
+    assert.equal(shouldSync("visible", comRascunho, 1_000), false)
+    // Sem rascunho, o mesmo estado sincroniza.
+    assert.equal(shouldSync("interval", { ...comRascunho, hasInteraction: false }, 1_000), true)
+  })
+})
+
 describe("buildRequestSyncToken — determinístico, sem PII", () => {
   it("dois snapshots idênticos produzem o mesmo token", () => {
     assert.equal(buildRequestSyncToken(snapshot()), buildRequestSyncToken(snapshot()))
+  })
+
+  it("a contagem entra no token sem expor conteúdo", () => {
+    const t = buildRequestSyncToken(snapshot({ careUpdateCount: 7 }))
+    assert.ok(t.endsWith("|7"))
   })
 
   it("status diferente produz token diferente", () => {
@@ -231,9 +302,26 @@ describe("buildRequestSyncToken — determinístico, sem PII", () => {
       latestCareUpdate: { id: "c1", editedAt: new Date() },
     })
     const chaves = Object.keys(input)
+    // `careUpdateCount` é um inteiro — quantas entradas visíveis existem.
+    // Não revela autor, texto, foto nem horário; entrou para detectar soft
+    // delete, que nenhum dos outros campos captura.
     assert.deepEqual(chaves.sort(), [
-      "dispute", "latestCareUpdate", "requestUpdatedAt", "review", "status",
+      "careUpdateCount", "dispute", "latestCareUpdate", "requestUpdatedAt", "review", "status",
     ].sort())
+  })
+
+  it("o token é só ids opacos, enums, datas e um inteiro — nada legível", () => {
+    // Trava de contrato: se alguém adicionar `content` ou `petName` ao
+    // snapshot, o token passaria a trafegar isso a cada 20 segundos.
+    const token = buildRequestSyncToken(
+      snapshot({
+        dispute: { id: "d1", status: "OPEN", resolvedAt: null },
+        review: { id: "r1", updatedAt: new Date("2026-08-17T12:00:00.000Z") },
+        latestCareUpdate: { id: "c1", editedAt: null },
+        careUpdateCount: 2,
+      })
+    )
+    assert.ok(!/[áéíóúâêôãõç\s]/i.test(token.replace(/[TZ]/g, "")))
   })
 })
 

@@ -26,6 +26,14 @@ import {
   type CareUpdateCategory,
 } from "../domain/types"
 import { CarePhotoPicker, type PhotoUiItem } from "./CarePhotoPicker"
+import { useSuspendAutoRefreshWhileEditing } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import {
+  OCCURRED_AT_COPY,
+  formularioTemTrabalhoEmAndamento,
+  resolverOccurredAtParaEnvio,
+  valorInicialDoControleManual,
+  type OccurredAtMode,
+} from "../domain/care-update-timing"
 import {
   PHOTO_COPY,
   careUpdateDraftKey,
@@ -34,18 +42,15 @@ import {
   serializeCareUpdateDraft,
 } from "../domain/photo-selection"
 
-/** Date → "YYYY-MM-DDTHH:mm" no fuso local (formato do input datetime-local). */
-function toLocalInputValue(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
 export function CareUpdateForm({ requestId }: { requestId: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [category, setCategory] = useState<CareUpdateCategory>("CHECK_IN")
   const [content, setContent] = useState("")
-  const [occurredAtLocal, setOccurredAtLocal] = useState(() => toLocalInputValue(new Date()))
+  // Padrão do produto: AGORA. O controle de data/hora só existe se a pessoa
+  // disser que o evento aconteceu em outro momento (ver care-update-timing.ts).
+  const [modoOccurredAt, setModoOccurredAt] = useState<OccurredAtMode>("agora")
+  const [occurredAtLocal, setOccurredAtLocal] = useState("")
   const [formError, setFormError] = useState<string | null>(null)
   const [fotos, setFotos] = useState<PhotoUiItem[]>([])
   /** Aviso de rascunho recuperado — some assim que a pessoa começa a editar. */
@@ -70,6 +75,22 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
    *     intenção.
    */
   const idempotencyKeyRef = useRef<string | null>(null)
+
+  // ── Proteção do trabalho em andamento (itens 8 e 10 da missão) ────────────
+  // Enquanto houver texto, foto selecionada, horário manual ativado ou uma
+  // publicação em voo, o auto-sync do Diário fica suspenso. Um router.refresh()
+  // remonta este formulário e levaria junto o relato que a pessoa está
+  // escrevendo durante um atendimento real. Fora de uma árvore com Provider o
+  // hook é no-op — nunca lança.
+  useSuspendAutoRefreshWhileEditing(
+    formularioTemTrabalhoEmAndamento({
+      conteudo: content,
+      fotosSelecionadas: fotos.length,
+      modo: modoOccurredAt,
+      publicando: isPending,
+    })
+  )
+
   function obterChaveDeIntencao(): string {
     if (!idempotencyKeyRef.current) {
       idempotencyKeyRef.current = crypto.randomUUID()
@@ -150,8 +171,19 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
       return
     }
 
-    // datetime-local é horário local — converte para o instante UTC correto.
-    const occurredAtIso = new Date(occurredAtLocal).toISOString()
+    // "Agora" é resolvido AQUI, no envio — não na abertura do formulário. Uma
+    // publicação escrita ao longo de dois minutos deve registrar o instante em
+    // que foi publicada, não o instante em que a tela abriu.
+    const quando = resolverOccurredAtParaEnvio({
+      modo: modoOccurredAt,
+      valorLocal: occurredAtLocal,
+      agora: new Date(),
+    })
+    if (!quando.ok) {
+      setFormError(quando.mensagem)
+      return
+    }
+    const occurredAtIso = quando.iso
     setFormError(null)
     submitLockRef.current = true
 
@@ -183,7 +215,9 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
         // Publicou: a próxima atualização é outra intenção.
         idempotencyKeyRef.current = null
         setContent("")
-        setOccurredAtLocal(toLocalInputValue(new Date()))
+        // Volta ao padrão: a próxima publicação também é, quase sempre, "agora".
+        setModoOccurredAt("agora")
+        setOccurredAtLocal("")
         // As objectURLs morrem junto com os itens; o picker revoga no unmount
         // de cada preview removido e no seu próprio unmount.
         for (const f of fotos) URL.revokeObjectURL(f.previewUrl)
@@ -236,17 +270,53 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
         </span>
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="care-occurred-at">Quando</Label>
-        <input
-          id="care-occurred-at"
-          type="datetime-local"
-          value={occurredAtLocal}
-          onChange={(e) => setOccurredAtLocal(e.target.value)}
+      {/* ── Quando ───────────────────────────────────────────────────────────
+          O caminho padrão não tem controle nenhum: publicar registra o
+          instante do envio. O ajuste manual existe, mas como escolha
+          secundária e discreta — quem precisa dele é a minoria que registra
+          um evento atrasado. */}
+      {modoOccurredAt === "agora" ? (
+        <button
+          type="button"
+          onClick={() => {
+            setModoOccurredAt("manual")
+            setOccurredAtLocal(valorInicialDoControleManual(new Date()))
+          }}
           disabled={isPending}
-          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-        />
-      </div>
+          className="min-h-11 self-start text-left text-xs font-medium text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground disabled:opacity-50"
+        >
+          {OCCURRED_AT_COPY.alternar}
+        </button>
+      ) : (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2">
+            <Label htmlFor="care-occurred-at">{OCCURRED_AT_COPY.rotuloManual}</Label>
+            <button
+              type="button"
+              onClick={() => {
+                setModoOccurredAt("agora")
+                setOccurredAtLocal("")
+                if (formError) setFormError(null)
+              }}
+              disabled={isPending}
+              className="min-h-11 text-xs font-medium text-muted-foreground underline underline-offset-4 transition-colors hover:text-foreground disabled:opacity-50"
+            >
+              {OCCURRED_AT_COPY.voltarParaAgora}
+            </button>
+          </div>
+          <input
+            id="care-occurred-at"
+            type="datetime-local"
+            value={occurredAtLocal}
+            onChange={(e) => {
+              setOccurredAtLocal(e.target.value)
+              if (formError) setFormError(null)
+            }}
+            disabled={isPending}
+            className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          />
+        </div>
+      )}
 
       <CarePhotoPicker
         requestId={requestId}

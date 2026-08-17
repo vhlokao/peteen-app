@@ -17,7 +17,7 @@ import type { RequestStatus } from "../domain/types"
 export async function getRequestSyncSnapshot(
   requestId: string
 ): Promise<RequestSyncSnapshotInput | null> {
-  const [request, dispute, review, latestCareUpdate] = await Promise.all([
+  const [request, dispute, review, latestCareUpdate, careUpdateCount] = await Promise.all([
     prisma.serviceRequest.findUnique({
       where: { id: requestId },
       select: { status: true, updatedAt: true },
@@ -36,6 +36,9 @@ export async function getRequestSyncSnapshot(
       orderBy: { createdAt: "desc" },
       select: { id: true, editedAt: true },
     }),
+    // Só as visíveis: um soft delete precisa MUDAR esta contagem, senão o
+    // Diário aberto continuaria exibindo uma entrada já removida.
+    prisma.careUpdate.count({ where: { requestId, deletedAt: null } }),
   ])
 
   if (!request) return null
@@ -46,5 +49,6 @@ export async function getRequestSyncSnapshot(
     dispute,
     review,
     latestCareUpdate,
+    careUpdateCount,
   }
 }

@@ -67,6 +67,38 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
   const itensRef = useRef(itens)
   itensRef.current = itens
 
+  /**
+   * ÚNICO caminho de mutação da lista — e a ref é atualizada ANTES do
+   * `onChange`, no mesmo tick.
+   *
+   * ─────────────────────────────────────────────────────────────────────────
+   * O BUG QUE ISTO CORRIGE (incidente físico: foto nunca publicava)
+   *
+   * `itensRef.current` só era reatribuído durante o RENDER. Mas `handleFiles`
+   * chamava `onChange([...itens, ...novos])` e, no MESMO tick, iniciava
+   * `enviarFoto`, cujo primeiro `marcar()` roda de forma síncrona (antes do
+   * primeiro await) e montava a nova lista a partir da ref AINDA ANTIGA — sem
+   * as fotos recém-selecionadas. Como React agrupa os dois `setState` do mesmo
+   * evento e o último vence, a seleção era descartada imediatamente.
+   *
+   * O upload continuava (o `File` vive no closure, não no estado), então o
+   * objeto chegava ao bucket — mas o `path` era gravado numa lista que já não
+   * continha o item, `evaluatePublishReadiness` devolvia `paths: []`, e a
+   * atualização publicava SEM mídia. Isso explica, exatamente, o banco ter
+   * objetos órfãos no Storage e ZERO linhas em `CareMedia` desde sempre.
+   *
+   * Manter a ref sincronizada aqui — em vez de trocar `onChange` por updater
+   * funcional — preserva o contrato do componente com o pai e mantém a
+   * correção contida num só ponto.
+   */
+  const aplicar = useCallback(
+    (proximos: PhotoUiItem[]) => {
+      itensRef.current = proximos
+      onChange(proximos)
+    },
+    [onChange]
+  )
+
   // Revoga objectURLs ao desmontar. Sem isto, cada seleção vaza um blob na
   // memória da aba até o reload — perceptível num atendimento longo com várias
   // publicações seguidas.
@@ -85,9 +117,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
   const enviarFoto = useCallback(
     async (itemId: string, file: File) => {
       const marcar = (patch: Partial<PhotoUiItem>) => {
-        onChange(
-          itensRef.current.map((i) => (i.id === itemId ? { ...i, ...patch } : i))
-        )
+        aplicar(itensRef.current.map((i) => (i.id === itemId ? { ...i, ...patch } : i)))
       }
 
       marcar({ status: "enviando", errorMessage: null })
@@ -118,7 +148,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
 
       marcar({ status: "enviada", path: upload.path, errorMessage: null })
     },
-    [onChange, requestId]
+    [aplicar, requestId]
   )
 
   function handleFiles(files: FileList | null) {
@@ -157,7 +187,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
 
     if (novos.length === 0) return
 
-    onChange([...itens, ...novos])
+    aplicar([...itens, ...novos])
     // Upload começa imediatamente: quando a pessoa termina de escrever, as
     // fotos já estão no bucket e publicar é instantâneo.
     for (const novo of novos) void enviarFoto(novo.id, novo.file)
@@ -165,7 +195,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
 
   function removerFoto(item: PhotoUiItem) {
     URL.revokeObjectURL(item.previewUrl)
-    onChange(itens.filter((i) => i.id !== item.id))
+    aplicar(itens.filter((i) => i.id !== item.id))
     setErroSelecao(null)
     // Remover uma foto que falhou pode reabrir vaga — a mensagem de limite
     // deixaria de ser verdade.

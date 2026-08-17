@@ -2,6 +2,8 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Prisma, PrismaClient } from "@prisma/client";
 
+import { registrarParserDeTimestampUtc } from "./pg-timestamp-utc";
+
 /**
  * Singleton PrismaClient — Prisma 7 com driver adapter pg.
  *
@@ -15,6 +17,16 @@ import { Prisma, PrismaClient } from "@prisma/client";
  * NUNCA instanciar PrismaClient fora deste arquivo.
  * Importar: import { prisma } from "@/lib/prisma/client"
  */
+
+/**
+ * PONTO ÚNICO de configuração do driver, e precisa continuar sendo o único.
+ *
+ * Roda no topo do módulo — antes de `createPrismaClient()`, antes de qualquer
+ * `Pool` e portanto antes de qualquer query. Sem isto, `timestamp without time
+ * zone` é lido no fuso do processo e todo instante do banco chega deslocado
+ * (ver o histórico do incidente em ./pg-timestamp-utc.ts).
+ */
+registrarParserDeTimestampUtc();
 
 function createPrismaClient(): PrismaClient {
   const connectionString = process.env.DATABASE_URL;

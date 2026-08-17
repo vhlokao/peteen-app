@@ -36,11 +36,11 @@ import { BellRing, BellOff, Check, Loader2, AlertCircle, Clock } from "lucide-re
 import { Button } from "@/components/ui/button"
 import {
   assinar,
-  iosForaDaTelaDeInicio,
+  avaliarAmbientePush,
   obterEndpointAtual,
-  pushSuportado,
   registrarServiceWorker,
   renegociarSubscription,
+  type EstadoDoAmbientePush,
 } from "@/lib/push/client"
 import {
   subscribeToPushAction,
@@ -54,29 +54,19 @@ import {
  * indistinguíveis (ou nenhuma mudança visível).
  */
 type Estado =
+  /**
+   * Estados OBSERVADOS do ambiente (sem-suporte, iOS, não-configurado,
+   * desativado, permitido-sem-subscription, ativo, negado) vêm de
+   * `avaliarAmbientePush` — compartilhado com o convite contextual da Request
+   * (R2B.5), para que as duas telas nunca discordem sobre "push está ativo?".
+   */
+  | EstadoDoAmbientePush
   /** Inspecionando o ambiente no mount. Nunca pede permissão. */
   | "carregando"
-  /** O BROWSER não tem as APIs (ou contexto inseguro). Nada a fazer. */
-  | "sem-suporte"
-  /** iOS/iPadOS compatível (16.4+), mas rodando fora da Tela de Início — a API
-   *  só é exposta em modo standalone. Distinto de "sem-suporte": aqui existe
-   *  uma ação real que o usuário pode tomar. */
-  | "ios-fora-da-tela-inicio"
-  /** O AMBIENTE não tem NEXT_PUBLIC_VAPID_PUBLIC_KEY. Problema de config. */
-  | "nao-configurado"
-  /** permission === "default": nunca perguntamos. CTA principal. */
-  | "desativado"
   /** Prompt nativo aberto, aguardando decisão do usuário. */
   | "solicitando-permissao"
   /** Permissão concedida; criando SW + subscription + registro no servidor. */
   | "criando-subscription"
-  /** permission === "granted" mas SEM subscription. Falta um passo — e o
-   *  usuário precisa saber disso, não ver o mesmo botão inicial. */
-  | "permitido-sem-subscription"
-  /** Tudo pronto e confirmado pelo servidor. */
-  | "ativo"
-  /** permission === "denied". NUNCA chamar o backend neste estado. */
-  | "negado"
   /** Falha recuperável — oferece tentar de novo. */
   | "erro"
   /** Limite atingido. Mensagem própria, sem spam de novas tentativas. */
@@ -101,22 +91,10 @@ export function PushOptIn({ vapidPublicKey }: Props) {
   const emAndamentoRef = useRef(false)
 
   /** Avalia o estado real do ambiente. Só observa — nunca pede permissão. */
-  const avaliar = useCallback(async (): Promise<Estado> => {
-    if (!pushSuportado()) {
-      return iosForaDaTelaDeInicio() ? "ios-fora-da-tela-inicio" : "sem-suporte"
-    }
-    if (!vapidPublicKey) return "nao-configurado"
-
-    const permissao = Notification.permission
-    if (permissao === "denied") return "negado"
-
-    const endpoint = await obterEndpointAtual()
-    if (endpoint) return "ativo"
-
-    // Permissão já concedida, mas sem subscription: falta um passo explícito.
-    if (permissao === "granted") return "permitido-sem-subscription"
-    return "desativado"
-  }, [vapidPublicKey])
+  const avaliar = useCallback(
+    (): Promise<EstadoDoAmbientePush> => avaliarAmbientePush(vapidPublicKey),
+    [vapidPublicKey]
+  )
 
   // Avaliação inicial.
   useEffect(() => {

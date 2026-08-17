@@ -24,6 +24,7 @@ import {
 import { TutorRequestSummary } from "@/modules/tutor-portal/components/TutorRequestSummary"
 import { findDisputeByRequestId } from "@/modules/disputes/infrastructure/queries"
 import { DisputeReportSection } from "@/modules/disputes/components/dispute-form"
+import { ContextualPushSection } from "@/modules/notifications/components/contextual-push-section"
 import { DisputeStatusCard } from "@/modules/disputes/components/dispute-status-card"
 import { CareTimelineSummary, getCareTimelineAction } from "@/modules/care-timeline"
 import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
@@ -305,6 +306,26 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
             />
           </section>
         ) : null}
+
+        {/* Convite contextual de notificações (R2B.5) — logo DEPOIS do bloco
+            operacional (próximo passo → avaliação → Diário) e ANTES do
+            material de consulta (etapas, contato, resumo).
+
+            O gate independente mediu a versão anterior, que ficava no rodapé:
+            o card prometia "novidades no Diário" a 1,55 viewports ABAIXO do
+            Diário que referenciava, com Etapas/Contato/Resumo no meio — uma
+            ativação contextual virava conteúdo de fundo de página. Aqui ele
+            fica na zona em que o benefício é evidente, mas continua depois de
+            toda ação que o tutor veio executar. Nunca acima delas.
+
+            Sem condicional: o componente se cala sozinho quando push já está
+            ativo, quando o navegador não suporta ou quando o status não tem
+            benefício real a prometer. */}
+        <ContextualPushSection
+          persona="tutor"
+          requestId={requestId}
+          status={request.status}
+        />
 
         {/*
           "Acompanhamento" virou "Etapas do atendimento".

@@ -13,6 +13,7 @@ import { RequestTimeline } from "@/components/requests/RequestTimeline"
 import { RequestActions } from "@/components/requests/RequestActions"
 import { findDisputeForProfessionalRequest } from "@/modules/disputes/infrastructure/queries"
 import { DisputeBanner } from "@/modules/disputes/components/dispute-banner"
+import { ContextualPushSection } from "@/modules/notifications/components/contextual-push-section"
 import { ProfessionalRequestStatusPill } from "@/modules/professional-crm/components/professional-request-status-pill"
 import { ProfessionalRequestNextStep } from "@/modules/professional-crm/components/professional-request-next-step"
 import { ProfessionalRequestSummary } from "@/modules/professional-crm/components/professional-request-summary"
@@ -180,6 +181,23 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
             />
           </section>
         )}
+
+        {/* Convite contextual de notificações (R2B.5) — mesmo princípio da
+            página do tutor: depois do bloco operacional (próximo passo →
+            Ações → Diário) e antes do material de consulta (etapas, resumo).
+
+            Fica DEPOIS de "Ações" de propósito: nunca entre um botão crítico
+            (aceitar/iniciar/concluir) e a confirmação que ele exige. E depois
+            do Diário porque, durante o atendimento, é ali que o profissional
+            trabalha — a promessa de aviso faz sentido ao lado do trabalho,
+            não no rodapé. */}
+        {isProfessionalView ? (
+          <ContextualPushSection
+            persona="professional"
+            requestId={id}
+            status={request.status}
+          />
+        ) : null}
 
         {/* "Acompanhamento" → "Etapas do atendimento": este bloco mostra marcos
             do contrato, não o conteúdo do cuidado. Ver a nota equivalente na

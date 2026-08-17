@@ -12,6 +12,59 @@
 
 export const SW_PATH = "/sw.js"
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Estado OBSERVADO do ambiente
+//
+// Extraído de PushOptIn em R2B.5 porque passou a ter dois leitores: o opt-in da
+// Conta e o convite contextual da Request. Duplicar a avaliação faria as duas
+// telas discordarem sobre "push está ativo?" no dia em que uma das condições
+// mudasse — e é exatamente essa pergunta que decide se o convite aparece.
+//
+// Só OBSERVA. Nada aqui pede permissão, cria subscription ou toca o servidor.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type EstadoDoAmbientePush =
+  /** O BROWSER não tem as APIs (ou contexto inseguro). Nada a oferecer. */
+  | "sem-suporte"
+  /** iOS/iPadOS compatível, mas fora da Tela de Início — a API só existe em
+   *  standalone. Distinto de "sem-suporte": há uma ação real a sugerir. */
+  | "ios-fora-da-tela-inicio"
+  /** Ambiente sem NEXT_PUBLIC_VAPID_PUBLIC_KEY. Problema de configuração. */
+  | "nao-configurado"
+  /** permission === "denied". NUNCA pedir de novo. */
+  | "negado"
+  /** Subscription viva: push realmente funcionando neste dispositivo. */
+  | "ativo"
+  /** permission === "granted" mas SEM subscription — falta um passo explícito. */
+  | "permitido-sem-subscription"
+  /** permission === "default": nunca perguntamos. É onde o CTA faz sentido. */
+  | "desativado"
+
+/**
+ * Fotografia do ambiente de push neste dispositivo, agora.
+ *
+ * `permission === "granted"` sozinho NÃO significa push ativo — por isso o
+ * endpoint é consultado antes de concluir "ativo". Tratar a permissão como
+ * suficiente foi a causa do estado que "voltava ao início" depois de o usuário
+ * liberar a permissão manualmente.
+ */
+export async function avaliarAmbientePush(
+  vapidPublicKey: string
+): Promise<EstadoDoAmbientePush> {
+  if (!pushSuportado()) {
+    return iosForaDaTelaDeInicio() ? "ios-fora-da-tela-inicio" : "sem-suporte"
+  }
+  if (!vapidPublicKey) return "nao-configurado"
+
+  if (Notification.permission === "denied") return "negado"
+
+  const endpoint = await obterEndpointAtual()
+  if (endpoint) return "ativo"
+
+  if (Notification.permission === "granted") return "permitido-sem-subscription"
+  return "desativado"
+}
+
 export function pushSuportado(): boolean {
   return (
     typeof window !== "undefined" &&

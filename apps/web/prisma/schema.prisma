@@ -1254,6 +1254,35 @@ model PushSubscription {
   // Não é reversível na prática — endpoints são URLs de alta entropia.
   endpointHash String @db.VarChar(64)
 
+  /// SHA-256 (hex) da chave PÚBLICA VAPID do ambiente que criou esta
+  /// subscription. Não é segredo: deriva de um dado que o browser já recebe
+  /// como applicationServerKey e não permite reconstruir a chave privada.
+  ///
+  /// É a autoridade de compatibilidade do dispatcher: só envia para
+  /// subscriptions cujo fingerprint bate com o do próprio sender. Existe
+  /// porque produção e desenvolvimento usam pares VAPID distintos sobre o
+  /// MESMO banco — sem esta coluna, dev enxergava (e tentava assinar) devices
+  /// de produção, tomando 403 do FCM e podendo notificar usuário real.
+  ///
+  /// NULL = legado anterior a esta coluna, compatibilidade ainda não provada.
+  /// Nunca preenchido por backfill: só quando o push service ACEITA um envio,
+  /// o que é a única prova real de que o par corresponde.
+  vapidKeyFingerprint String? @db.VarChar(64)
+
+  /// Estágio que criou esta subscription: production | preview | development.
+  /// Derivado de VERCEL_ENV no servidor, NUNCA informado pelo client.
+  ///
+  /// Segundo eixo da identidade, e não redundante com o fingerprint: dois
+  /// ambientes podem compartilhar a MESMA chave VAPID (marcar a variável para
+  /// Production+Preview+Development é o default de menor resistência na Vercel).
+  /// Nesse caso o fingerprint bate e só este campo impede um deploy de branch
+  /// de notificar o telefone de um usuário real.
+  ///
+  /// NULL = identidade incompleta (linha anterior a este isolamento). Só é
+  /// preenchido quando o push service aceita um envio de produção — nunca por
+  /// backfill, que afirmaria sem verificar.
+  runtimeEnvironment String? @db.VarChar(16)
+
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   lastSeenAt DateTime @default(now())
@@ -1265,6 +1294,9 @@ model PushSubscription {
   // Índice quente: é exatamente o WHERE do dispatch (subscriptions ativas de
   // um destinatário) e o do teto de devices por usuário.
   @@index([userId, revokedAt])
+  // Observação operacional e futura reconciliação ("quanto ainda é legado?").
+  // Não serve ao caminho quente do envio, que já filtra por userId.
+  @@index([vapidKeyFingerprint])
   @@index([endpointHash])
   @@map("push_subscriptions")
 }

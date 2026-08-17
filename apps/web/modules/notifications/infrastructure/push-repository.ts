@@ -20,6 +20,7 @@ import { createHash } from "crypto"
 
 import { prisma } from "@/lib/prisma/client"
 import type { RevokedReason } from "../domain/push-types"
+import type { PushIdentity } from "../domain/vapid-fingerprint"
 
 /** Projeção sem material de chave. Padrão para tudo que não seja envio. */
 const SAFE_SELECT = {
@@ -48,6 +49,15 @@ export type SendableSubscription = {
   endpoint: string
   p256dh: string
   auth: string
+  /**
+   * Identidade do ambiente que criou esta subscription — os dois eixos, cada um
+   * podendo ser `null` de forma independente (legado ou identidade parcial).
+   * Quem decide o que fazer com cada combinação é `avaliarElegibilidade`
+   * (domínio); o repositório só entrega o dado cru, inclusive um
+   * `runtimeEnvironment` que este código não reconheça.
+   */
+  vapidKeyFingerprint: string | null
+  runtimeEnvironment: string | null
 }
 
 /**
@@ -102,6 +112,12 @@ export async function countCreatedByUserSince(userId: string, since: Date): Prom
  * dispatcher, no servidor. Filtra `endpoint: { not: null }` além de
  * `revokedAt: null` — defesa em profundidade contra uma linha inconsistente
  * (revogação que anulou o endpoint mas falhou ao gravar revokedAt).
+ *
+ * NÃO filtra por identidade: devolve TODAS as subscriptions ativas do usuário,
+ * com os dois eixos de cada uma. A elegibilidade é decidida no domínio
+ * (`avaliarElegibilidade`) e contabilizada pelo dispatcher, para que "pulei
+ * porque é de outro ambiente" seja distinguível de "não existe subscription" —
+ * dois estados que o SQL sozinho confundiria.
  */
 export async function findActiveSubscriptionsForSend(userId: string): Promise<SendableSubscription[]> {
   const linhas = await prisma.pushSubscription.findMany({
@@ -112,25 +128,80 @@ export async function findActiveSubscriptionsForSend(userId: string): Promise<Se
       p256dh: { not: null },
       auth: { not: null },
     },
-    select: { id: true, endpoint: true, p256dh: true, auth: true },
+    select: {
+      id: true,
+      endpoint: true,
+      p256dh: true,
+      auth: true,
+      vapidKeyFingerprint: true,
+      runtimeEnvironment: true,
+    },
   })
 
-  return linhas
-    .filter((l): l is { id: string; endpoint: string; p256dh: string; auth: string } =>
+  // Type predicate, nunca cast: esta é a única função que devolve material de
+  // chave, e o compilador precisa continuar sendo quem prova que endpoint,
+  // p256dh e auth não são nulos. Com `as string` o filtro poderia ser alterado
+  // ou removido no futuro e o build seguiria verde, entregando `undefined` ao
+  // sender em silêncio.
+  return linhas.filter(
+    (l): l is SendableSubscription =>
       l.endpoint !== null && l.p256dh !== null && l.auth !== null
-    )
-    .map((l) => ({ id: l.id, endpoint: l.endpoint, p256dh: l.p256dh, auth: l.auth }))
+  )
+}
+
+/**
+ * Completa a identidade de uma subscription legada ou PARCIAL depois de o push
+ * service ter ACEITADO um envio para ela — a única prova real de pertencimento.
+ *
+ * OS DOIS EIXOS NO MESMO UPDATE, sempre. Gravar um e falhar no outro criaria
+ * justamente a identidade parcial que este trabalho existe para eliminar; num
+ * único `updateMany` não há janela entre eles.
+ *
+ * Escopada por `OR: [fingerprint null, environment null]` — a linha só é tocada
+ * enquanto falta algo. Uma identidade já completa nunca é reescrita: trocá-la
+ * com base num envio isolado seria pior que deixá-la como está. E não há risco
+ * de sobrescrever um eixo já preenchido com valor divergente, porque
+ * `avaliarElegibilidade` não deixaria o envio acontecer se algum eixo conhecido
+ * contradissesse este sender.
+ *
+ * Concorrência: se duas entregas provarem a mesma linha ao mesmo tempo, a
+ * segunda encontra a identidade completa, afeta 0 e não faz nada.
+ */
+export async function adotarIdentidadeAposEnvioAceito(params: {
+  subscriptionId: string
+  identidade: PushIdentity
+}): Promise<number> {
+  const r = await prisma.pushSubscription.updateMany({
+    where: {
+      id: params.subscriptionId,
+      revokedAt: null,
+      OR: [{ vapidKeyFingerprint: null }, { runtimeEnvironment: null }],
+    },
+    data: {
+      vapidKeyFingerprint: params.identidade.vapidKeyFingerprint,
+      runtimeEnvironment: params.identidade.runtimeEnvironment,
+    },
+  })
+  return r.count
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Escrita
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * A identidade entra como UM objeto (`PushIdentity`), nunca como dois campos
+ * soltos, em todas as escritas deste arquivo. É o que impede fisicamente uma
+ * criação de gravar só o fingerprint: não existe assinatura que aceite meia
+ * identidade. Vem sempre de `getCurrentPushIdentity`, no servidor — nunca do
+ * client, que forjaria o ambiente e reabriria o cross-environment.
+ */
 export async function createSubscription(params: {
   userId: string
   endpoint: string
   p256dh: string
   auth: string
+  identidade: PushIdentity
 }): Promise<SafeSubscription> {
   return prisma.pushSubscription.create({
     data: {
@@ -139,6 +210,8 @@ export async function createSubscription(params: {
       p256dh: params.p256dh,
       auth: params.auth,
       endpointHash: hashEndpoint(params.endpoint),
+      vapidKeyFingerprint: params.identidade.vapidKeyFingerprint,
+      runtimeEnvironment: params.identidade.runtimeEnvironment,
     },
     select: SAFE_SELECT,
   })
@@ -176,6 +249,7 @@ export async function createSubscriptionComLimites(params: {
   endpoint: string
   p256dh: string
   auth: string
+  identidade: PushIdentity
   maxAtivas: number
   maxCriacoesNaJanela: number
   janelaMs: number
@@ -207,6 +281,8 @@ export async function createSubscriptionComLimites(params: {
           p256dh: params.p256dh,
           auth: params.auth,
           endpointHash: hashEndpoint(params.endpoint),
+          vapidKeyFingerprint: params.identidade.vapidKeyFingerprint,
+          runtimeEnvironment: params.identidade.runtimeEnvironment,
         },
         select: SAFE_SELECT,
       })
@@ -232,12 +308,24 @@ export async function refreshSubscription(params: {
   endpoint: string
   p256dh: string
   auth: string
+  /**
+   * Reassinar o MESMO endpoint com a chave DESTE ambiente é prova direta de
+   * que o device pertence a ele: o browser só devolve a subscription existente
+   * quando a `applicationServerKey` confere (ver `mesmaChaveVapid` no client);
+   * se divergisse, ele teria desassinado e criado outra, caindo em
+   * `createSubscription`. Por isso o refresh (re)afirma a identidade INTEIRA —
+   * é assim que uma linha legada ou parcial se completa sem backfill cego, e é
+   * também o caminho de auto-cura de uma linha que ficou com o rótulo errado.
+   */
+  identidade: PushIdentity
 }): Promise<number> {
   const r = await prisma.pushSubscription.updateMany({
     where: { userId: params.userId, endpoint: params.endpoint, revokedAt: null },
     data: {
       p256dh: params.p256dh,
       auth: params.auth,
+      vapidKeyFingerprint: params.identidade.vapidKeyFingerprint,
+      runtimeEnvironment: params.identidade.runtimeEnvironment,
       lastSeenAt: new Date(),
     },
   })

@@ -1,0 +1,65 @@
+-- Push Reliability — segundo eixo da identidade: o ESTÁGIO do runtime.
+--
+-- CONTEXTO (Security Focal). A migration anterior
+-- (20260817020000_push_vapid_environment_isolation) adicionou
+-- `vapidKeyFingerprint` e tratou a comparação de chave como autoridade única de
+-- isolamento. Isso responde "esta assinatura CONSEGUE ser aceita por este
+-- device?", mas não "este sender TEM O DIREITO de acordar este device?".
+--
+-- Se Preview (ou Development) herdar a MESMA chave VAPID de Production — e
+-- marcar a variável para os três ambientes é o caminho de menor resistência no
+-- painel da Vercel — o fingerprint bate e um deploy de branch alcança devices de
+-- usuários reais, sem erro e sem alarme. A garantia não pode depender de uma
+-- configuração externa que o repositório não valida.
+--
+-- Esta coluna torna o isolamento ESTRUTURAL: identidade = (estágio, chave), e o
+-- dispatcher exige os dois.
+--
+-- Migration ADITIVA. Adiciona UMA coluna NULLABLE a `push_subscriptions`.
+-- NÃO faz backfill, NÃO altera dado existente, NÃO remove nada, NÃO revoga
+-- subscription alguma, NÃO cria índice.
+--
+-- POR QUE NENHUM ÍNDICE: o caminho quente do envio filtra por
+-- (userId, revokedAt) — já indexado — e compara identidade em memória. Um
+-- índice em `runtimeEnvironment` teria cardinalidade 3 e nasceria morto. O
+-- índice de `vapidKeyFingerprint` da migration anterior já cobre a triagem
+-- operacional ("quanto ainda é legado?"), e uma varredura por estágio numa
+-- tabela deste tamanho não justifica escrita extra em todo INSERT.
+--
+-- POR QUE NULLABLE E SEM BACKFILL: preencher as linhas existentes com
+-- 'production' seria afirmar no banco algo que não foi verificado. NULL
+-- significa exatamente "ainda não sabemos" — e é assim que
+-- `avaliarElegibilidade` o lê: só produção pode tentar descobrir enviando, e a
+-- identidade só é gravada quando o push service aceita.
+--
+-- ⚠ REEXECUTÁVEL SOMENTE APÓS PRÉ-CHECK DO ESTADO ESPERADO — NÃO é idempotente.
+-- Como nas migrations anteriores deste projeto, `IF NOT EXISTS` valida apenas
+-- NOME, nunca estrutura. A segurança vem do PRÉ-CHECK.
+--
+-- ORDEM OBRIGATÓRIA: 20260817020000 PRIMEIRO, esta em seguida, e só então o
+-- código. O dispatcher seleciona as DUAS colunas — subir o código antes das
+-- colunas existirem quebra todo envio de push.
+--
+-- PRÉ-CHECK (a primeira DEVE retornar 1, a segunda DEVE retornar 0; se não, PARE):
+--
+--   SELECT COUNT(*) FROM information_schema.columns
+--    WHERE table_schema='public' AND table_name='push_subscriptions'
+--      AND column_name='vapidKeyFingerprint';   -- pré-requisito: 020000 aplicada
+--
+--   SELECT COUNT(*) FROM information_schema.columns
+--    WHERE table_schema='public' AND table_name='push_subscriptions'
+--      AND column_name='runtimeEnvironment';
+--
+-- PÓS-CHECK esperado: coluna VARCHAR(16) nullable e NENHUMA linha preenchida.
+--
+--   SELECT data_type, character_maximum_length, is_nullable
+--     FROM information_schema.columns
+--    WHERE table_schema='public' AND table_name='push_subscriptions'
+--      AND column_name='runtimeEnvironment';
+--   -- esperado: character varying | 16 | YES
+--
+--   SELECT COUNT(*) FROM push_subscriptions WHERE "runtimeEnvironment" IS NOT NULL;
+--   -- deve retornar 0 imediatamente após a migration.
+
+ALTER TABLE "push_subscriptions"
+  ADD COLUMN IF NOT EXISTS "runtimeEnvironment" VARCHAR(16);

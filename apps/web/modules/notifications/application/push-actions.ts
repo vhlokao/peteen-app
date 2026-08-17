@@ -32,7 +32,8 @@ import {
   type PushActionResult,
   type PushSubscriptionInput,
 } from "../domain/push-types"
-import { isPushEnabled } from "../infrastructure/push-config"
+import { getVapidConfig, isPushEnabled } from "../infrastructure/push-config"
+import { getCurrentPushIdentity } from "../infrastructure/runtime-environment"
 import {
   createSubscriptionComLimites,
   findActiveByEndpoint,
@@ -68,12 +69,20 @@ export async function subscribeToPushAction(
     return { success: false, code: "UNAUTHENTICATED" }
   }
 
-  if (!isPushEnabled()) {
+  const vapid = getVapidConfig()
+  if (!vapid) {
     return { success: false, code: "PUSH_DISABLED" }
   }
   if (entradaInvalida(input)) {
     return { success: false, code: "INVALID_SUBSCRIPTION" }
   }
+
+  // Identidade DESTE ambiente — estágio + par VAPID — derivada inteiramente do
+  // servidor. Nenhum dos dois eixos vem do client: um fingerprint forjado faria
+  // uma subscription de dev parecer de produção, e um ambiente forjado faria um
+  // device de produção parecer de preview. Os dois juntos são o que autoriza um
+  // sender a acordar este aparelho.
+  const identidade = getCurrentPushIdentity(vapid.publicKey)
 
   try {
     const existente = await findActiveByEndpoint(input.endpoint)
@@ -94,6 +103,7 @@ export async function subscribeToPushAction(
         endpoint: input.endpoint,
         p256dh: input.p256dh,
         auth: input.auth,
+        identidade,
       })
       if (afetadas > 0) {
         return { success: true, alreadyActive: true }
@@ -115,6 +125,7 @@ export async function subscribeToPushAction(
       endpoint: input.endpoint,
       p256dh: input.p256dh,
       auth: input.auth,
+      identidade,
       maxAtivas: MAX_ACTIVE_SUBSCRIPTIONS_PER_USER,
       maxCriacoesNaJanela: MAX_CREATES_PER_WINDOW,
       janelaMs: CREATE_WINDOW_MS,

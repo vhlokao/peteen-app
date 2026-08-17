@@ -34,12 +34,15 @@ import "server-only"
 
 import { prisma } from "@/lib/prisma/client"
 import type { PushDispatchInput, PushDispatchResult } from "../domain/push-types"
-import { describeMissingVapidConfig, isPushEnabled } from "../infrastructure/push-config"
+import { describeMissingVapidConfig, getVapidConfig } from "../infrastructure/push-config"
 import {
+  adotarIdentidadeAposEnvioAceito,
   findActiveSubscriptionsForSend,
   revokeGoneSubscription,
 } from "../infrastructure/push-repository"
 import { sendPush } from "../infrastructure/push-sender"
+import { avaliarElegibilidade } from "../domain/vapid-fingerprint"
+import { getCurrentPushIdentity } from "../infrastructure/runtime-environment"
 
 const VAZIO: PushDispatchResult = {
   alreadyDispatched: false,
@@ -58,7 +61,10 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   // Nem sequer cria PushDelivery: registrar uma tentativa que nunca poderia
   // acontecer poluiria a telemetria e, pior, queimaria o eventKey — quando a
   // configuração chegasse, o P2002 impediria o despacho legítimo.
-  if (!isPushEnabled()) {
+  // A config é lida (não só checada) porque o isolamento de ambiente precisa da
+  // chave PÚBLICA para derivar o fingerprint deste sender.
+  const vapid = getVapidConfig()
+  if (!vapid) {
     if (!avisouConfigAusente) {
       console.warn("[push] disabled", { faltando: describeMissingVapidConfig() })
       avisouConfigAusente = true
@@ -93,9 +99,9 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   }
 
   // ── 2. Subscriptions ativas do destinatário ───────────────────────────────
-  let subscriptions: Awaited<ReturnType<typeof findActiveSubscriptionsForSend>>
+  let ativas: Awaited<ReturnType<typeof findActiveSubscriptionsForSend>>
   try {
-    subscriptions = await findActiveSubscriptionsForSend(input.recipientUserId)
+    ativas = await findActiveSubscriptionsForSend(input.recipientUserId)
   } catch (err) {
     console.error("[push] load_subscriptions_failed", {
       deliveryId,
@@ -104,21 +110,73 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
     return { ...VAZIO, pushEnabled: true }
   }
 
-  console.info("[push] attempted", {
+  // ── 2.1 Isolamento de ambiente — filtro ANTES de qualquer envio ───────────
+  // Produção, preview e dev compartilham o MESMO banco. Sem este filtro o
+  // dispatcher local enxergava devices de produção, tomava 403 do FCM e — pior
+  // que falhar — poderia notificar um usuário real a partir de uma máquina de
+  // desenvolvimento.
+  //
+  // A identidade tem DOIS eixos e os dois são verificados. O fingerprint sozinho
+  // não bastaria: se preview herdar a mesma VAPID de produção (marcar a variável
+  // para os três ambientes é o default de menor resistência na Vercel), as
+  // chaves batem e um deploy de branch alcançaria devices reais. Ver
+  // `avaliarElegibilidade` para a regra completa, inclusive identidade parcial.
+  const identidade = getCurrentPushIdentity(vapid.publicKey)
+  const environment = identidade.runtimeEnvironment
+
+  const elegiveis: typeof ativas = []
+  /** Ids sem identidade completa que produção vai tentar — candidatos à adoção. */
+  const emProvaDeIdentidade = new Set<string>()
+  let skippedEnvironmentMismatch = 0
+  let skippedFingerprintMismatch = 0
+  let skippedLegacyOutsideProduction = 0
+
+  for (const s of ativas) {
+    const veredito = avaliarElegibilidade({
+      subscriptionFingerprint: s.vapidKeyFingerprint,
+      subscriptionEnvironment: s.runtimeEnvironment,
+      senderFingerprint: identidade.vapidKeyFingerprint,
+      senderEnvironment: identidade.runtimeEnvironment,
+    })
+    if (!veredito.eligible) {
+      if (veredito.motivo === "environment_divergente") skippedEnvironmentMismatch++
+      else if (veredito.motivo === "fingerprint_divergente") skippedFingerprintMismatch++
+      else skippedLegacyOutsideProduction++
+      continue
+    }
+    if (veredito.motivo === "legacy_producao") emProvaDeIdentidade.add(s.id)
+    elegiveis.push(s)
+  }
+
+  // Log com CONTAGENS, nunca com endpoint, p256dh, auth ou chave. Separa os três
+  // motivos de skip porque eles pedem reações diferentes: ambiente divergente é
+  // ESPERADO (dev olhando o banco compartilhado); fingerprint divergente com o
+  // mesmo ambiente é ALARME de configuração; legado fora de produção é a fila
+  // que encolhe sozinha conforme as linhas se provam.
+  console.info("[push] eligibility", {
     deliveryId,
     eventType: input.eventType,
-    subscriptionCount: subscriptions.length,
+    environment,
+    ativas: ativas.length,
+    eligible: elegiveis.length,
+    skippedEnvironmentMismatch,
+    skippedFingerprintMismatch,
+    skippedLegacyOutsideProduction,
+    emProvaDeIdentidade: emProvaDeIdentidade.size,
   })
 
-  // ── ZERO SUBSCRIPTIONS — CONTRATO OFICIAL, decisão fechada ────────────────
-  // O claim PERMANECE, com attemptedCount = 0, e o evento é considerado
-  // CONSUMIDO para push. Se o usuário assinar um minuto depois, o mesmo
-  // eventKey devolve alreadyDispatched e NÃO há replay.
+  // ── ZERO ELEGÍVEIS — CONTRATO OFICIAL, decisão fechada ───────────────────
+  // Cobre os dois casos que terminam sem envio: o usuário não tem device, ou
+  // os devices que tem pertencem a outro ambiente. Nos dois, `attempted = 0` —
+  // NUNCA `failed`. Incompatibilidade de ambiente não é falha de sender nem de
+  // aparelho, e contá-la como falha inflaria a métrica que deveria denunciar
+  // problemas reais de entrega.
   //
-  // Isso é deliberado, não uma lacuna: push é aviso do MOMENTO. Reenviar um
+  // O claim PERMANECE e o evento é considerado CONSUMIDO para push. Se o
+  // usuário assinar um minuto depois, o mesmo eventKey devolve
+  // alreadyDispatched e NÃO há replay — push é aviso do MOMENTO; reenviar um
   // evento antigo porque um device apareceu depois entregaria notificação
-  // desatualizada e fora de contexto. A central in-app é a fonte da verdade e
-  // já mostra tudo o que aconteceu, derivado do domínio na leitura.
+  // desatualizada. A central in-app é a fonte da verdade e já mostra tudo.
   //
   // RISCO ACEITO NO V0, registrado explicitamente: como o claim acontece ANTES
   // do envio (garantindo at-most-once), um crash entre o claim e o send perde
@@ -126,9 +184,17 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   // linha, mesmos contadores em zero). Preferimos perder um push a duplicar,
   // porque o histórico real nunca depende deste canal. Sem fila, sem outbox,
   // sem retry no V0.
-  if (subscriptions.length === 0) {
+  if (elegiveis.length === 0) {
     return { ...VAZIO, pushEnabled: true }
   }
+
+  const subscriptions = elegiveis
+
+  console.info("[push] attempted", {
+    deliveryId,
+    eventType: input.eventType,
+    subscriptionCount: subscriptions.length,
+  })
 
   // ── 3. Envio — allSettled isola devices ───────────────────────────────────
   // Um aparelho morto nunca pode impedir os demais de receber.
@@ -140,6 +206,8 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   let failed = 0
   let invalid = 0
   const mortas: string[] = []
+  /** Sem identidade completa que o push service ACEITOU — ver abaixo. */
+  const identidadesProvadas: string[] = []
   // Array em vez de `let ultimoErro`: o TypeScript não acompanha atribuições
   // feitas dentro de callback, então uma variável mutável aqui seria estreitada
   // para `never` no ponto de uso lá embaixo. Laço direto também evita o
@@ -166,6 +234,16 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
     const res = r.value
     if (res.outcome === "accepted") {
       accepted++
+      // Prova de pertencimento de uma linha sem identidade completa: o push
+      // service aceitou a mensagem assinada com ESTE par VAPID, a única
+      // evidência real de que o par corresponde ao usado na criação. Só agora a
+      // identidade é gravada — nunca por backfill, que seria afirmar sem
+      // verificar. Um 403 (mismatch de VAPID) cai em `failed` e não chega aqui,
+      // então nunca adota.
+      const provada = subscriptions[i]!
+      if (emProvaDeIdentidade.has(provada.id)) {
+        identidadesProvadas.push(provada.id)
+      }
     } else if (res.outcome === "invalid") {
       invalid++
       if (res.shortError) erros.push(res.shortError)
@@ -177,6 +255,31 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   }
 
   const ultimoErro = erros.length > 0 ? erros[erros.length - 1]! : null
+
+  // ── 3.1 Adoção de identidade PROVADA ─────────────────────────────────────
+  // Transforma sucesso real do push service em identidade persistida — os dois
+  // eixos juntos, no mesmo update. Uma linha adotada aqui deixa de depender da
+  // regra de legado e passa a ser filtrada como qualquer outra.
+  //
+  // Só produção chega aqui: `legacy_producao` é o único motivo que alimenta
+  // `emProvaDeIdentidade`, e ele exige `senderEnvironment === "production"`.
+  //
+  // Best-effort e isolado: falhar em gravar não pode desfazer um push já ACEITO
+  // nem derrubar o dispatch. Na pior hipótese a linha continua incompleta e é
+  // reavaliada no próximo envio.
+  for (const id of identidadesProvadas) {
+    try {
+      const adotadas = await adotarIdentidadeAposEnvioAceito({ subscriptionId: id, identidade })
+      if (adotadas > 0) {
+        console.info("[push] identidade_adotada", { subscriptionId: id, environment })
+      }
+    } catch (err) {
+      console.error("[push] identidade_adocao_falhou", {
+        subscriptionId: id,
+        erro: String(err).slice(0, 120),
+      })
+    }
+  }
 
   // ── 4. Revoga as comprovadamente mortas (404/410) ─────────────────────────
   // Esta é a ÚNICA origem legítima de reason='gone'. Nunca acionada por logout:

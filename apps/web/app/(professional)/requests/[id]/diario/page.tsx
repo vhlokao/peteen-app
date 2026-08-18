@@ -126,7 +126,11 @@ export default async function ProfessionalCareDiaryPage({ params }: PageProps) {
               <p className="text-muted-foreground mb-4 text-xs">
                 O tutor acompanha as atualizações do atendimento pelo Peteen.
               </p>
-              <CareUpdateForm requestId={id} />
+              <CareUpdateForm
+                requestId={id}
+                startedAt={request.startedAt}
+                completedAt={request.completedAt}
+              />
             </section>
           ) : null}
 

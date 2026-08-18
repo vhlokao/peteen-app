@@ -39,7 +39,8 @@
 // Extensão .ts explícita e caminho relativo: é o que permite o módulo rodar sob
 // `node --experimental-strip-types --test`, sem bundler — mesmo padrão de
 // photo-selection.ts e care-media-validation.ts.
-import { zonedCivilDateTimeToInstant } from "../../../lib/date/zoned-datetime.ts"
+import { zonedCivilDateTimeToInstant, formatZonedTime } from "../../../lib/date/zoned-datetime.ts"
+import { CIVIL_DAY_TIME_ZONE, civilDateKey } from "../../../lib/date/civil-day.ts"
 
 /**
  * `agora`  — o instante é o do envio; nenhum controle é exibido.
@@ -49,6 +50,7 @@ export type OccurredAtMode = "agora" | "manual"
 
 export const OCCURRED_AT_COPY = {
   alternar: "Aconteceu em outro horário?",
+  ajudaJanela: "Escolha um horário entre o início do atendimento e agora.",
   rotuloManual: "Quando aconteceu",
   voltarParaAgora: "Usar o horário atual",
   agoraDescricao: "Registrando com o horário de agora.",
@@ -105,18 +107,66 @@ export function resolverOccurredAtParaEnvio(params: {
 }
 
 /**
+ * Instante → "YYYY-MM-DDTHH:mm" no MESMO fuso em que o valor será reinterpretado.
+ *
+ * Antes isto usava `agora.getFullYear()/getHours()`, ou seja, o fuso do
+ * NAVEGADOR, enquanto `resolverOccurredAtParaEnvio` reinterpreta o texto no
+ * fuso do piloto. Num aparelho fora de America/Sao_Paulo os dois discordavam e
+ * o valor pré-preenchido já nascia deslocado — a mesma classe de erro do
+ * incidente de leitura de timestamp. Formatar e reinterpretar no mesmo fuso
+ * fecha essa porta.
+ */
+export function paraValorDeControle(
+  instante: Date,
+  timeZone: string = CIVIL_DAY_TIME_ZONE
+): string {
+  return `${civilDateKey(instante, timeZone)}T${formatZonedTime(instante, timeZone)}`
+}
+
+/**
  * Valor inicial do controle manual quando a pessoa ativa "outro horário".
  *
  * Começa no instante corrente para que ela ajuste a partir de algo verdadeiro —
  * um campo vazio obrigaria a digitar a data inteira só para corrigir os
  * minutos, que é o caso real (o evento foi há pouco, não em outro dia).
  */
-export function valorInicialDoControleManual(agora: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0")
-  return (
-    `${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}` +
-    `T${pad(agora.getHours())}:${pad(agora.getMinutes())}`
-  )
+export function valorInicialDoControleManual(
+  agora: Date,
+  timeZone: string = CIVIL_DAY_TIME_ZONE
+): string {
+  return paraValorDeControle(agora, timeZone)
+}
+
+/**
+ * Janela válida para o seletor — os mesmos limites que o servidor aplica.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE A UI PRECISA DISTO
+ *
+ * No teste físico o profissional ativou "Aconteceu em outro horário?", escolheu
+ * um horário livremente e a publicação foi recusada. O servidor estava certo —
+ * o horário caía antes do início do atendimento — mas nada na tela indicava que
+ * existia uma janela, e o campo aceitava qualquer data do calendário. Recusar
+ * depois do envio, quando as fotos já subiram, é o pior momento possível para
+ * comunicar uma regra que dava para mostrar antes.
+ *
+ * Os limites são derivados dos MESMOS campos que `resolveEffectiveOccurredAt`
+ * usa. A validação do servidor continua obrigatória: `min`/`max` de `<input>`
+ * são conveniência, nunca garantia — qualquer chamada direta à Server Action
+ * passa por cima deles.
+ */
+export function janelaDoOccurredAt(params: {
+  startedAt: Date | null
+  completedAt: Date | null
+  agora: Date
+  timeZone?: string
+}): { min: string | null; max: string } {
+  const { startedAt, completedAt, agora, timeZone } = params
+  const teto = completedAt !== null && completedAt.getTime() < agora.getTime() ? completedAt : agora
+  return {
+    min: startedAt ? paraValorDeControle(startedAt, timeZone) : null,
+    max: paraValorDeControle(teto, timeZone),
+  }
 }
 
 /**

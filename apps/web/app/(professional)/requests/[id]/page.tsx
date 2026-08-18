@@ -153,6 +153,7 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
               requestId={id}
               currentStatus={request.status}
               scheduledAt={request.scheduledAt}
+              scheduledHasTime={request.scheduledHasTime}
             />
           </section>
         )}

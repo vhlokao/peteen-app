@@ -31,6 +31,7 @@ import {
   OCCURRED_AT_COPY,
   formularioTemTrabalhoEmAndamento,
   resolverOccurredAtParaEnvio,
+  janelaDoOccurredAt,
   valorInicialDoControleManual,
   type OccurredAtMode,
 } from "../domain/care-update-timing"
@@ -42,7 +43,17 @@ import {
   serializeCareUpdateDraft,
 } from "../domain/photo-selection"
 
-export function CareUpdateForm({ requestId }: { requestId: string }) {
+export function CareUpdateForm({
+  requestId,
+  startedAt,
+  completedAt = null,
+}: {
+  requestId: string
+  /** Início real do atendimento — limite inferior da janela de occurredAt. */
+  startedAt: Date | null
+  /** Conclusão, quando houver. Fecha o teto da janela. */
+  completedAt?: Date | null
+}) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [category, setCategory] = useState<CareUpdateCategory>("CHECK_IN")
@@ -90,6 +101,11 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
       publicando: isPending,
     })
   )
+
+  // Limites do seletor manual. Recalculados a cada render para que o teto
+  // acompanhe a passagem do tempo enquanto o formulário fica aberto — um `max`
+  // congelado na montagem recusaria "agora" alguns minutos depois.
+  const janela = janelaDoOccurredAt({ startedAt, completedAt, agora: new Date() })
 
   function obterChaveDeIntencao(): string {
     if (!idempotencyKeyRef.current) {
@@ -205,8 +221,16 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
           // Se as fotos JÁ subiram, a pessoa precisa saber que o problema foi a
           // publicação — não o envio — para não reenviar tudo achando que
           // perdeu os arquivos.
+          // O motivo REAL do servidor vem primeiro. Antes, qualquer falha com
+          // foto anexada era substituída por "as fotos foram enviadas, mas a
+          // atualização não foi publicada" — e foi exatamente isso que escondeu
+          // do profissional, no teste físico, que o horário escolhido caía fora
+          // da janela do atendimento. A nota sobre as fotos é CONTEXTO adicional,
+          // nunca substituta da causa.
           setFormError(
-            prontidao.paths.length > 0 ? PHOTO_COPY.publicacaoFalhou : result.error
+            prontidao.paths.length > 0
+              ? `${result.error} ${PHOTO_COPY.fotosPreservadas}`
+              : result.error
           )
           return
         }
@@ -280,6 +304,9 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
           type="button"
           onClick={() => {
             setModoOccurredAt("manual")
+            // Começa em "agora" — dentro da janela por construção. A pessoa
+            // ajusta a partir de um valor válido em vez de partir do vazio e
+            // descobrir os limites por tentativa e erro.
             setOccurredAtLocal(valorInicialDoControleManual(new Date()))
           }}
           disabled={isPending}
@@ -308,6 +335,13 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
             id="care-occurred-at"
             type="datetime-local"
             value={occurredAtLocal}
+            // Limites da JANELA REAL do atendimento. O seletor nativo passa a
+            // recusar sozinho o que o servidor recusaria — sem isso, a regra só
+            // aparecia depois do envio, com as fotos já no bucket.
+            // `min`/`max` são conveniência de UI: a autoridade continua sendo
+            // resolveEffectiveOccurredAt, no servidor.
+            min={janela.min ?? undefined}
+            max={janela.max}
             onChange={(e) => {
               setOccurredAtLocal(e.target.value)
               if (formError) setFormError(null)
@@ -315,6 +349,7 @@ export function CareUpdateForm({ requestId }: { requestId: string }) {
             disabled={isPending}
             className="flex h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           />
+          <p className="text-xs text-muted-foreground">{OCCURRED_AT_COPY.ajudaJanela}</p>
         </div>
       )}
 

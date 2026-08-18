@@ -30,7 +30,25 @@ function startOfMinute(date: Date): number {
 
 export type ResolveOccurredAtResult =
   | { ok: true; occurredAt: Date }
-  | { ok: false; reason: "BEFORE_START" | "FUTURE" }
+  | { ok: false; reason: "BEFORE_START" | "FUTURE" | "AFTER_END" }
+
+/**
+ * Limite superior da janela: `now` durante o atendimento, `completedAt` depois
+ * dele.
+ *
+ * Existe porque "não pode ser no futuro" e "não pode ser fora do atendimento"
+ * são regras diferentes, e a segunda só aparece quando o atendimento terminou.
+ * Publicar hoje um evento que teria acontecido depois da conclusão inventaria
+ * cuidado que não houve — e é exatamente o tipo de registro que uma disputa
+ * questionaria.
+ *
+ * `min(completedAt, now)` por segurança: um `completedAt` adiantado por relógio
+ * torto nunca deve abrir uma janela para o futuro.
+ */
+export function limiteSuperiorDaJanela(completedAt: Date | null, now: Date): Date {
+  if (completedAt === null) return now
+  return completedAt.getTime() < now.getTime() ? completedAt : now
+}
 
 /**
  * Resolve o occurredAt efetivo — o único valor que deve ser persistido,
@@ -41,8 +59,15 @@ export function resolveEffectiveOccurredAt(params: {
   inputOccurredAt: Date
   startedAt: Date | null
   now: Date
+  /**
+   * Conclusão do atendimento, quando já houve. `null` durante o IN_PROGRESS —
+   * que é o único estado em que a publicação é permitida hoje. O parâmetro
+   * existe para que a janela seja completa por construção, e não dependa de o
+   * guard de status permanecer onde está.
+   */
+  completedAt?: Date | null
 }): ResolveOccurredAtResult {
-  const { inputOccurredAt, startedAt, now } = params
+  const { inputOccurredAt, startedAt, now, completedAt = null } = params
 
   let effective = inputOccurredAt
 
@@ -57,9 +82,20 @@ export function resolveEffectiveOccurredAt(params: {
     }
   }
 
-  // (4) futuro é sempre bloqueado — avaliado sobre o valor JÁ resolvido.
-  if (effective.getTime() > now.getTime()) {
-    return { ok: false, reason: "FUTURE" }
+  // (4) teto da janela, avaliado sobre o valor JÁ resolvido.
+  //
+  // Mesma tolerância de minuto da borda inferior: o formulário tem precisão de
+  // minuto, então escolher o minuto corrente (ou o minuto da conclusão) é
+  // legítimo mesmo que os segundos ainda não tenham chegado lá. Sem isso,
+  // "agora" digitado como 21:04 seria recusado às 21:04:12 — a mesma classe de
+  // recusa incompreensível que a regra do início já resolveu.
+  const teto = limiteSuperiorDaJanela(completedAt, now)
+  if (startOfMinute(effective) > startOfMinute(teto)) {
+    return { ok: false, reason: completedAt !== null && teto === completedAt ? "AFTER_END" : "FUTURE" }
+  }
+  // Nunca persiste depois do teto real, mesmo aceitando o minuto.
+  if (effective.getTime() > teto.getTime()) {
+    effective = teto
   }
 
   // (5) valor válido preservado.

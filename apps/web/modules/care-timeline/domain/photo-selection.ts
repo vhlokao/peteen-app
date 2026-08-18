@@ -67,6 +67,8 @@ export const PHOTO_COPY = {
   falhaUpload: "Não foi possível enviar esta foto. Tente novamente.",
   publicacaoFalhou:
     "As fotos foram enviadas, mas a atualização não foi publicada. Tente novamente.",
+  /** Contexto APÓS a causa real — nunca no lugar dela. Ver CareUpdateForm. */
+  fotosPreservadas: "Suas fotos continuam enviadas; ajuste e publique novamente.",
   limiteAtingido: `Você já selecionou ${CARE_MEDIA_MAX_PER_UPDATE} fotos.`,
   rascunhoRecuperado: "Seu texto foi recuperado. Selecione as fotos novamente.",
 } as const

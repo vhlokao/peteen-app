@@ -95,6 +95,10 @@ const SERVICE_DURATION_REQUIRED_MESSAGE =
   "Defina a duração deste serviço antes de aceitar um atendimento com horário."
 import { isCivilDayInThePast } from "@/lib/date/civil-day"
 import { zonedCivilDateTimeToInstant } from "@/lib/date/zoned-datetime"
+import {
+  describeServiceStartBlock,
+  resolveServiceStartEligibility,
+} from "../domain/start-eligibility"
 import { detectArtificialRecurrence } from "@/modules/antifraude/application/detect-artificial-recurrence"
 import { isDevBypassEnabled } from "@/modules/antifraude/domain/dev-flags"
 import {
@@ -587,6 +591,24 @@ export async function startServiceRequestAction(
     // Sem cooldown de 24h por conclusão recente do mesmo par — ver nota em
     // acceptServiceRequestAction. Iniciar um atendimento real nunca é
     // bloqueado por reputação.
+
+    // ── Start-Time Guard: não iniciar antes da janela ─────────────────────────
+    // `now` é lido AQUI, imediatamente antes da checagem — não reaproveitado
+    // de nenhum valor calculado antes na função. É o mesmo `now` que decide,
+    // sem intervalo, então não há sentido em recalcular de novo dentro da
+    // transação: nada que outro processo escreva muda o RESULTADO desta
+    // comparação (ela depende só de scheduledAt, já lido, e do relógio).
+    // Quem protege contra concorrência de STATUS é o guard otimista de
+    // transitionStatus (ConcurrentStatusChangeError), inalterado.
+    const elegibilidade = resolveServiceStartEligibility({
+      scheduledAt: request.scheduledAt,
+      scheduledHasTime: request.scheduledHasTime,
+      now: new Date(),
+    })
+    if (!elegibilidade.eligible) {
+      return { success: false, error: describeServiceStartBlock(elegibilidade) }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // ── Guardrail operacional: data agendada muito no passado ────────────────
     if (request.scheduledAt) {

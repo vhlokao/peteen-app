@@ -1,6 +1,6 @@
 "use client"
 
-import { useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { CheckCircle2, XCircle, Play, Loader2 } from "lucide-react"
@@ -13,6 +13,10 @@ import {
   completeServiceRequestAction,
 } from "@/modules/service-request/application/actions"
 import { useSuspendAutoRefreshWhileEditing } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import {
+  describeServiceStartBlock,
+  resolveServiceStartEligibility,
+} from "@/modules/service-request/domain/start-eligibility"
 import type {
   RequestStatus,
   ServiceRequestData,
@@ -29,15 +33,11 @@ const GREEN = "#40916C"
 type RequestActionsProps = {
   requestId: string
   currentStatus: RequestStatus
-  /** Data agendada do serviço — bloqueia "Iniciar atendimento" antes dela. */
+  /** Horário agendado — decide a janela de "Iniciar atendimento" com scheduledHasTime. */
   scheduledAt: Date | null
+  /** Precisão de scheduledAt: false = âncora legada, nunca hora real (ver domain/start-eligibility.ts). */
+  scheduledHasTime: boolean
 }
-
-const SCHEDULED_DATE_FORMAT = new Intl.DateTimeFormat("pt-BR", {
-  day: "2-digit",
-  month: "2-digit",
-  year: "numeric",
-})
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mensagens de sucesso por transição
@@ -54,10 +54,71 @@ const SUCCESS_MESSAGES: Partial<Record<RequestStatus, string>> = {
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Elegibilidade de "Iniciar atendimento", recalculada localmente sem tocar o
+ * servidor — a resposta depende só de `scheduledAt`/`scheduledHasTime` (já
+ * conhecidos) e do relógio do próprio navegador.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * UM `setTimeout`, NÃO POLLING
+ *
+ * O botão precisa liberar sozinho no instante exato em que a janela abre, sem
+ * exigir refresh manual (item 6 da missão). Em vez de um intervalo rodando o
+ * tempo todo, agenda-se UM timer para o instante preciso de liberação
+ * (`startableAt`) — ele dispara uma vez e o efeito se desliga. Focus/
+ * visibilitychange recalculam por fora: se a aba ficou suspensa (mobile em
+ * background, notebook fechado), o timer pode não ter disparado no momento
+ * certo, e voltar à tela precisa corrigir na hora, não esperar o próximo tick.
+ *
+ * Isto é INDEPENDENTE do probe de `ActiveRequestAutoRefresh` — aquele
+ * consulta o servidor a cada ~20s para status/disputa/review/Diário; este
+ * hook não faz nenhuma chamada de rede, porque não precisa: nada que o
+ * servidor saiba muda se "agora" já passou de `startableAt`.
+ */
+function useServiceStartEligibility(scheduledAt: Date | null, scheduledHasTime: boolean) {
+  const [eligibility, setEligibility] = useState(() =>
+    resolveServiceStartEligibility({ scheduledAt, scheduledHasTime, now: new Date() })
+  )
+
+  useEffect(() => {
+    const recompute = () =>
+      setEligibility(
+        resolveServiceStartEligibility({ scheduledAt, scheduledHasTime, now: new Date() })
+      )
+
+    recompute()
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined
+    const atual = resolveServiceStartEligibility({ scheduledAt, scheduledHasTime, now: new Date() })
+    if (!atual.eligible && atual.reason === "TOO_EARLY") {
+      const delayMs = atual.startableAt.getTime() - Date.now()
+      // Nunca negativo (setTimeout trataria como 0, mas o clamp documenta a
+      // intenção): a janela já pode ter aberto entre o cálculo acima e aqui.
+      timeoutId = setTimeout(recompute, Math.max(0, delayMs))
+    }
+
+    document.addEventListener("visibilitychange", recompute)
+    window.addEventListener("focus", recompute)
+
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+      document.removeEventListener("visibilitychange", recompute)
+      window.removeEventListener("focus", recompute)
+    }
+    // scheduledAt é um Date novo a cada render do pai (Server Component); usar
+    // .getTime() na dependência evitaria recriar o timer por identidade, mas
+    // reagendar no valor (raro mudar) é seguro e mantém o efeito síncrono com
+    // as props reais.
+  }, [scheduledAt, scheduledHasTime])
+
+  return eligibility
+}
+
 export function RequestActions({
   requestId,
   currentStatus,
   scheduledAt,
+  scheduledHasTime,
 }: RequestActionsProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
@@ -66,12 +127,7 @@ export function RequestActions({
   // disputar o ciclo de render com um refresh automático concorrente.
   useSuspendAutoRefreshWhileEditing(isPending)
 
-  // Bloqueio de "Iniciar atendimento" antes da data agendada (comparação por dia).
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const scheduled = scheduledAt ? new Date(scheduledAt) : null
-  if (scheduled) scheduled.setHours(0, 0, 0, 0)
-  const beforeDate = scheduled ? today < scheduled : false
+  const startEligibility = useServiceStartEligibility(scheduledAt, scheduledHasTime)
 
   function handleAction(
     action: () => Promise<ActionResult<ServiceRequestData>>,
@@ -160,7 +216,7 @@ export function RequestActions({
               "IN_PROGRESS"
             )
           }
-          disabled={isPending || beforeDate}
+          disabled={isPending || !startEligibility.eligible}
         >
           {isPending ? (
             <Loader2 className="size-4 animate-spin" />
@@ -169,9 +225,9 @@ export function RequestActions({
           )}
           Iniciar atendimento
         </Button>
-        {beforeDate && scheduled && (
+        {!startEligibility.eligible && (
           <p className="text-center text-xs text-muted-foreground">
-            Disponível em {SCHEDULED_DATE_FORMAT.format(scheduled)}
+            {describeServiceStartBlock(startEligibility)}
           </p>
         )}
       </div>

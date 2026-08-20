@@ -34,6 +34,16 @@ import { isTerminalStatus, type RequestStatus } from "./types.ts"
 export const ACTIVE_REQUEST_POLL_INTERVAL_MS = 20_000
 
 /**
+ * Cadência das telas operacionais de Request (listas do tutor/profissional e
+ * detalhe) — REQUEST AUTO-SYNC RELIABILITY. Mais curta que o default de 20s
+ * porque aqui o CTA depende diretamente do próximo evento (aceite, início,
+ * conclusão, nova solicitação chegando na lista) e 20s de atraso é o próprio
+ * gap que a missão existe para fechar. O Diário (`ActiveRequestAutoRefresh`
+ * sem este prop) mantém o contrato antigo de 20s — não muda aqui.
+ */
+export const REQUEST_OPERATIONAL_POLL_INTERVAL_MS = 10_000
+
+/**
  * Janela mínima entre duas TENTATIVAS de sincronização, qualquer que seja o
  * gatilho (timer, focus, visibilitychange). Existe para colapsar rajadas —
  * `focus` e `visibilitychange` disparam quase juntos quando o usuário volta
@@ -112,7 +122,36 @@ export function shouldSync(
   state: ActiveRequestSyncState,
   now: number
 ): boolean {
-  if (trigger === "interval" && !isRequestSyncActive(state.status)) return false
+  return shouldSyncGeneric(
+    trigger,
+    { ...state, intervalActive: isRequestSyncActive(state.status) },
+    now
+  )
+}
+
+/**
+ * Estado genérico — mesma pergunta de `shouldSync`, mas sem exigir um único
+ * `RequestStatus` para decidir se o timer vale a pena. Uma LISTA de Requests
+ * não tem "um status": ela deve continuar sondando enquanto a aba estiver
+ * visível, porque uma request nova pode chegar mesmo que todas as atuais
+ * estejam terminais. `intervalActive` é essa decisão já resolvida pelo
+ * chamador — `isRequestSyncActive(status)` para o detalhe de uma Request
+ * (é o que `shouldSync` faz acima), `true` fixo para uma lista.
+ */
+export type ActiveSyncState = {
+  intervalActive: boolean
+  documentVisible: boolean
+  hasInteraction: boolean
+  isRefreshing: boolean
+  lastAttemptAt: number | null
+}
+
+export function shouldSyncGeneric(
+  trigger: ActiveRequestSyncTrigger,
+  state: ActiveSyncState,
+  now: number
+): boolean {
+  if (trigger === "interval" && !state.intervalActive) return false
   if (!state.documentVisible) return false
   if (state.hasInteraction) return false
   if (state.isRefreshing) return false
@@ -189,4 +228,40 @@ export function buildRequestSyncToken(snapshot: RequestSyncSnapshotInput): strin
 export function shouldRefreshAfterProbe(previousToken: string | null, currentToken: string): boolean {
   if (previousToken === null) return false
   return currentToken !== previousToken
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Probe de LISTA — token agregado, sem payload (REQUEST AUTO-SYNC RELIABILITY)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Assinatura de um item da lista — só o que, mudando, exige atualizar a
+ * tela: identidade, status e `updatedAt`. A query que produz isto
+ * (infrastructure) já filtra para requests NÃO terminais — uma request que
+ * vira terminal simplesmente some do próximo probe, o que já muda o token
+ * (o id que estava na lista deixa de aparecer) sem precisar carregar
+ * terminais no payload todo ciclo.
+ */
+export type RequestListItemSignature = {
+  id: string
+  status: RequestStatus
+  updatedAt: Date
+}
+
+export type RequestListSyncSnapshotInput = {
+  items: RequestListItemSignature[]
+}
+
+/**
+ * Determinístico independente da ORDEM em que o banco devolveu as linhas —
+ * ordena por id antes de concatenar. Sem isso, duas leituras do mesmo
+ * conjunto de requests poderiam produzir tokens diferentes só por causa da
+ * ordem de retorno do `findMany`, gerando um `router.refresh()` sem nada ter
+ * mudado de verdade.
+ */
+export function buildRequestListSyncToken(snapshot: RequestListSyncSnapshotInput): string {
+  return snapshot.items
+    .map((item) => `${item.id}:${item.status}:${item.updatedAt.toISOString()}`)
+    .sort()
+    .join(",")
 }

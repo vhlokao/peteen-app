@@ -12,6 +12,9 @@ import { TutorRequestsTabs } from "@/modules/tutor-portal/components/TutorReques
 import { isActiveRequestStatus } from "@/modules/tutor-portal/domain/request-status-display"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
 import { requireAuthOrRedirect } from "@/modules/identity/application/get-session"
+import { RequestListAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import { buildRequestListSyncToken } from "@/modules/service-request/domain/active-request-sync"
+import { getTutorRequestListSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 
 export const metadata: Metadata = {
   title: "Seus pedidos",
@@ -50,7 +53,12 @@ export default async function TutorRequestsPage() {
       ? "Nenhum atendimento ativo"
       : `${active.length} atendimento${active.length > 1 ? "s" : ""} ativo${active.length > 1 ? "s" : ""}`
 
+  const initialSyncToken = buildRequestListSyncToken(
+    await getTutorRequestListSyncSnapshot(tutorProfile.id)
+  )
+
   return (
+    <RequestListAutoRefresh role="tutor" initialToken={initialSyncToken}>
     <div className="page-container space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -107,5 +115,6 @@ export default async function TutorRequestsPage() {
         />
       )}
     </div>
+    </RequestListAutoRefresh>
   )
 }

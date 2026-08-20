@@ -26,6 +26,9 @@ import {
 import { TutorPetPreview, TutorAddPetTile } from "@/components/tutor/TutorPetPreview"
 import { TutorCareCategoryCard } from "@/components/tutor/TutorCareCategoryCard"
 import { TutorTrustNetworkCard } from "@/components/tutor/TutorTrustNetworkCard"
+import { RequestListAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import { buildRequestListSyncToken } from "@/modules/service-request/domain/active-request-sync"
+import { getTutorRequestListSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 
 export const metadata: Metadata = {
   title: "Portal do tutor",
@@ -105,7 +108,12 @@ export default async function TutorDashboardPage() {
   const firstName = tutorProfile.displayName.split(" ")[0] || "tutor"
   const greeting = greetingForHour(new Date().getHours())
 
+  const initialSyncToken = buildRequestListSyncToken(
+    await getTutorRequestListSyncSnapshot(tutorProfile.id)
+  )
+
   return (
+    <RequestListAutoRefresh role="tutor" initialToken={initialSyncToken}>
     <div className="page-container space-y-7 pb-4">
       <TutorHeroCard firstName={firstName} greeting={greeting} />
 
@@ -195,5 +203,6 @@ export default async function TutorDashboardPage() {
         </span>
       </Link>
     </div>
+    </RequestListAutoRefresh>
   )
 }

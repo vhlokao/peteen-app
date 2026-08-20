@@ -12,13 +12,17 @@ import assert from "node:assert/strict"
 
 import {
   shouldSync,
+  shouldSyncGeneric,
   shouldRunPollTimer,
   shouldRefreshAfterProbe,
   buildRequestSyncToken,
+  buildRequestListSyncToken,
   isRequestSyncActive,
   ACTIVE_REQUEST_SYNC_COOLDOWN_MS,
+  REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
   type ActiveRequestSyncState,
   type RequestSyncSnapshotInput,
+  type RequestListSyncSnapshotInput,
 } from "./active-request-sync.ts"
 
 const T0 = 1_000_000
@@ -345,6 +349,124 @@ describe("shouldRefreshAfterProbe — decide router.refresh() a partir do token,
 // ActiveRequestAutoRefresh.tsx, não da regra de domínio — o mesmo motivo
 // pelo qual o projeto não roda testes de componente (sem jsdom). Verificado
 // via QA ao vivo (queda de rede durante o probe).
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REQUEST AUTO-SYNC RELIABILITY — probe de LISTA (tutor + profissional)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("shouldSyncGeneric — mesmo motor de shouldSync, sem exigir um RequestStatus único", () => {
+  function baseGenericState(overrides: Partial<Parameters<typeof shouldSyncGeneric>[1]> = {}) {
+    return {
+      intervalActive: true,
+      documentVisible: true,
+      hasInteraction: false,
+      isRefreshing: false,
+      lastAttemptAt: null,
+      ...overrides,
+    }
+  }
+
+  it("intervalActive true + tudo mais favorável → sincroniza nos 3 gatilhos", () => {
+    for (const trigger of ["interval", "focus", "visible"] as const) {
+      assert.equal(shouldSyncGeneric(trigger, baseGenericState(), T0), true)
+    }
+  })
+
+  it("intervalActive false bloqueia especificamente o gatilho 'interval' — não foco/visibilidade (paridade com shouldSync)", () => {
+    assert.equal(shouldSyncGeneric("interval", baseGenericState({ intervalActive: false }), T0), false)
+    assert.equal(shouldSyncGeneric("focus", baseGenericState({ intervalActive: false }), T0), true)
+    assert.equal(shouldSyncGeneric("visible", baseGenericState({ intervalActive: false }), T0), true)
+  })
+
+  it("shouldSync(status) e shouldSyncGeneric(intervalActive derivado) concordam para todo status/gatilho", () => {
+    const statuses: ActiveRequestSyncState["status"][] = [
+      "PENDING", "ACCEPTED", "IN_PROGRESS", "COMPLETED",
+      "CANCELLED_BY_TUTOR", "CANCELLED_BY_PROFESSIONAL", "EXPIRED", "DISPUTED",
+    ]
+    for (const status of statuses) {
+      for (const trigger of ["interval", "focus", "visible"] as const) {
+        const viaStatus = shouldSync(trigger, { ...baseState(), status }, T0)
+        const viaGenerico = shouldSyncGeneric(
+          trigger,
+          { ...baseGenericState(), intervalActive: isRequestSyncActive(status) },
+          T0
+        )
+        assert.equal(viaStatus, viaGenerico, `divergência para status=${status}, trigger=${trigger}`)
+      }
+    }
+  })
+
+  it("dirty state (hasInteraction) suspende também no motor genérico — mesma proteção de formulário/lista", () => {
+    assert.equal(shouldSyncGeneric("interval", baseGenericState({ hasInteraction: true }), T0), false)
+  })
+})
+
+describe("buildRequestListSyncToken — token agregado da lista, sem payload", () => {
+  function items(overrides: RequestListSyncSnapshotInput["items"] = []): RequestListSyncSnapshotInput {
+    return { items: overrides }
+  }
+
+  it("lista vazia produz token estável (string vazia)", () => {
+    assert.equal(buildRequestListSyncToken(items([])), "")
+  })
+
+  it("token unchanged → 0 refresh (item 16)", () => {
+    const snap = items([{ id: "r1", status: "PENDING", updatedAt: new Date("2026-08-20T10:00:00.000Z") }])
+    const t = buildRequestListSyncToken(snap)
+    assert.equal(shouldRefreshAfterProbe(t, t), false)
+  })
+
+  it("nova request aparecendo na lista → token muda → 1 refresh (item 5 da missão)", () => {
+    const antes = buildRequestListSyncToken(
+      items([{ id: "r1", status: "PENDING", updatedAt: new Date("2026-08-20T10:00:00.000Z") }])
+    )
+    const depois = buildRequestListSyncToken(
+      items([
+        { id: "r1", status: "PENDING", updatedAt: new Date("2026-08-20T10:00:00.000Z") },
+        { id: "r2", status: "PENDING", updatedAt: new Date("2026-08-20T10:05:00.000Z") },
+      ])
+    )
+    assert.equal(shouldRefreshAfterProbe(antes, depois), true)
+  })
+
+  it("request saindo da lista (virou terminal) → token muda → 1 refresh (cancelamento do tutor)", () => {
+    const antes = buildRequestListSyncToken(
+      items([{ id: "r1", status: "ACCEPTED", updatedAt: new Date("2026-08-20T10:00:00.000Z") }])
+    )
+    const depois = buildRequestListSyncToken(items([]))
+    assert.equal(shouldRefreshAfterProbe(antes, depois), true)
+  })
+
+  it("mudança de status do mesmo item (ex.: PENDING → ACCEPTED) muda o token", () => {
+    const antes = buildRequestListSyncToken(
+      items([{ id: "r1", status: "PENDING", updatedAt: new Date("2026-08-20T10:00:00.000Z") }])
+    )
+    const depois = buildRequestListSyncToken(
+      items([{ id: "r1", status: "ACCEPTED", updatedAt: new Date("2026-08-20T10:01:00.000Z") }])
+    )
+    assert.equal(shouldRefreshAfterProbe(antes, depois), true)
+  })
+
+  it("determinístico independente da ORDEM dos itens — findMany não garante ordem estável entre chamadas", () => {
+    const a = { id: "r1", status: "PENDING" as const, updatedAt: new Date("2026-08-20T10:00:00.000Z") }
+    const b = { id: "r2", status: "ACCEPTED" as const, updatedAt: new Date("2026-08-20T10:05:00.000Z") }
+    assert.equal(buildRequestListSyncToken(items([a, b])), buildRequestListSyncToken(items([b, a])))
+  })
+
+  it("nenhum campo de PII no token — só id, status (enum) e updatedAt", () => {
+    const t = buildRequestListSyncToken(
+      items([{ id: "r1", status: "IN_PROGRESS", updatedAt: new Date("2026-08-20T10:00:00.000Z") }])
+    )
+    assert.ok(!/[áéíóúâêôãõç\s]/i.test(t.replace(/[TZ]/g, "")))
+  })
+})
+
+describe("REQUEST_OPERATIONAL_POLL_INTERVAL_MS — cadência das telas operacionais", () => {
+  it("é 10s, dentro da faixa 8-10s pedida pela missão, e menor que o default do Diário (20s)", () => {
+    assert.equal(REQUEST_OPERATIONAL_POLL_INTERVAL_MS, 10_000)
+    assert.ok(REQUEST_OPERATIONAL_POLL_INTERVAL_MS >= 8_000 && REQUEST_OPERATIONAL_POLL_INTERVAL_MS <= 10_000)
+  })
+})
 
 describe("item 10 — robustez: shouldSync nunca lança, mesmo com combinações adversas", () => {
   it("todas as combinações de flags booleanas e os 3 gatilhos produzem um boolean, sem exceção", () => {

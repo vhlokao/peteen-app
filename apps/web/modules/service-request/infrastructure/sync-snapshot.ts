@@ -11,8 +11,15 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
-import type { RequestSyncSnapshotInput } from "../domain/active-request-sync"
+import type {
+  RequestSyncSnapshotInput,
+  RequestListSyncSnapshotInput,
+} from "../domain/active-request-sync"
 import type { RequestStatus } from "../domain/types"
+import {
+  findActiveServiceRequestSignaturesByTutorId,
+  findActiveServiceRequestSignaturesByProfessionalId,
+} from "./repository"
 
 export async function getRequestSyncSnapshot(
   requestId: string
@@ -51,4 +58,24 @@ export async function getRequestSyncSnapshot(
     latestCareUpdate,
     careUpdateCount,
   }
+}
+
+/**
+ * Snapshot para o probe de LISTA (REQUEST AUTO-SYNC RELIABILITY) — só as
+ * assinaturas das requests NÃO terminais do ator. Um id que sai da lista
+ * (virou terminal) ou entra (nova PENDING) já muda o token; não há razão
+ * para buscar tutor/professional/pet aqui.
+ */
+export async function getTutorRequestListSyncSnapshot(
+  tutorId: string
+): Promise<RequestListSyncSnapshotInput> {
+  const items = await findActiveServiceRequestSignaturesByTutorId(tutorId)
+  return { items }
+}
+
+export async function getProfessionalRequestListSyncSnapshot(
+  professionalId: string
+): Promise<RequestListSyncSnapshotInput> {
+  const items = await findActiveServiceRequestSignaturesByProfessionalId(professionalId)
+  return { items }
 }

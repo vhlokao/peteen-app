@@ -20,6 +20,9 @@ import { ProfessionalTrustOverview } from "@/modules/professional-crm/components
 import { ProfessionalMetricsRow } from "@/modules/professional-crm/components/professional-metrics-row"
 import { ProfessionalRecentActivity } from "@/modules/professional-crm/components/professional-recent-activity"
 import { ProfessionalPublicProfileCTA } from "@/modules/professional-crm/components/professional-public-profile-cta"
+import { RequestListAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import { buildRequestListSyncToken } from "@/modules/service-request/domain/active-request-sync"
+import { getProfessionalRequestListSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 
 export const metadata: Metadata = {
   title: "Portal do profissional",
@@ -80,7 +83,12 @@ export default async function ProfessionalHomePage() {
     .join("")
     .toUpperCase()
 
+  const initialSyncToken = buildRequestListSyncToken(
+    await getProfessionalRequestListSyncSnapshot(profile.id)
+  )
+
   return (
+    <RequestListAutoRefresh role="professional" initialToken={initialSyncToken}>
     <div className="page-container max-w-4xl space-y-6 pb-4">
       <section
         className="relative overflow-hidden rounded-[24px] p-5"
@@ -182,5 +190,6 @@ export default async function ProfessionalHomePage() {
         </div>
       </div>
     </div>
+    </RequestListAutoRefresh>
   )
 }

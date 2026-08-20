@@ -28,7 +28,10 @@ import { ContextualPushSection } from "@/modules/notifications/components/contex
 import { DisputeStatusCard } from "@/modules/disputes/components/dispute-status-card"
 import { CareTimelineSummary, getCareTimelineAction } from "@/modules/care-timeline"
 import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
-import { buildRequestSyncToken } from "@/modules/service-request/domain/active-request-sync"
+import {
+  buildRequestSyncToken,
+  REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
+} from "@/modules/service-request/domain/active-request-sync"
 import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 
 export const metadata: Metadata = {
@@ -220,7 +223,12 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
     // nenhum ciclo. Envolve a árvore inteira porque é dela que os formulários
     // (ReviewForm, TutorRequestActions, DisputeReportSection) suspendem o
     // auto-refresh via useSuspendAutoRefreshWhileEditing.
-    <ActiveRequestAutoRefresh requestId={requestId} status={request.status} initialToken={initialSyncToken}>
+    <ActiveRequestAutoRefresh
+      requestId={requestId}
+      status={request.status}
+      initialToken={initialSyncToken}
+      pollIntervalMs={REQUEST_OPERATIONAL_POLL_INTERVAL_MS}
+    >
     <div className="page-container max-w-2xl pb-4">
       <div className="mb-5 flex items-center gap-3">
         <Link

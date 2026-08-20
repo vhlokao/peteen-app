@@ -41,8 +41,12 @@ import {
   type RequestStatus,
   type TrustEventPayload,
 } from "../domain/types"
-import { buildRequestSyncToken } from "../domain/active-request-sync"
-import { getRequestSyncSnapshot } from "../infrastructure/sync-snapshot"
+import { buildRequestSyncToken, buildRequestListSyncToken } from "../domain/active-request-sync"
+import {
+  getRequestSyncSnapshot,
+  getTutorRequestListSyncSnapshot,
+  getProfessionalRequestListSyncSnapshot,
+} from "../infrastructure/sync-snapshot"
 import {
   createServiceRequestRecord,
   findServiceRequestById,
@@ -1074,6 +1078,48 @@ export async function getRequestSyncProbeAction(
     return { success: true, data: { token: buildRequestSyncToken(snapshot) } }
   } catch (err) {
     console.error("[getRequestSyncProbeAction]", err)
+    return { success: false, error: "Erro ao verificar atualização." }
+  }
+}
+
+/**
+ * Probe de LISTA (REQUEST AUTO-SYNC RELIABILITY) — mesma ideia de
+ * `getRequestSyncProbeAction`, mas para `/tutor/requests` e o dashboard do
+ * tutor: um token agregado das requests NÃO terminais do tutor autenticado,
+ * sem payload. Sem perfil de tutor, devolve token vazio — lista vazia é um
+ * estado estável, não um erro.
+ */
+export async function getTutorRequestListSyncProbeAction(): Promise<
+  ActionResult<{ token: string }>
+> {
+  try {
+    const session = await requireAuth()
+    const tutorProfile = await findTutorProfileByUserId(session.id)
+    if (!tutorProfile) return { success: true, data: { token: "" } }
+
+    const snapshot = await getTutorRequestListSyncSnapshot(tutorProfile.id)
+    return { success: true, data: { token: buildRequestListSyncToken(snapshot) } }
+  } catch (err) {
+    console.error("[getTutorRequestListSyncProbeAction]", err)
+    return { success: false, error: "Erro ao verificar atualização." }
+  }
+}
+
+/**
+ * Mesmo probe de lista, para `/requests` e o dashboard do profissional.
+ */
+export async function getProfessionalRequestListSyncProbeAction(): Promise<
+  ActionResult<{ token: string }>
+> {
+  try {
+    const session = await requireAuth()
+    const professionalProfile = await findProfessionalProfileByUserId(session.id)
+    if (!professionalProfile) return { success: true, data: { token: "" } }
+
+    const snapshot = await getProfessionalRequestListSyncSnapshot(professionalProfile.id)
+    return { success: true, data: { token: buildRequestListSyncToken(snapshot) } }
+  } catch (err) {
+    console.error("[getProfessionalRequestListSyncProbeAction]", err)
     return { success: false, error: "Erro ao verificar atualização." }
   }
 }

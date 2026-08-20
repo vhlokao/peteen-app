@@ -10,6 +10,10 @@ import { EmptyState } from "@/components/shared/feedback/EmptyState"
 import { ProfessionalRequestCard } from "@/modules/professional-crm/components/professional-request-card"
 import { ProfessionalRequestsTabs } from "@/modules/professional-crm/components/professional-requests-tabs"
 import { PROFESSIONAL_REQUEST_GROUP } from "@/modules/professional-crm/domain/request-status-display"
+import { RequestListAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import { buildRequestListSyncToken } from "@/modules/service-request/domain/active-request-sync"
+import { getProfessionalRequestListSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
+import { findProfessionalProfileByUserId } from "@/modules/professional/infrastructure/repository"
 
 export const metadata: Metadata = {
   title: "Solicitações",
@@ -59,7 +63,18 @@ export default async function RequestsPage() {
   const requests: ServiceRequestWithParticipants[] = result.success ? result.data : []
   const { new: newRequests, ongoing, history } = groupRequests(requests)
 
+  // Token inicial calculado no MESMO render que já produziu `requests` —
+  // seeda o probe do cliente para comparar contra o que esta tela já mostra,
+  // não contra nada (mesma razão do detalhe de uma Request).
+  const professionalProfile = await findProfessionalProfileByUserId(ctx.user.id)
+  const initialSyncToken = professionalProfile
+    ? buildRequestListSyncToken(
+        await getProfessionalRequestListSyncSnapshot(professionalProfile.id)
+      )
+    : null
+
   return (
+    <RequestListAutoRefresh role="professional" initialToken={initialSyncToken}>
     <div className="page-container space-y-6">
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Solicitações</h1>
@@ -124,5 +139,6 @@ export default async function RequestsPage() {
         />
       )}
     </div>
+    </RequestListAutoRefresh>
   )
 }

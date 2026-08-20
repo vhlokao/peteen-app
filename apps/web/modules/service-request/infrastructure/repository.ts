@@ -31,11 +31,13 @@ import {
 } from "../domain/service-duration"
 import type { ServiceType } from "@/modules/professional/domain/types"
 import type { Species } from "@/modules/tutor/domain/types"
-import type {
-  ServiceRequestData,
-  ServiceRequestWithParticipants,
-  RequestStatus,
-  TrustEventPayload,
+import {
+  REQUEST_STATUS,
+  isTerminalStatus,
+  type ServiceRequestData,
+  type ServiceRequestWithParticipants,
+  type RequestStatus,
+  type TrustEventPayload,
 } from "../domain/types"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -234,6 +236,39 @@ export async function findServiceRequestsByProfessionalId(
   })
 
   return results.map(mapToWithParticipants)
+}
+
+/**
+ * Assinaturas leves ({id, status, updatedAt}) das requests NÃO terminais do
+ * tutor/profissional — REQUEST AUTO-SYNC RELIABILITY. Deliberadamente magra:
+ * o probe de lista roda a cada ~10s e não pode repetir o `include` completo
+ * de `findServiceRequestsBy*Id` (tutor/professional/pet/review) a cada
+ * ciclo. Escopo a NÃO terminais é o que faz uma request virar terminal
+ * "desaparecer" do próximo probe sem precisar carregá-la — o sumiço já muda
+ * o token computado por `buildRequestListSyncToken`.
+ */
+const NON_TERMINAL_STATUSES: RequestStatus[] = REQUEST_STATUS.filter(
+  (status) => !isTerminalStatus(status)
+)
+
+export async function findActiveServiceRequestSignaturesByTutorId(
+  tutorId: string
+): Promise<{ id: string; status: RequestStatus; updatedAt: Date }[]> {
+  const results = await prisma.serviceRequest.findMany({
+    where: { tutorId, status: { in: NON_TERMINAL_STATUSES } },
+    select: { id: true, status: true, updatedAt: true },
+  })
+  return results as { id: string; status: RequestStatus; updatedAt: Date }[]
+}
+
+export async function findActiveServiceRequestSignaturesByProfessionalId(
+  professionalId: string
+): Promise<{ id: string; status: RequestStatus; updatedAt: Date }[]> {
+  const results = await prisma.serviceRequest.findMany({
+    where: { professionalId, status: { in: NON_TERMINAL_STATUSES } },
+    select: { id: true, status: true, updatedAt: true },
+  })
+  return results as { id: string; status: RequestStatus; updatedAt: Date }[]
 }
 
 /**

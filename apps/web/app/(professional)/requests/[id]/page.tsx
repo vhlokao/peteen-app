@@ -19,7 +19,10 @@ import { ProfessionalRequestNextStep } from "@/modules/professional-crm/componen
 import { ProfessionalRequestSummary } from "@/modules/professional-crm/components/professional-request-summary"
 import { CareTimelineSummary, getCareTimelineAction } from "@/modules/care-timeline"
 import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
-import { buildRequestSyncToken } from "@/modules/service-request/domain/active-request-sync"
+import {
+  buildRequestSyncToken,
+  REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
+} from "@/modules/service-request/domain/active-request-sync"
 import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 
 export const metadata: Metadata = {
@@ -114,7 +117,12 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
     // ACCEPTED) e uma disputa pode ser aberta (ACCEPTED/IN_PROGRESS) — nenhum
     // dos dois é iniciado pelo próprio profissional, então nenhum
     // router.refresh() próprio cobriria essas mudanças.
-    <ActiveRequestAutoRefresh requestId={id} status={request.status} initialToken={initialSyncToken}>
+    <ActiveRequestAutoRefresh
+      requestId={id}
+      status={request.status}
+      initialToken={initialSyncToken}
+      pollIntervalMs={REQUEST_OPERATIONAL_POLL_INTERVAL_MS}
+    >
     <div className="page-container max-w-2xl pb-4">
       <div className="mb-5 flex items-center gap-3">
         <Link

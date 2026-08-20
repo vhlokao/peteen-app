@@ -82,14 +82,19 @@ import {
 import { useRouter } from "next/navigation"
 
 import {
-  shouldSync,
-  shouldRunPollTimer,
+  shouldSyncGeneric,
+  isRequestSyncActive,
   shouldRefreshAfterProbe,
   ACTIVE_REQUEST_POLL_INTERVAL_MS,
+  REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
   type ActiveRequestSyncTrigger,
 } from "../domain/active-request-sync"
-import { getRequestSyncProbeAction } from "../application/actions"
-import type { RequestStatus } from "../domain/types"
+import {
+  getRequestSyncProbeAction,
+  getTutorRequestListSyncProbeAction,
+  getProfessionalRequestListSyncProbeAction,
+} from "../application/actions"
+import type { RequestStatus, ActionResult } from "../domain/types"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Registro de interação
@@ -120,33 +125,30 @@ export function useSuspendAutoRefreshWhileEditing(interacting: boolean): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Componente
+// Motor compartilhado — timer + foco/visibilidade + probe + refresh
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function ActiveRequestAutoRefresh({
-  requestId,
-  status,
+/**
+ * Toda a "fiação" de sincronização (item 9 da missão REQUEST AUTO-SYNC
+ * RELIABILITY: reutilizar o componente canônico, nunca duplicar um segundo
+ * polling paralelo). `ActiveRequestAutoRefresh` (detalhe de UMA Request) e
+ * `RequestListAutoRefresh` (lista do tutor/profissional) são as duas únicas
+ * diferenças entre eles: QUEM decide se o timer deve rodar
+ * (`intervalActive`) e QUAL probe chamar — o resto (visibilidade, foco,
+ * cooldown, guard de rajada, comparação de token, `router.refresh()`) é
+ * exatamente o mesmo código, uma vez só.
+ */
+function useRequestSyncEngine({
+  intervalActive,
+  pollIntervalMs,
   initialToken,
-  children,
+  probe,
 }: {
-  requestId: string
-  status: RequestStatus
-  /**
-   * Token computado pelo SERVIDOR, no mesmo render que produziu a página —
-   * NÃO `null`. Sem isto, o PRIMEIRO probe do componente (que pode acontecer
-   * bem depois do mount: em status terminal não há timer, só foco/
-   * visibilidade) trataria qualquer coisa que já tivesse mudado entre o SSR
-   * e esse primeiro probe como "estado inicial", engolindo a mudança sem
-   * nunca sincronizar. Achado ao vivo do hardening: disputa criada
-   * externamente, sem nenhum probe rodar por 104s (aba sem foco/visibility
-   * naturais nesse intervalo), o primeiro foco manual absorveu a disputa
-   * como baseline em vez de detectá-la como diferença. Ver
-   * sync-snapshot.ts — quem calcula isto no servidor usa a MESMA
-   * `buildRequestSyncToken`, garantindo que o primeiro probe do cliente
-   * comece comparando contra o que a tela já mostra, não contra nada.
-   */
+  /** Recalculado pelo CHAMADOR a cada render — decide se o timer existe agora. */
+  intervalActive: boolean
+  pollIntervalMs: number
   initialToken: string | null
-  children: ReactNode
+  probe: () => Promise<ActionResult<{ token: string }>>
 }) {
   const router = useRouter()
   const [, startTransition] = useTransition()
@@ -158,7 +160,7 @@ export function ActiveRequestAutoRefresh({
   const [visible, setVisible] = useState(true)
 
   // Conjunto de ids interagindo agora. Ref, não state: registrar uma tecla
-  // digitada não pode re-renderizar a árvore inteira da Request.
+  // digitada não pode re-renderizar a árvore inteira.
   const interactingIdsRef = useRef<Set<string>>(new Set())
   const setInteracting = useCallback((id: string, interacting: boolean) => {
     if (interacting) interactingIdsRef.current.add(id)
@@ -175,20 +177,31 @@ export function ActiveRequestAutoRefresh({
   const isRefreshingRef = useRef(false)
 
   // Token do último probe bem-sucedido — referência para a PRÓXIMA
-  // comparação. Seedado com `initialToken` (do SSR), NUNCA com `null` — ver
-  // o comentário do prop acima para o porquê.
+  // comparação. Seedado com `initialToken` (do SSR), NUNCA com `null` — sem
+  // isto, o PRIMEIRO probe (que pode acontecer bem depois do mount: sem
+  // timer, só foco/visibilidade) trataria qualquer coisa que já tivesse
+  // mudado entre o SSR e esse primeiro probe como "estado inicial",
+  // engolindo a mudança sem nunca sincronizar. Achado ao vivo do hardening:
+  // disputa criada externamente, sem nenhum probe rodar por 104s, o primeiro
+  // foco manual absorveu a disputa como baseline em vez de detectá-la como
+  // diferença. Quem calcula o token inicial no servidor usa a MESMA função
+  // de token do cliente, garantindo que o primeiro probe comece comparando
+  // contra o que a tela já mostra, não contra nada.
   const lastTokenRef = useRef<string | null>(initialToken)
 
-  const statusRef = useRef(status)
-  statusRef.current = status
+  const intervalActiveRef = useRef(intervalActive)
+  intervalActiveRef.current = intervalActive
+
+  const probeRef = useRef(probe)
+  probeRef.current = probe
 
   const attempt = useCallback(
     (trigger: ActiveRequestSyncTrigger) => {
       const now = Date.now()
-      const deve = shouldSync(
+      const deve = shouldSyncGeneric(
         trigger,
         {
-          status: statusRef.current,
+          intervalActive: intervalActiveRef.current,
           documentVisible: document.visibilityState === "visible",
           hasInteraction: interactingIdsRef.current.size > 0,
           isRefreshing: isRefreshingRef.current,
@@ -201,7 +214,8 @@ export function ActiveRequestAutoRefresh({
       lastAttemptAtRef.current = now
       isRefreshingRef.current = true
 
-      getRequestSyncProbeAction(requestId)
+      probeRef
+        .current()
         .then((result) => {
           // Probe falhou (erro de negócio/autorização, não exceção) — não
           // sincroniza, não mexe na referência, não deixa rastro visível.
@@ -232,7 +246,7 @@ export function ActiveRequestAutoRefresh({
           isRefreshingRef.current = false
         })
     },
-    [router, startTransition, requestId]
+    [router, startTransition]
   )
 
   // Visibilidade — única fonte que corrige `visible` após o mount e a cada
@@ -255,8 +269,8 @@ export function ActiveRequestAutoRefresh({
 
   // Foco da janela — evento distinto de visibilitychange (alt-tab entre duas
   // janelas do MESMO app visível, por exemplo, dispara focus sem mudar
-  // visibilityState). O cooldown compartilhado em `shouldSync` colapsa o caso
-  // comum de focus+visibilitychange disparando juntos.
+  // visibilityState). O cooldown compartilhado em `shouldSyncGeneric` colapsa
+  // o caso comum de focus+visibilitychange disparando juntos.
   useEffect(() => {
     function onFocus() {
       attempt("focus")
@@ -265,18 +279,93 @@ export function ActiveRequestAutoRefresh({
     return () => window.removeEventListener("focus", onFocus)
   }, [attempt])
 
-  // Timer de polling — existe SE E SOMENTE SE `shouldRunPollTimer` for
-  // verdadeiro. Recriado (e destruído) sempre que `status` muda (ex.: um
-  // refresh trouxe COMPLETED) ou `visible` muda (aba saiu/voltou).
+  // Timer de polling — existe SE E SOMENTE SE `intervalActive && visible`.
+  // Recriado (e destruído) sempre que qualquer um dos dois muda (ex.: um
+  // refresh trouxe status terminal, ou a aba saiu/voltou).
   useEffect(() => {
-    if (!shouldRunPollTimer(status, visible)) return
+    if (!intervalActive || !visible) return
 
     const intervalId = setInterval(() => {
       attempt("interval")
-    }, ACTIVE_REQUEST_POLL_INTERVAL_MS)
+    }, pollIntervalMs)
 
     return () => clearInterval(intervalId)
-  }, [status, visible, attempt])
+  }, [intervalActive, visible, pollIntervalMs, attempt])
+
+  return { setInteracting }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Componentes
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function ActiveRequestAutoRefresh({
+  requestId,
+  status,
+  initialToken,
+  pollIntervalMs = ACTIVE_REQUEST_POLL_INTERVAL_MS,
+  children,
+}: {
+  requestId: string
+  status: RequestStatus
+  /** Token computado pelo SERVIDOR, no mesmo render que produziu a página — NÃO `null`. */
+  initialToken: string | null
+  /**
+   * Cadência do timer. Default preserva o contrato antigo (20s) — usado pelo
+   * Diário, que não recebe este prop. As telas operacionais de Request
+   * (detalhe) passam `REQUEST_OPERATIONAL_POLL_INTERVAL_MS` explicitamente.
+   */
+  pollIntervalMs?: number
+  children: ReactNode
+}) {
+  const probe = useCallback(() => getRequestSyncProbeAction(requestId), [requestId])
+  const { setInteracting } = useRequestSyncEngine({
+    intervalActive: isRequestSyncActive(status),
+    pollIntervalMs,
+    initialToken,
+    probe,
+  })
+
+  return (
+    <InteractionContext.Provider value={{ setInteracting }}>
+      {children}
+    </InteractionContext.Provider>
+  )
+}
+
+/**
+ * Sincroniza `/tutor/requests`, `/requests` (profissional) e os respectivos
+ * dashboards — REQUEST AUTO-SYNC RELIABILITY. Ao contrário do detalhe de uma
+ * Request, uma lista não tem "um status" que decida se o timer vale a pena:
+ * `intervalActive` fica sempre `true` enquanto a aba estiver visível, porque
+ * uma request nova pode chegar mesmo que todas as atuais já estejam
+ * terminais.
+ */
+export function RequestListAutoRefresh({
+  role,
+  initialToken,
+  pollIntervalMs = REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
+  children,
+}: {
+  role: "tutor" | "professional"
+  /** Token computado pelo SERVIDOR no mesmo render — mesma razão do prop acima. */
+  initialToken: string | null
+  pollIntervalMs?: number
+  children: ReactNode
+}) {
+  const probe = useCallback(
+    () =>
+      role === "tutor"
+        ? getTutorRequestListSyncProbeAction()
+        : getProfessionalRequestListSyncProbeAction(),
+    [role]
+  )
+  const { setInteracting } = useRequestSyncEngine({
+    intervalActive: true,
+    pollIntervalMs,
+    initialToken,
+    probe,
+  })
 
   return (
     <InteractionContext.Provider value={{ setInteracting }}>

@@ -24,7 +24,7 @@
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react"
-import { AlertCircle, ImagePlus, Loader2, RotateCcw, X } from "lucide-react"
+import { AlertCircle, Camera, ImagePlus, Loader2, RotateCcw, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { requestCareMediaUploadTicketAction } from "../application/actions"
@@ -56,10 +56,50 @@ type Props = {
   disabled: boolean
 }
 
+/**
+ * MIME/aceite do input — a MESMA lista para câmera e galeria. `validatePhotoCandidate`
+ * (domain) é quem decide de verdade; isto é só o filtro nativo do picker.
+ */
+const ACCEPT_IMAGENS = "image/jpeg,image/png,image/webp"
+
 export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props) {
   const inputId = useId()
+  const cameraInputId = useId()
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [erroSelecao, setErroSelecao] = useState<string | null>(null)
+
+  /**
+   * Câmera-primeiro só em aparelho com toque como entrada principal.
+   *
+   * ─────────────────────────────────────────────────────────────────────────
+   * POR QUE `matchMedia("(pointer: coarse)")`, E NÃO SNIFFAR USER AGENT
+   *
+   * `pointer: coarse` responde "o dispositivo apontador PRINCIPAL é impreciso
+   * (dedo), não fino (mouse/trackpad)?" — é exatamente a pergunta de produto
+   * ("isto é um bolso ou uma mesa?"), e não depende de string de UA que muda
+   * por browser e por versão. `capture="environment"` em si é inofensivo em
+   * desktop (navegadores ignoram o atributo e abrem o seletor de arquivo
+   * normal) — a detecção aqui é só para não OFERECER dois botões que fariam a
+   * mesma coisa numa mesa, não para evitar um comportamento quebrado.
+   *
+   * ─────────────────────────────────────────────────────────────────────────
+   * `false` NO PRIMEIRO RENDER, SEMPRE — SSR não tem `window`, e arrancar já
+   * assumindo mobile arriscaria um flash de layout trocando de dois botões
+   * para um assim que o client montasse. Começar "desktop" e promover para
+   * câmera-primeiro depois do mount é a única ordem sem esse salto: o caso
+   * comum (abrir o Diário já num celular) resolve em um re-render, imperceptível.
+   */
+  const [preferirCamera, setPreferirCamera] = useState(false)
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return
+    const mql = window.matchMedia("(pointer: coarse)")
+    setPreferirCamera(mql.matches)
+    const ouvir = (e: MediaQueryListEvent) => setPreferirCamera(e.matches)
+    mql.addEventListener("change", ouvir)
+    return () => mql.removeEventListener("change", ouvir)
+  }, [])
 
   // `itens` numa ref para o cleanup de unmount não precisar de `itens` na
   // dependência (o que revogaria as URLs a cada mudança da lista, quebrando
@@ -288,11 +328,34 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
         </ul>
       ) : null}
 
+      {/*
+        Dois inputs, um pipeline só: os dois disparam o MESMO handleFiles —
+        nenhum protocolo de upload, validação ou mídia muda entre eles. A
+        única diferença é o atributo `capture`, que decide se o navegador
+        oferece a câmera antes da galeria.
+
+        Câmera sem `multiple`: `capture` já implica UMA foto por captura —
+        pedir várias ao mesmo tempo não é como o fluxo de câmera funciona em
+        nenhum browser. Quem quer 3 fotos tira 3 vezes ou usa a galeria.
+      */}
+      <input
+        ref={cameraInputRef}
+        id={cameraInputId}
+        type="file"
+        accept={ACCEPT_IMAGENS}
+        capture="environment"
+        className="sr-only"
+        disabled={!podeAdicionar}
+        onChange={(e) => {
+          handleFiles(e.target.files)
+          e.target.value = ""
+        }}
+      />
       <input
         ref={inputRef}
         id={inputId}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={ACCEPT_IMAGENS}
         multiple
         className="sr-only"
         disabled={!podeAdicionar}
@@ -304,16 +367,42 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
         }}
       />
 
-      <Button
-        type="button"
-        variant="outline"
-        onClick={() => inputRef.current?.click()}
-        disabled={!podeAdicionar}
-        className="min-h-11 w-full gap-2"
-      >
-        <ImagePlus className="size-4" />
-        {itens.length === 0 ? "Adicionar foto" : "Adicionar outra foto"}
-      </Button>
+      {preferirCamera ? (
+        <div className="flex flex-col gap-2">
+          {/* Ação PRINCIPAL — maior destaque (variant default, preenchido). */}
+          <Button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={!podeAdicionar}
+            className="min-h-11 w-full gap-2"
+          >
+            <Camera className="size-4" />
+            Tirar foto agora
+          </Button>
+          {/* Ação secundária — outline, mesmo peso visual do botão único de desktop. */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => inputRef.current?.click()}
+            disabled={!podeAdicionar}
+            className="min-h-11 w-full gap-2"
+          >
+            <ImagePlus className="size-4" />
+            Escolher da galeria
+          </Button>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => inputRef.current?.click()}
+          disabled={!podeAdicionar}
+          className="min-h-11 w-full gap-2"
+        >
+          <ImagePlus className="size-4" />
+          {itens.length === 0 ? "Adicionar foto" : "Adicionar outra foto"}
+        </Button>
+      )}
 
       {erroSelecao ? (
         <p role="alert" className="text-xs text-destructive">

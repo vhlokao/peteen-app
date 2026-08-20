@@ -3,8 +3,10 @@
 /**
  * CareTimeline — visualização read-only da timeline de cuidado.
  *
- * O servidor busca (getCareTimelineAction) e passa `updates` já ordenados por
- * occurredAt ASC. A formatação de horário é feita no client, no fuso do viewer
+ * O servidor busca (getCareTimelineAction) e passa `updates` já ordenados
+ * MAIS RECENTE PRIMEIRO (por occurredAt — ver domain/timeline-order.ts). Quem
+ * acompanha um atendimento em andamento quer a última notícia sem rolar até o
+ * fim da lista. A formatação de horário é feita no client, no fuso do viewer
  * (decisão V0: armazenar UTC, renderizar local).
  */
 

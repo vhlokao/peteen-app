@@ -11,13 +11,19 @@
  *   consultável. O diário completo mudou-se para rota própria; aqui fica só a
  *   resposta a "o que acabou de acontecer?".
  *
- * ORDEM — as duas superfícies são deliberadamente OPOSTAS:
- *   - resumo (aqui): mais RECENTE primeiro. É um panorama; o que importa é a
- *     última notícia.
- *   - diário completo: cronológico (mais antigo → mais recente). É um relato
- *     do dia e se lê para frente.
- *   `updates` chega sempre na ordem canônica do repositório (occurredAt ASC);
- *   a inversão acontece só nesta projeção, nunca na fonte.
+ * ORDEM — resumo e diário completo agora concordam: as duas mostram mais
+ * RECENTE primeiro (por occurredAt). `updates` chega já nessa ordem —
+ * `selectTimelineSummary` só RECORTA os primeiros `RESUMO_MAX`, nunca reordena
+ * (ver domain/timeline-order.ts, a fonte única da regra).
+ *
+ * Antes as duas superfícies eram deliberadamente opostas (resumo recente
+ * primeiro, diário cronológico do início para o fim) e este componente
+ * invertia a lista recebida com `slice(-max).reverse()`. Essa suposição —
+ * "a origem chega oldest-first" — ficou implícita aqui dentro; quando a ordem
+ * de origem mudou para newest-first (o achado físico que motivou esta
+ * mudança), o `.reverse()` inline teria voltado a mostrar as MAIS ANTIGAS no
+ * resumo, silenciosamente. Extrair a decisão para o domínio é o que torna
+ * esse tipo de acoplamento visível e testável.
  */
 
 import Link from "next/link"
@@ -25,6 +31,7 @@ import { ChevronRight } from "lucide-react"
 
 import { CARE_CATEGORY_LABELS, type CareUpdate } from "../domain/types"
 import { CATEGORY_ICON, formatCareUpdateTime } from "./care-update-visuals"
+import { selectTimelineSummary } from "../domain/timeline-order"
 
 /** Teto do resumo. Acima disso é o diário completo que responde. */
 const RESUMO_MAX = 2
@@ -34,7 +41,7 @@ export function CareTimelineSummary({
   diaryHref,
   ctaLabel = "Abrir diário",
 }: {
-  /** Timeline completa em ordem cronológica — o corte é feito aqui. */
+  /** Timeline completa, mais recente primeiro — o corte é feito aqui. */
   updates: CareUpdate[]
   diaryHref: string
   /**
@@ -46,7 +53,7 @@ export function CareTimelineSummary({
   ctaLabel?: string
 }) {
   const total = updates.length
-  const recentes = updates.slice(-RESUMO_MAX).reverse()
+  const recentes = selectTimelineSummary(updates, RESUMO_MAX)
 
   return (
     <div className="flex flex-col gap-3">

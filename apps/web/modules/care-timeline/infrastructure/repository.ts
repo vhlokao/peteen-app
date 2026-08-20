@@ -19,6 +19,7 @@ import {
   type CareMediaInternal,
   type ValidatedCareMedia,
 } from "../domain/types"
+import { sortCareUpdatesNewestFirst } from "../domain/timeline-order"
 import {
   uniqueViolationTarget,
   matchesUniqueConstraint,
@@ -123,30 +124,27 @@ const REQUEST_MUTABLE_GUARD = {
 // LEITURA
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Ordenação determinística e estável — dois registros podem ter o mesmo
- * occurredAt, então desempata por createdAt e, por fim, id. Aplicada a
- * tutor, profissional e admin.
- */
-const CARE_TIMELINE_ORDER = [
+/** Ordem cronológica ascendente — só para getCareTimelineAdmin, ver ali. */
+const ADMIN_CARE_TIMELINE_ORDER = [
   { occurredAt: "asc" },
   { createdAt: "asc" },
   { id: "asc" },
 ] satisfies Prisma.CareUpdateOrderByWithRelationInput[]
 
 /**
- * Timeline de uma request — só atualizações vivas (deletedAt IS NULL), ordem
- * cronológica estável do cuidado. Visão tutor/profissional.
+ * Timeline de uma request — só atualizações vivas (deletedAt IS NULL), mais
+ * RECENTE primeiro (por `occurredAt`; ver domain/timeline-order.ts para a
+ * regra e o porquê da ordem ser aplicada em memória, não via `orderBy` do
+ * Prisma). Visão tutor/profissional.
  */
 export async function getCareTimeline(
   requestId: string
 ): Promise<CareUpdateWithInternalMedia[]> {
   const rows = await prisma.careUpdate.findMany({
     where: { requestId, deletedAt: null },
-    orderBy: CARE_TIMELINE_ORDER,
     select: PUBLIC_SELECT,
   })
-  return rows.map(toPublic)
+  return sortCareUpdatesNewestFirst(rows.map(toPublic))
 }
 
 /**
@@ -158,7 +156,11 @@ export async function getCareTimelineAdmin(
 ): Promise<(CareUpdateWithInternalMedia & { deletedAt: Date | null })[]> {
   const rows = await prisma.careUpdate.findMany({
     where: { requestId },
-    orderBy: CARE_TIMELINE_ORDER,
+    // Fora de escopo desta missão (leitura tutor/profissional): a visão de
+    // admin permanece cronológica ASCENDENTE, como sempre foi — reconstrução
+    // de evidência lê-se do início para o fim. Ordem própria, não reaproveita
+    // sortCareUpdatesNewestFirst de propósito.
+    orderBy: ADMIN_CARE_TIMELINE_ORDER,
     select: { ...PUBLIC_SELECT, deletedAt: true },
   })
   return rows.map((row) => ({ ...toPublic(row), deletedAt: row.deletedAt }))

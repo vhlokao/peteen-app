@@ -66,8 +66,8 @@ model User {
   auditLogs AuditLog[]
 
   // Moderação / Disputas
-  openedDisputes  Dispute[]       @relation("DisputeOpener")
-  adminAuditLogs  AdminAuditLog[] @relation("AdminAuditLogs")
+  openedDisputes Dispute[]       @relation("DisputeOpener")
+  adminAuditLogs AdminAuditLog[] @relation("AdminAuditLogs")
 
   // Care Timeline — atualizações de cuidado escritas por este usuário
   careUpdatesAuthored CareUpdate[] @relation("CareUpdateAuthor")
@@ -75,7 +75,11 @@ model User {
   // Push Notifications V0 — relações inversas (virtuais, sem coluna em `users`;
   // a FK vive na tabela filha). Ver models no fim do arquivo.
   pushSubscriptions PushSubscription[]
-  pushDeliveries    PushDelivery[]    @relation("PushDeliveryRecipient")
+  pushDeliveries    PushDelivery[]     @relation("PushDeliveryRecipient")
+
+  // Notification Center — estado de leitura do feed derivado. Ver
+  // NotificationRead no fim do arquivo.
+  notificationReads NotificationRead[]
 
   @@index([authId])
   @@index([email])
@@ -98,16 +102,16 @@ model TutorProfile {
   phone       String?
 
   // Geo — necessário para descoberta e ranking local
-  neighborhood   String?
-  city             String
-  state            String
-  lat              Float?
-  lng              Float?
+  neighborhood    String?
+  city            String
+  state           String
+  lat             Float?
+  lng             Float?
   // Etapa 6.0 — Growth Engine (referências territoriais)
-  neighborhoodId   String?
-  neighborhoodRef  Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
-  regionId         String?
-  regionRef        Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  neighborhoodId  String?
+  neighborhoodRef Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  regionId        String?
+  regionRef       Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
 
   // Relações de domínio
   pets          Pet[]
@@ -138,17 +142,17 @@ model ProfessionalProfile {
   phone       String?
 
   // Geo
-  neighborhood     String?
-  city             String
-  state            String
-  lat              Float?
-  lng              Float?
-  serviceRadiusKm  Float?  @default(10)
+  neighborhood    String?
+  city            String
+  state           String
+  lat             Float?
+  lng             Float?
+  serviceRadiusKm Float?        @default(10)
   // Etapa 6.0 — Growth Engine
-  neighborhoodId   String?
-  neighborhoodRef  Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
-  regionId         String?
-  regionRef        Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  neighborhoodId  String?
+  neighborhoodRef Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  regionId        String?
+  regionRef       Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
 
   // Contexto de serviço — core do ranking contextual
   serviceTypes    ServiceType[]
@@ -171,7 +175,7 @@ model ProfessionalProfile {
   verifiedPartner  Boolean   @default(false)
 
   // Monetização — paga por ferramenta operacional, NUNCA por visibilidade
-  planType      PlanType @default(FREE)
+  planType      PlanType  @default(FREE)
   planExpiresAt DateTime?
 
   // Relações de domínio
@@ -227,16 +231,16 @@ model PartnerProfile {
   phone       String?
 
   // Geo
-  neighborhood     String?
-  city             String
-  state            String
-  lat              Float?
-  lng              Float?
+  neighborhood    String?
+  city            String
+  state           String
+  lat             Float?
+  lng             Float?
   // Etapa 6.0 — Growth Engine
-  neighborhoodId   String?
-  neighborhoodRef  Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
-  regionId         String?
-  regionRef        Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  neighborhoodId  String?
+  neighborhoodRef Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  regionId        String?
+  regionRef       Region?       @relation(fields: [regionId], references: [id], onDelete: SetNull)
 
   isVerified Boolean   @default(false)
   verifiedAt DateTime?
@@ -312,33 +316,33 @@ model Neighborhood {
 // PartnerProfile = persona de usuário (futuro login de parceiro).
 
 model Partner {
-  id           String          @id @default(cuid())
-  businessName String
-  slug         String          @unique
-  category     PartnerCategory
-  city         String
-  state        String
-  neighborhood String?
-  neighborhoodId String?
-  neighborhoodRef Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
-  regionId       String?
-  regionRef      Region?         @relation(fields: [regionId], references: [id], onDelete: SetNull)
-  description  String?
-  phone        String?
-  website      String?
-  instagram    String?
-  logoUrl      String?
-  isVerified   Boolean         @default(false)
-  isActive     Boolean         @default(true)
+  id                      String                    @id @default(cuid())
+  businessName            String
+  slug                    String                    @unique
+  category                PartnerCategory
+  city                    String
+  state                   String
+  neighborhood            String?
+  neighborhoodId          String?
+  neighborhoodRef         Neighborhood?             @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  regionId                String?
+  regionRef               Region?                   @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  description             String?
+  phone                   String?
+  website                 String?
+  instagram               String?
+  logoUrl                 String?
+  isVerified              Boolean                   @default(false)
+  isActive                Boolean                   @default(true)
   // Etapa 6.1 — Onboarding & Activation
-  onboardingStatus      PartnerOnboardingStatus      @default(NOT_STARTED)
-  onboardingCompletedAt DateTime?
-  verificationStatus    PartnerVerificationStatus    @default(NONE)
-  yearsInBusiness       Int?
-  hasCnpj               Boolean                      @default(false)
+  onboardingStatus        PartnerOnboardingStatus   @default(NOT_STARTED)
+  onboardingCompletedAt   DateTime?
+  verificationStatus      PartnerVerificationStatus @default(NONE)
+  yearsInBusiness         Int?
+  hasCnpj                 Boolean                   @default(false)
   verificationRequestedAt DateTime?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
 
   trustConnections     TrustConnection[]
   linkedPartnerProfile PartnerProfile?
@@ -388,7 +392,7 @@ model Pet {
   // Legado — preferir description (Etapa 6.3)
   notes           String?
   isNeutered      Boolean?
-  hasSpecialNeeds Boolean @default(false)
+  hasSpecialNeeds Boolean  @default(false)
 
   // Arquivamento operacional (sem hard delete)
   isActive Boolean @default(true)
@@ -422,7 +426,7 @@ model Service {
   serviceType ServiceType
   priceMin    Float?
   priceMax    Float?
-  isActive    Boolean @default(true)
+  isActive    Boolean     @default(true)
 
   // Agenda Foundation V0.3 — duração padrão em minutos, informada pelo
   // profissional. Opcional: serviço sem duração continua válido e aceitável.
@@ -487,9 +491,9 @@ model ServiceRequest {
   // seriesId + recurrenceRule: agendamento automático (Fase 4+)
   // Todos os campos de recorrência são nullable — sem impacto em requests únicos
   isRecurring      Boolean   @default(false)
-  parentRequestId  String?   // aponta para o request anterior da mesma série
-  seriesId         String?   // agrupa todos os requests da série para query eficiente
-  recurrenceRule   String?   // RRULE: ex "FREQ=WEEKLY;BYDAY=SA" (RFC 5545)
+  parentRequestId  String? // aponta para o request anterior da mesma série
+  seriesId         String? // agrupa todos os requests da série para query eficiente
+  recurrenceRule   String? // RRULE: ex "FREQ=WEEKLY;BYDAY=SA" (RFC 5545)
   recurrenceEndsAt DateTime? // quando a série de recorrência expira
   nextScheduledAt  DateTime? // data prevista do próximo atendimento na série
 
@@ -714,10 +718,10 @@ model CrmClient {
   tags        String[]
 
   // Métricas de recorrência para o CRM
-  totalServices  Int      @default(0)
+  totalServices  Int       @default(0)
   lastServiceAt  DateTime?
   nextServiceAt  DateTime?
-  isActiveClient Boolean  @default(true)
+  isActiveClient Boolean   @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -804,8 +808,8 @@ model FraudSignal {
 model TutorProfessionalRelationship {
   id String @id @default(cuid())
 
-  tutorId        String
-  tutor          TutorProfile        @relation(fields: [tutorId], references: [id], onDelete: Cascade)
+  tutorId String
+  tutor   TutorProfile @relation(fields: [tutorId], references: [id], onDelete: Cascade)
 
   professionalId String
   professional   ProfessionalProfile @relation(fields: [professionalId], references: [id], onDelete: Cascade)
@@ -820,11 +824,11 @@ model TutorProfessionalRelationship {
   // e sem escritor hoje; mantido apenas para evitar migration. Uma migration
   // futura pode removê-lo.
   totalRequests     Int @default(0)
-  completedServices Int @default(0)  // atendimentos COMPLETED — driver principal do nível
-  reviewsGiven      Int @default(0)  // reviews criadas pelo tutor para este profissional
-  cancelledByTutor  Int @default(0)  // cancelamentos feitos pelo tutor
-  cancelledByPro    Int @default(0)  // cancelamentos feitos pelo profissional
-  disputedServices  Int @default(0)  // disputas abertas neste relacionamento
+  completedServices Int @default(0) // atendimentos COMPLETED — driver principal do nível
+  reviewsGiven      Int @default(0) // reviews criadas pelo tutor para este profissional
+  cancelledByTutor  Int @default(0) // cancelamentos feitos pelo tutor
+  cancelledByPro    Int @default(0) // cancelamentos feitos pelo profissional
+  disputedServices  Int @default(0) // disputas abertas neste relacionamento
 
   // Timeline do vínculo
   firstServiceAt DateTime? // data do primeiro atendimento concluído
@@ -851,14 +855,14 @@ model TutorProfessionalRelationship {
 // Distinto de FraudSignal (antifraude técnico): flags são operacionais e mais amplas.
 // NUNCA deletar. NUNCA editar. Apenas resolver ou dispensar.
 model OperationalFlag {
-  id         String          @id @default(cuid())
+  id         String         @id @default(cuid())
   targetType FlagTargetType
   targetId   String
   reason     String
-  severity   FlagSeverity    @default(LOW)
-  source     FlagSource      @default(SYSTEM)
-  status     FlagStatus      @default(OPEN)
-  createdAt  DateTime        @default(now())
+  severity   FlagSeverity   @default(LOW)
+  source     FlagSource     @default(SYSTEM)
+  status     FlagStatus     @default(OPEN)
+  createdAt  DateTime       @default(now())
   resolvedAt DateTime?
   resolvedBy String?
 
@@ -1093,12 +1097,12 @@ enum DisputeStatus {
 // Princípio: "Confio porque alguém confiável recomenda esta pessoa."
 // Arquitetura de confiança transitiva, sem IA, sem ML.
 model TrustConnection {
-  id   String @id @default(cuid())
+  id String @id @default(cuid())
 
   // Origem da confiança
   sourceType TrustSourceType
   sourceId   String
-  sourceName String          // fallback legado / denormalizado
+  sourceName String // fallback legado / denormalizado
 
   // Etapa 5.9 — vínculo com entidade Partner real (quando origem = PARTNER)
   sourcePartnerId String?
@@ -1182,7 +1186,7 @@ model VerificationRequest {
   id                String                    @id @default(cuid())
   entityType        VerificationEntityType
   entityId          String
-  status            VerificationRequestStatus   @default(PENDING)
+  status            VerificationRequestStatus @default(PENDING)
   requestedAt       DateTime                  @default(now())
   reviewedAt        DateTime?
   reviewedByAdminId String?
@@ -1287,9 +1291,9 @@ model PushSubscription {
   updatedAt  DateTime @updatedAt
   lastSeenAt DateTime @default(now())
 
-  revokedAt DateTime?
+  revokedAt     DateTime?
   // logout | user_optout | gone | account_cleanup
-  revokedReason String? @db.VarChar(40)
+  revokedReason String?   @db.VarChar(40)
 
   // Índice quente: é exatamente o WHERE do dispatch (subscriptions ativas de
   // um destinatário) e o do teto de devices por usuário.
@@ -1357,4 +1361,45 @@ model PushDelivery {
   @@index([entityId])
   @@index([createdAt])
   @@map("push_deliveries")
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATION CENTER — estado de leitura
+// ─────────────────────────────────────────────
+
+/// Marca de "já li isto" para uma notificação do feed.
+///
+/// O feed da central é DERIVADO em tempo de request (ver
+/// modules/notifications/infrastructure/queries.ts): não existe tabela de
+/// notificações, e por isso não existe linha onde gravar `readAt`. Esta
+/// tabela lateral resolve só a leitura, sem materializar o feed — o que
+/// preserva a propriedade mais valiosa da arquitetura atual: um evento que
+/// deixa de ser verdade (CareUpdate soft-deletado, disputa resolvida) some
+/// do feed sozinho, sem dual-write nem risco de divergência.
+///
+/// A ponte é `notificationKey`: o id sintético que a derivação já produz
+/// (ex.: "notif-tutor-accepted-<requestId>"), determinístico porque deriva
+/// do tipo do evento + id da entidade de origem. Mesmo evento ⇒ mesma
+/// chave, entre renders e entre sessões.
+///
+/// AUSÊNCIA DE LINHA = NÃO LIDA. É o default correto para todo usuário
+/// existente, e por isso esta tabela não precisa de backfill.
+model NotificationRead {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Chave sintética do evento derivado. VarChar(200) acompanha o teto de
+  /// `PushDelivery.eventKey` — as duas são chaves lógicas de evento, ainda
+  /// que de sistemas independentes.
+  notificationKey String @db.VarChar(200)
+
+  readAt DateTime @default(now())
+
+  // Torna a marcação IDEMPOTENTE no banco, não só na aplicação: clicar duas
+  // vezes no mesmo item (ou um "marcar todas" concorrente) não duplica linha.
+  @@unique([userId, notificationKey])
+  @@index([userId, readAt])
+  @@map("notification_reads")
 }

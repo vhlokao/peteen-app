@@ -204,3 +204,35 @@
     padding-top: env(safe-area-inset-top, 0px);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Notification Center — microfeedback do sino
+
+   Dispara UMA vez, quando a contagem de não lidas sobe com a aba já aberta
+   (ver notification-bell.tsx). Nunca em loop: um sino piscando indefinidamente
+   vira ruído que o usuário aprende a ignorar.
+
+   Sob prefers-reduced-motion a animação é anulada por completo — o badge
+   aparecendo já comunica a novidade, sem nenhum movimento.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@keyframes notification-bell-ring {
+  0%   { transform: rotate(0deg); }
+  15%  { transform: rotate(12deg); }
+  30%  { transform: rotate(-10deg); }
+  45%  { transform: rotate(7deg); }
+  60%  { transform: rotate(-5deg); }
+  75%  { transform: rotate(2deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.notification-bell-ring {
+  animation: notification-bell-ring 0.6s ease-in-out 1;
+  transform-origin: top center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-bell-ring {
+    animation: none;
+  }
+}

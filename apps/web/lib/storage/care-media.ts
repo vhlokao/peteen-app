@@ -46,7 +46,11 @@ import {
   CARE_MEDIA_MAX_OBJECTS_PER_REQUEST,
   type CareMediaMimeType,
 } from "./care-media-path"
-import { careMediaThumbnailTransform, type CareMediaTransform } from "./care-media-transform"
+import {
+  careMediaDisplayTransform,
+  careMediaThumbnailTransform,
+  type CareMediaTransform,
+} from "./care-media-transform"
 import { CARE_MEDIA_BUCKET_NAME } from "@/modules/care-timeline/domain/care-media-bucket"
 
 /**
@@ -259,6 +263,20 @@ export async function createCareMediaThumbnailUrl(params: {
   expiresInSeconds?: number
 }): Promise<string | null> {
   return createCareMediaReadUrl({ ...params, transform: careMediaThumbnailTransform() })
+}
+
+/**
+ * URL assinada da versao de VISUALIZACAO (1600px) usada pelo lightbox.
+ *
+ * Mesmas garantias da miniatura: mesmo objeto, mesma assinatura, mesmo bucket
+ * privado.  faz o lightbox cair para a original — pesado, nunca ausente.
+ */
+export async function createCareMediaDisplayUrl(params: {
+  path: string
+  requestId: string
+  expiresInSeconds?: number
+}): Promise<string | null> {
+  return createCareMediaReadUrl({ ...params, transform: careMediaDisplayTransform() })
 }
 
 /**

@@ -38,6 +38,7 @@ import {
   validatePhotoCandidate,
   type PhotoSelectionItem,
 } from "../domain/photo-selection"
+import { MEDIA_QUERY_CAPTURA, deveOferecerCameraPrimeiro } from "../domain/camera-capture"
 
 /**
  * O item da UI carrega, além do estado de domínio, as duas coisas que só
@@ -70,35 +71,43 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
   const [erroSelecao, setErroSelecao] = useState<string | null>(null)
 
   /**
-   * Câmera-primeiro só em aparelho com toque como entrada principal.
+   * Câmera-primeiro em qualquer aparelho com toque disponível — ver a
+   * justificativa completa (e o incidente do Android que não mostrava o botão)
+   * em domain/camera-capture.ts.
    *
-   * ─────────────────────────────────────────────────────────────────────────
-   * POR QUE `matchMedia("(pointer: coarse)")`, E NÃO SNIFFAR USER AGENT
-   *
-   * `pointer: coarse` responde "o dispositivo apontador PRINCIPAL é impreciso
-   * (dedo), não fino (mouse/trackpad)?" — é exatamente a pergunta de produto
-   * ("isto é um bolso ou uma mesa?"), e não depende de string de UA que muda
-   * por browser e por versão. `capture="environment"` em si é inofensivo em
-   * desktop (navegadores ignoram o atributo e abrem o seletor de arquivo
-   * normal) — a detecção aqui é só para não OFERECER dois botões que fariam a
-   * mesma coisa numa mesa, não para evitar um comportamento quebrado.
-   *
-   * ─────────────────────────────────────────────────────────────────────────
    * `false` NO PRIMEIRO RENDER, SEMPRE — SSR não tem `window`, e arrancar já
    * assumindo mobile arriscaria um flash de layout trocando de dois botões
-   * para um assim que o client montasse. Começar "desktop" e promover para
-   * câmera-primeiro depois do mount é a única ordem sem esse salto: o caso
-   * comum (abrir o Diário já num celular) resolve em um re-render, imperceptível.
+   * para um assim que o client montasse. Começar "desktop" e promover depois
+   * do mount é a única ordem sem esse salto: o caso comum (abrir o Diário já
+   * num celular) resolve em um re-render, imperceptível.
    */
   const [preferirCamera, setPreferirCamera] = useState(false)
 
   useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return
-    const mql = window.matchMedia("(pointer: coarse)")
-    setPreferirCamera(mql.matches)
-    const ouvir = (e: MediaQueryListEvent) => setPreferirCamera(e.matches)
-    mql.addEventListener("change", ouvir)
-    return () => mql.removeEventListener("change", ouvir)
+    if (typeof window === "undefined") return
+
+    const avaliar = () => {
+      // `matchMedia` ausente (navegador muito antigo) não pode zerar o outro
+      // sinal: `maxTouchPoints` sozinho ainda decide.
+      const algumApontadorImpreciso = window.matchMedia
+        ? window.matchMedia(MEDIA_QUERY_CAPTURA).matches
+        : false
+      setPreferirCamera(
+        deveOferecerCameraPrimeiro({
+          algumApontadorImpreciso,
+          pontosDeToque: navigator.maxTouchPoints ?? 0,
+        })
+      )
+    }
+
+    avaliar()
+
+    if (!window.matchMedia) return
+    // Reavalia quando o conjunto de apontadores muda — acoplar/desacoplar
+    // teclado num tablet, parear um mouse, entrar em modo desktop.
+    const mql = window.matchMedia(MEDIA_QUERY_CAPTURA)
+    mql.addEventListener("change", avaliar)
+    return () => mql.removeEventListener("change", avaliar)
   }, [])
 
   // `itens` numa ref para o cleanup de unmount não precisar de `itens` na

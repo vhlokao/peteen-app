@@ -65,6 +65,12 @@ export type CareMediaView = {
    * Nenhum objeto novo existe no bucket por causa deste campo.
    */
   thumbnailUrl: string | null
+  /**
+   * URL assinada da versão de VISUALIZAÇÃO (1600px) para o lightbox. `null`
+   * cai para `signedUrl`. Como a miniatura, é derivada na leitura — nenhum
+   * objeto novo existe no bucket por causa deste campo.
+   */
+  displayUrl: string | null
   /** Só o necessário para o browser renderizar. */
   mimeType: string
 }

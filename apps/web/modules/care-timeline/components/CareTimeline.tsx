@@ -25,7 +25,7 @@ export function CareTimeline({ updates }: { updates: CareUpdate[] }) {
 
   return (
     <ol className="flex flex-col gap-3">
-      {updates.map((update) => {
+      {updates.map((update, posicao) => {
         const Icon = CATEGORY_ICON[update.category]
         return (
           <li
@@ -51,7 +51,10 @@ export function CareTimeline({ updates }: { updates: CareUpdate[] }) {
               {/* Fotos DEPOIS do relato: o texto é o núcleo da feature (é ele
                   que vale em disputa) e a imagem complementa. `media` já vem
                   do DTO seguro — sem storagePath, só signedUrl. */}
-              <CareMediaGallery media={update.media} />
+              {/* Só a entrada do TOPO carrega a primeira foto com prioridade:
+                  com recent-first ela é a mais relevante e a única
+                  garantidamente visível ao abrir. */}
+              <CareMediaGallery media={update.media} prioridade={posicao === 0} />
             </div>
           </li>
         )

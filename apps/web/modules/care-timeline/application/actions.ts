@@ -54,6 +54,7 @@ import {
   declaredMimeTypeFromCareMediaPath,
 } from "@/lib/storage/care-media-path"
 import {
+  createCareMediaDisplayUrl,
   createCareMediaReadUrl,
   createCareMediaThumbnailUrl,
   deleteCareMediaObject,
@@ -228,15 +229,18 @@ async function toCareMediaViews(
   // para aparecer" observado, independentemente do tamanho dos arquivos.
   const resultados = await Promise.all(
     update.media.map(async (m) => {
-      const [signedUrl, thumbnailUrl] = await Promise.all([
-        createCareMediaReadUrl({ path: m.storagePath, requestId: update.requestId }),
-        createCareMediaThumbnailUrl({ path: m.storagePath, requestId: update.requestId }),
+      const alvo = { path: m.storagePath, requestId: update.requestId }
+      const [signedUrl, thumbnailUrl, displayUrl] = await Promise.all([
+        createCareMediaReadUrl(alvo),
+        createCareMediaThumbnailUrl(alvo),
+        createCareMediaDisplayUrl(alvo),
       ])
-      // Sem a ORIGINAL a foto é omitida, como sempre foi — é ela que o
-      // lightbox precisa e o único fallback da grade. Sem a MINIATURA a foto
-      // continua: `thumbnailUrl: null` faz a grade usar a original.
+      // Sem a ORIGINAL a foto é omitida, como sempre foi — ela é o fallback
+      // final das duas outras superfícies. Sem MINIATURA ou DISPLAY a foto
+      // continua aparecendo: cada `null` só faz a superfície correspondente
+      // cair para a original (pesada, nunca ausente).
       if (!signedUrl) return null
-      return { id: m.id, type: m.type, signedUrl, thumbnailUrl, mimeType: m.mimeType }
+      return { id: m.id, type: m.type, signedUrl, thumbnailUrl, displayUrl, mimeType: m.mimeType }
     })
   )
   return resultados.filter((v): v is CareMediaView => v !== null)

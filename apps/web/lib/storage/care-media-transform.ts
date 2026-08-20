@@ -63,6 +63,41 @@ export function careMediaThumbnailTransform(): CareMediaTransform {
   }
 }
 
+/**
+ * Versão de VISUALIZAÇÃO, usada pelo lightbox.
+ *
+ * `contain` (não `cover`): aqui a foto inteira precisa aparecer, sem recorte —
+ * é a diferença entre uma miniatura de grade e olhar a evidência.
+ *
+ * 1600px no maior lado com qualidade 82, medido na maior foto real (4000×3000,
+ * 4.682 KB):
+ *
+ *   1280 q75 → 104 KB      1600 q75 → 192 KB
+ *   1280 q82 → 164 KB      1600 q82 → 286 KB   ← escolhido
+ *   1280 q88 → 243 KB      1600 q88 → 410 KB
+ *
+ * O diálogo do lightbox tem no máximo ~512 CSS px de largura e 75vh de altura,
+ * então 1280 já cobriria a exibição. 1600 foi escolhido pela folga de
+ * pinch-zoom no celular — a tela em que alguém amplia para olhar o olho ou uma
+ * etiqueta é exatamente esta — ao custo de 122 KB a mais. Ainda é 94% menor
+ * que a original.
+ *
+ * Qualidade 82 e não 75: 88 KB de diferença compra margem contra artefato em
+ * pelo de animal e em baixa luz, que é o conteúdo típico do Diário. Acima de
+ * 82 o ganho visual não acompanha o custo (410 KB em q88).
+ */
+export const CARE_MEDIA_DISPLAY_PX = 1600
+export const CARE_MEDIA_DISPLAY_QUALITY = 82
+
+export function careMediaDisplayTransform(): CareMediaTransform {
+  return {
+    width: CARE_MEDIA_DISPLAY_PX,
+    height: CARE_MEDIA_DISPLAY_PX,
+    resize: "contain",
+    quality: CARE_MEDIA_DISPLAY_QUALITY,
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Qual URL cada superfície usa
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,6 +109,8 @@ export function careMediaThumbnailTransform(): CareMediaTransform {
 export type CareMediaUrls = {
   signedUrl: string
   thumbnailUrl: string | null
+  /** Versão de visualização (1600px) para o lightbox. `null` = cai para a original. */
+  displayUrl: string | null
 }
 
 /**
@@ -93,17 +130,26 @@ export function resolveTimelineImageSrc(urls: CareMediaUrls): string {
 }
 
 /**
- * Fonte da imagem no LIGHTBOX — sempre a original.
+ * Fonte da imagem no LIGHTBOX — versão de visualização, com queda para a
+ * original.
  *
- * O lightbox é a visualização de EVIDÊNCIA: é onde o tutor olha o pelo, o olho,
- * a etiqueta, o ambiente. Servir uma versão recomprimida aqui economizaria
- * bytes numa tela que o usuário abriu justamente para ver detalhe, e é o único
- * lugar do produto onde a qualidade original importa de verdade.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE DEIXOU DE SER A ORIGINAL
  *
- * Custo aceito e conhecido: abrir o lightbox de uma foto de 4,7 MB baixa 4,7 MB.
- * Acontece sob demanda, uma foto por vez, por escolha explícita do usuário —
- * não no carregamento da tela, que era o problema real.
+ * A primeira versão desta otimização servia a original aqui, argumentando que
+ * o lightbox é a tela de evidência. O QA físico mostrou o outro lado: tocar
+ * numa foto e esperar 4,7 MB parece lento, e a tela em que o usuário mais
+ * espera resposta imediata é justamente a que ele abriu de propósito.
+ *
+ * 1600px a 82 de qualidade (286 KB medidos) é maior que qualquer exibição
+ * possível dentro do diálogo — que tem no máximo ~512 CSS px de largura — e
+ * sobra resolução para pinch-zoom. A "evidência" que o produto precisa
+ * mostrar continua legível; a original permanece intacta no bucket para
+ * quando existir uma necessidade explícita de baixá-la.
+ *
+ * A ORIGINAL NÃO É MAIS REQUISITADA POR PADRÃO em nenhuma superfície. Ela
+ * segue sendo o que está preservado, não o que é servido.
  */
 export function resolveLightboxImageSrc(urls: CareMediaUrls): string {
-  return urls.signedUrl
+  return urls.displayUrl ?? urls.signedUrl
 }

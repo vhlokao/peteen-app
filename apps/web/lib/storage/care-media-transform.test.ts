@@ -1,10 +1,10 @@
 /**
- * Otimização de imagem da timeline — parâmetros e roteamento de URL.
+ * Três níveis de imagem — miniatura, visualização e original.
  *
- * O que estes testes travam: a grade NUNCA pede a original quando existe
- * miniatura, o lightbox NUNCA pede a miniatura, e mídia sem miniatura continua
- * aparecendo (fallback) — que é o que dispensa backfill das fotos já
- * publicadas.
+ * O que estes testes travam: a grade nunca pede a original quando há
+ * miniatura, o lightbox nunca pede a original quando há versão de
+ * visualização, e mídia sem nenhuma variante continua aparecendo — que é o que
+ * dispensa backfill das fotos já publicadas.
  *
  * Rodar: npm run test:care-media
  */
@@ -12,51 +12,71 @@ import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  CARE_MEDIA_DISPLAY_PX,
+  CARE_MEDIA_DISPLAY_QUALITY,
   CARE_MEDIA_THUMBNAIL_PX,
   CARE_MEDIA_THUMBNAIL_QUALITY,
+  careMediaDisplayTransform,
   careMediaThumbnailTransform,
   resolveLightboxImageSrc,
   resolveTimelineImageSrc,
+  type CareMediaUrls,
 } from "./care-media-transform.ts"
 
-const ORIGINAL = "https://storage.example/original.jpg?token=abc"
-const MINIATURA = "https://storage.example/original.jpg?token=abc&width=288"
+const ORIGINAL = "https://storage.example/foto.jpg?token=abc"
+const MINIATURA = "https://storage.example/foto.jpg?token=abc&width=288"
+const DISPLAY = "https://storage.example/foto.jpg?token=abc&width=1600"
+
+const urls = (over: Partial<CareMediaUrls> = {}): CareMediaUrls => ({
+  signedUrl: ORIGINAL,
+  thumbnailUrl: MINIATURA,
+  displayUrl: DISPLAY,
+  ...over,
+})
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Parâmetros da miniatura
+// Parâmetros
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("transformação da miniatura", () => {
+describe("miniatura — grade da timeline", () => {
   it("288px cobre a grade de 96 CSS px em telas 3x", () => {
-    // A grade é grid-cols-3: ~96px por foto num celular. 288 = 96 × 3.
     assert.equal(CARE_MEDIA_THUMBNAIL_PX, 288)
     assert.equal(CARE_MEDIA_THUMBNAIL_PX % 96, 0)
   })
 
   it("usa `cover` — o CSS da grade já recorta com object-cover", () => {
-    // `contain` traria barras que o CSS descartaria de qualquer forma.
     assert.equal(careMediaThumbnailTransform().resize, "cover")
   })
 
-  it("quadrada: largura e altura iguais", () => {
+  it("quadrada e com qualidade reduzida, mas não agressiva", () => {
     const t = careMediaThumbnailTransform()
     assert.equal(t.width, t.height)
-    assert.equal(t.width, CARE_MEDIA_THUMBNAIL_PX)
-  })
-
-  it("qualidade reduzida, mas não agressiva", () => {
-    // Num quadrado de 96px, 75 é indistinguível de 100 a olho nu — e é onde a
-    // economia mora. Abaixo de ~60 começa a aparecer artefato em pelo de
-    // animal, que é justamente o que o Diário registra.
     assert.equal(CARE_MEDIA_THUMBNAIL_QUALITY, 75)
-    assert.ok(CARE_MEDIA_THUMBNAIL_QUALITY >= 60 && CARE_MEDIA_THUMBNAIL_QUALITY <= 85)
+  })
+})
+
+describe("visualização — lightbox", () => {
+  it("usa `contain`: a foto inteira precisa aparecer, sem recorte", () => {
+    // É a diferença entre uma miniatura de grade e olhar a evidência.
+    assert.equal(careMediaDisplayTransform().resize, "contain")
   })
 
-  it("devolve um objeto novo a cada chamada — nenhum chamador pode mutar o padrão", () => {
-    const a = careMediaThumbnailTransform()
-    const b = careMediaThumbnailTransform()
-    assert.notEqual(a, b)
-    assert.deepEqual(a, b)
+  it("1600px no maior lado — folga sobre os ~512 CSS px do diálogo", () => {
+    // A folga existe para pinch-zoom no celular, que é onde alguém amplia
+    // para olhar o olho do animal ou uma etiqueta.
+    assert.equal(CARE_MEDIA_DISPLAY_PX, 1600)
+    assert.ok(CARE_MEDIA_DISPLAY_PX > CARE_MEDIA_THUMBNAIL_PX)
+  })
+
+  it("qualidade maior que a da miniatura — é a tela de evidência", () => {
+    assert.equal(CARE_MEDIA_DISPLAY_QUALITY, 82)
+    assert.ok(CARE_MEDIA_DISPLAY_QUALITY > CARE_MEDIA_THUMBNAIL_QUALITY)
+  })
+
+  it("as duas transformações são objetos independentes", () => {
+    // Devolver a mesma referência deixaria um chamador mutar o padrão do outro.
+    assert.notEqual(careMediaThumbnailTransform(), careMediaDisplayTransform())
+    assert.notDeepEqual(careMediaThumbnailTransform(), careMediaDisplayTransform())
   })
 })
 
@@ -64,60 +84,76 @@ describe("transformação da miniatura", () => {
 // Roteamento — quem usa o quê
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("grade da timeline — miniatura, com fallback para a original", () => {
-  it("com miniatura disponível, usa a miniatura", () => {
-    assert.equal(
-      resolveTimelineImageSrc({ signedUrl: ORIGINAL, thumbnailUrl: MINIATURA }),
-      MINIATURA
-    )
+describe("grade — miniatura, com queda para a original", () => {
+  it("com miniatura, usa a miniatura", () => {
+    assert.equal(resolveTimelineImageSrc(urls()), MINIATURA)
   })
 
-  it("sem miniatura (null), cai para a ORIGINAL — a foto nunca some", () => {
-    // É o caminho de qualquer mídia já publicada e de qualquer falha na
-    // assinatura da variante. O pior caso é o comportamento anterior à
-    // otimização — pesado, não quebrado.
-    assert.equal(
-      resolveTimelineImageSrc({ signedUrl: ORIGINAL, thumbnailUrl: null }),
-      ORIGINAL
-    )
-  })
-
-  it("mídia legada continua funcionando sem nenhum backfill", () => {
-    // Uma CareMedia publicada antes desta missão não tem nada gravado sobre
-    // miniatura — e não precisa: a variante é derivada na leitura.
-    const legada = { signedUrl: ORIGINAL, thumbnailUrl: null }
-    assert.equal(resolveTimelineImageSrc(legada), ORIGINAL)
-    assert.equal(resolveLightboxImageSrc(legada), ORIGINAL)
+  it("sem miniatura, cai para a ORIGINAL — nunca para a de visualização", () => {
+    // A display é 1600px: pesada demais para uma grade de 96px, e a original
+    // é o único fallback garantido. Cair na display aqui seria trocar um
+    // problema de peso por outro.
+    assert.equal(resolveTimelineImageSrc(urls({ thumbnailUrl: null })), ORIGINAL)
   })
 })
 
-describe("lightbox — SEMPRE a original", () => {
-  it("ignora a miniatura mesmo quando ela existe", () => {
-    // O lightbox é a visualização de evidência: pelo, olho, etiqueta, ambiente.
+describe("lightbox — visualização, com queda para a original", () => {
+  it("com display, usa a display e NUNCA a original", () => {
+    // Mudança desta missão: antes o lightbox servia a original (4,7 MB) e
+    // parecia lento justamente na tela que o usuário abriu de propósito.
+    assert.equal(resolveLightboxImageSrc(urls()), DISPLAY)
+    assert.notEqual(resolveLightboxImageSrc(urls()), ORIGINAL)
+  })
+
+  it("sem display, cai para a original", () => {
+    assert.equal(resolveLightboxImageSrc(urls({ displayUrl: null })), ORIGINAL)
+  })
+
+  it("ignora a miniatura mesmo quando a display falta", () => {
+    // 288px numa tela cheia seria evidência ilegível.
     assert.equal(
-      resolveLightboxImageSrc({ signedUrl: ORIGINAL, thumbnailUrl: MINIATURA }),
+      resolveLightboxImageSrc(urls({ displayUrl: null, thumbnailUrl: MINIATURA })),
       ORIGINAL
     )
   })
+})
 
-  it("nunca devolve a mesma fonte que a grade quando há miniatura", () => {
-    // Trava de contrato: se alguém apontar o lightbox para a miniatura, a
-    // evidência passa a ser servida recomprimida e este teste quebra.
-    const urls = { signedUrl: ORIGINAL, thumbnailUrl: MINIATURA }
-    assert.notEqual(resolveLightboxImageSrc(urls), resolveTimelineImageSrc(urls))
+describe("mídia legada — sem nenhuma variante", () => {
+  it("as duas superfícies caem para a original, sem backfill", () => {
+    const legada = urls({ thumbnailUrl: null, displayUrl: null })
+    assert.equal(resolveTimelineImageSrc(legada), ORIGINAL)
+    assert.equal(resolveLightboxImageSrc(legada), ORIGINAL)
+  })
+
+  it("o pior caso é o comportamento anterior à otimização — pesado, nunca quebrado", () => {
+    const legada = urls({ thumbnailUrl: null, displayUrl: null })
+    assert.equal(typeof resolveTimelineImageSrc(legada), "string")
+    assert.ok(resolveTimelineImageSrc(legada).length > 0)
+  })
+})
+
+describe("a original nunca é servida quando existe alternativa", () => {
+  it("com as três URLs presentes, nenhuma superfície pede a original", () => {
+    // Item 7 da missão: a original é preservação, não delivery.
+    const completa = urls()
+    assert.notEqual(resolveTimelineImageSrc(completa), ORIGINAL)
+    assert.notEqual(resolveLightboxImageSrc(completa), ORIGINAL)
+  })
+
+  it("grade e lightbox pedem coisas DIFERENTES", () => {
+    assert.notEqual(resolveTimelineImageSrc(urls()), resolveLightboxImageSrc(urls()))
   })
 })
 
 describe("nenhuma das funções constrói URL — só escolhe entre as recebidas", () => {
   it("a saída é sempre uma das entradas, verbatim", () => {
-    const urls = { signedUrl: ORIGINAL, thumbnailUrl: MINIATURA }
-    assert.ok([ORIGINAL, MINIATURA].includes(resolveTimelineImageSrc(urls)))
-    assert.ok([ORIGINAL, MINIATURA].includes(resolveLightboxImageSrc(urls)))
+    const u = urls()
+    assert.ok([ORIGINAL, MINIATURA, DISPLAY].includes(resolveTimelineImageSrc(u)))
+    assert.ok([ORIGINAL, MINIATURA, DISPLAY].includes(resolveLightboxImageSrc(u)))
   })
 
   it("não há concatenação de path nem montagem de query no domínio", () => {
-    // Montar URL aqui reabriria a porta para apontar a um objeto arbitrário —
-    // o componente só recebe URLs já assinadas pelo servidor.
+    // Montar URL aqui reabriria a porta para apontar a um objeto arbitrário.
     const fonte = resolveTimelineImageSrc.toString() + resolveLightboxImageSrc.toString()
     assert.ok(!fonte.includes("http"))
     assert.ok(!fonte.includes("supabase"))

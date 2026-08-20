@@ -34,13 +34,14 @@
  * nativa é a escolha correta, não um atalho.
  *
  * A otimização que o `next/image` daria vem, aqui, do próprio Storage: a grade
- * pede uma MINIATURA redimensionada na leitura (mesma URL assinada, mesmo
- * objeto, mesma autorização) e o lightbox pede a ORIGINAL. Ver
- * lib/storage/care-media-transform.ts.
+ * pede uma MINIATURA (288px) e o lightbox uma versão de VISUALIZAÇÃO (1600px),
+ * ambas redimensionadas na leitura — mesma URL assinada, mesmo objeto, mesma
+ * autorização. A ORIGINAL fica preservada no bucket e não é servida por padrão
+ * em superfície nenhuma. Ver lib/storage/care-media-transform.ts.
  */
 
 import { useRef, useState } from "react"
-import { ImageOff } from "lucide-react"
+import { ImageOff, RotateCcw } from "lucide-react"
 
 import {
   Dialog,
@@ -67,9 +68,55 @@ function altDaFoto(indice: number, total: number): string {
     : `Foto ${indice + 1} de ${total} da atualização de cuidado`
 }
 
-export function CareMediaGallery({ media }: { media: CareMediaView[] }) {
+export function CareMediaGallery({
+  media,
+  prioridade = false,
+}: {
+  media: CareMediaView[]
+  /**
+   * Esta galeria está no topo da timeline?
+   *
+   * `loading="lazy"` em TODAS as fotos atrasa também a primeira — que é a
+   * única garantidamente visível ao abrir o Diário, e a mais relevante agora
+   * que a ordem é recent-first. Só a primeira foto da primeira atualização
+   * carrega com prioridade; o resto continua lazy.
+   */
+  prioridade?: boolean
+}) {
   const [ampliada, setAmpliada] = useState<CareMediaView | null>(null)
   const [quebradas, setQuebradas] = useState<Set<string>>(new Set())
+  /** Fases do lightbox — ver o bloco de estados mais abaixo. */
+  const [estadoAmpliada, setEstadoAmpliada] = useState<"carregando" | "pronta" | "erro">(
+    "carregando"
+  )
+  /** Força um `src` novo no retry: sem isto o browser reusaria a falha em cache. */
+  const [tentativa, setTentativa] = useState(0)
+
+  /**
+   * Pré-carrega a versão de visualização quando há SINAL DE INTENÇÃO — o
+   * ponteiro parou sobre a miniatura, ou o dedo encostou nela. Assim, no
+   * instante do clique, a imagem do lightbox já costuma estar no cache do
+   * navegador.
+   *
+   * Deliberadamente NÃO pré-carrega tudo: são até 3 fotos por atualização e
+   * várias atualizações na tela; baixar todas as versões de 1600px por
+   * antecipação desfaria a economia que esta missão inteira busca. Só a que a
+   * pessoa demonstrou interesse em abrir.
+   *
+   * `new Image()` e não `<link rel=preload>`: não precisa entrar no documento,
+   * o browser dedupe pela mesma URL, e nada é inserido no DOM.
+   */
+  function prepararAmpliacao(m: CareMediaView) {
+    if (typeof window === "undefined") return
+    const img = new window.Image()
+    img.src = resolveLightboxImageSrc(m)
+  }
+
+  function abrirAmpliada(m: CareMediaView) {
+    setEstadoAmpliada("carregando")
+    setTentativa(0)
+    setAmpliada(m)
+  }
 
   /**
    * Botão que abriu o lightbox, para devolver o foco ao fechar.
@@ -121,8 +168,13 @@ export function CareMediaGallery({ media }: { media: CareMediaView[] }) {
                   type="button"
                   onClick={(e) => {
                     gatilhoRef.current = e.currentTarget
-                    setAmpliada(m)
+                    abrirAmpliada(m)
                   }}
+                  // Sinais de INTENÇÃO — ver prepararAmpliacao. `onPointerEnter`
+                  // cobre mouse; `onTouchStart` dispara no toque, antes do
+                  // clique, dando alguns milissegundos de vantagem no celular.
+                  onPointerEnter={() => prepararAmpliacao(m)}
+                  onTouchStart={() => prepararAmpliacao(m)}
                   aria-label={`Ampliar ${altDaFoto(indice, media.length).toLowerCase()}`}
                   className="block aspect-square w-full overflow-hidden rounded-lg border border-border/70 bg-muted/30 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 >
@@ -140,7 +192,11 @@ export function CareMediaGallery({ media }: { media: CareMediaView[] }) {
                     width={CARE_MEDIA_THUMBNAIL_PX}
                     height={CARE_MEDIA_THUMBNAIL_PX}
                     alt={altDaFoto(indice, media.length)}
-                    loading="lazy"
+                    // Só a primeira foto do topo é ansiosa; o resto espera a
+                    // viewport. Lazy em tudo atrasaria a única imagem que a
+                    // pessoa com certeza vai ver.
+                    loading={prioridade && indice === 0 ? "eager" : "lazy"}
+                    fetchPriority={prioridade && indice === 0 ? "high" : "auto"}
                     decoding="async"
                     /* Fecha a janela pré-hidratação: uma imagem que veio do
                        SSR e falhou antes de o React anexar `onError` já está
@@ -172,20 +228,64 @@ export function CareMediaGallery({ media }: { media: CareMediaView[] }) {
             Toque fora da imagem ou pressione Escape para fechar.
           </DialogDescription>
           {ampliada ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img
-              /* ORIGINAL — o lightbox é a visualização de EVIDÊNCIA. É onde
-                 se olha pelo, olho, etiqueta, ambiente; recomprimir aqui
-                 economizaria bytes justamente na tela aberta para ver
-                 detalhe. Sob demanda, uma foto por vez. */
-              src={resolveLightboxImageSrc(ampliada)}
-              alt={altDaFoto(indiceAmpliada, media.length)}
-              onError={() => {
-                marcarQuebrada(ampliada.id)
-                setAmpliada(null)
-              }}
-              className="max-h-[75vh] w-full rounded-lg object-contain"
-            />
+            /* Altura mínima reservada ANTES de a imagem chegar: sem isto o
+               diálogo nasce colapsado e cresce de repente quando a foto
+               decodifica — o layout shift que o item 10 pede para evitar.
+               `min-h` e não `aspect-ratio` fixo porque a proporção real varia
+               (retrato, paisagem, quadrado) e forçar uma delas distorceria ou
+               recortaria a evidência. */
+            <div className="relative grid min-h-[45vh] w-full place-items-center">
+              {estadoAmpliada === "carregando" ? (
+                <div
+                  className="absolute inset-0 animate-pulse rounded-lg bg-muted/50"
+                  role="status"
+                  aria-label="Carregando foto"
+                />
+              ) : null}
+
+              {estadoAmpliada === "erro" ? (
+                /* Falha no lightbox NÃO fecha o diálogo nem marca a miniatura
+                   como quebrada: a foto da grade continuou funcionando, e
+                   fechar sozinho tira da pessoa a chance de tentar de novo. */
+                <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+                  <ImageOff className="size-6 text-muted-foreground" aria-hidden />
+                  <p className="text-sm text-muted-foreground">
+                    Não foi possível carregar esta foto.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEstadoAmpliada("carregando")
+                      setTentativa((t) => t + 1)
+                    }}
+                    className="flex min-h-11 items-center gap-1.5 rounded-lg border border-border/70 px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted/40"
+                  >
+                    <RotateCcw className="size-4" />
+                    Tentar novamente
+                  </button>
+                </div>
+              ) : (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  /* Versão de VISUALIZAÇÃO (1600px), não a original: 286 KB
+                     contra 4,7 MB medidos, com resolução de sobra para o
+                     diálogo e para pinch-zoom. A original fica preservada no
+                     bucket, mas não é mais servida por padrão em superfície
+                     nenhuma. Cai para ela se a variante faltar. */
+                  src={resolveLightboxImageSrc(ampliada)}
+                  /* `key` com a tentativa força o browser a refazer a
+                     requisição no retry — sem isto ele reusaria a falha. */
+                  key={`${ampliada.id}-${tentativa}`}
+                  alt={altDaFoto(indiceAmpliada, media.length)}
+                  decoding="async"
+                  onLoad={() => setEstadoAmpliada("pronta")}
+                  onError={() => setEstadoAmpliada("erro")}
+                  className={`max-h-[75vh] w-full rounded-lg object-contain transition-opacity duration-200 ${
+                    estadoAmpliada === "pronta" ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+              )}
+            </div>
           ) : null}
         </DialogContent>
       </Dialog>

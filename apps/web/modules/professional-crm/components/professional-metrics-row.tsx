@@ -2,7 +2,15 @@ import { CheckCircle2, Inbox, Star } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
 
 type ProfessionalMetricsRowProps = {
-  activeRequests: number
+  /**
+   * `null` = a busca que alimenta esta métrica falhou; o card mostra "—" em
+   * vez de um número parcial (CRITICAL FLOW PERFORMANCE — METRIC CONSISTENCY).
+   * "Ativas" soma solicitações em andamento (stats) + pendentes (busca de
+   * requests): se a segunda falha, o total ficaria SUBCONTADO e seria exibido
+   * como se fosse definitivo. Zero é uma resposta legítima; "não sei" não é
+   * zero. Mesma semântica que `averageRating` já usa aqui.
+   */
+  activeRequests: number | null
   averageRating: number | null
   completedServices: number
 }
@@ -25,9 +33,12 @@ export function ProfessionalMetricsRow({
 }: ProfessionalMetricsRowProps) {
   const cards: MetricCard[] = [
     {
-      value: String(activeRequests),
+      value: activeRequests !== null ? String(activeRequests) : "—",
       label: "Ativas",
-      context: "Solicitações em andamento",
+      context:
+        activeRequests !== null
+          ? "Solicitações em andamento"
+          : "Não foi possível atualizar esta métrica.",
       icon: Inbox,
     },
     {

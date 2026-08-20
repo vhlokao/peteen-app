@@ -4,6 +4,7 @@ import { ClipboardList, Search } from "lucide-react"
 import { redirect } from "next/navigation"
 
 import { EmptyState } from "@/components/shared/feedback/EmptyState"
+import { ErrorState } from "@/components/shared/feedback/ErrorState"
 import { buttonVariants } from "@/components/ui/button"
 import { getMyRequestsAsTutorAction } from "@/modules/service-request/application/actions"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
@@ -44,7 +45,13 @@ export default async function TutorRequestsPage() {
     redirect("/onboarding/tutor")
   }
 
-  const result = await getMyRequestsAsTutorAction({ limit: 50 })
+  // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE: o snapshot do
+  // probe de lista não depende de `result` — antes rodava isolado, DEPOIS
+  // desta busca, uma waterfall evitável.
+  const [result, syncSnapshot] = await Promise.all([
+    getMyRequestsAsTutorAction({ limit: 50 }),
+    getTutorRequestListSyncSnapshot(tutorProfile.id),
+  ])
   const requests = result.success ? result.data : []
   const { active, previous } = groupRequests(requests)
 
@@ -53,9 +60,7 @@ export default async function TutorRequestsPage() {
       ? "Nenhum atendimento ativo"
       : `${active.length} atendimento${active.length > 1 ? "s" : ""} ativo${active.length > 1 ? "s" : ""}`
 
-  const initialSyncToken = buildRequestListSyncToken(
-    await getTutorRequestListSyncSnapshot(tutorProfile.id)
-  )
+  const initialSyncToken = buildRequestListSyncToken(syncSnapshot)
 
   return (
     <RequestListAutoRefresh role="tutor" initialToken={initialSyncToken}>
@@ -70,7 +75,16 @@ export default async function TutorRequestsPage() {
         </Link>
       </header>
 
-      {requests.length === 0 ? (
+      {!result.success ? (
+        // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE: antes,
+        // uma falha real de `getMyRequestsAsTutorAction` virava lista vazia
+        // silenciosa — o tutor veria "Nenhuma solicitação enviada" mesmo com
+        // pedidos reais, sem nenhum aviso nem forma de tentar de novo.
+        <ErrorState
+          title="Não deu para carregar seus pedidos"
+          description="Algo falhou ao buscar suas solicitações. Tente novamente em alguns instantes."
+        />
+      ) : requests.length === 0 ? (
         <EmptyState
           icon={<ClipboardList className="size-7" />}
           title="Nenhuma solicitação enviada"

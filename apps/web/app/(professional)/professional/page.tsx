@@ -23,6 +23,7 @@ import { ProfessionalPublicProfileCTA } from "@/modules/professional-crm/compone
 import { RequestListAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
 import { buildRequestListSyncToken } from "@/modules/service-request/domain/active-request-sync"
 import { getProfessionalRequestListSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
+import { ErrorState } from "@/components/shared/feedback/ErrorState"
 
 export const metadata: Metadata = {
   title: "Portal do profissional",
@@ -58,18 +59,30 @@ function pickNextAppointment(
 export default async function ProfessionalHomePage() {
   const { profile } = await requireProfessionalContext()
 
-  const [requestsResult, trustSummary, stats, recentActivity, services] = await Promise.all([
-    getMyRequestsAsProfessionalAction({ limit: 50 }),
-    getProfessionalTrustSummary(profile.id),
-    getProfessionalDashboardStats(profile.id, profile.trustScore),
-    findRecentProfessionalActivity(
-      profile.id,
-      { isVerified: profile.isVerified, verifiedIdentity: profile.verifiedIdentity },
-      3
-    ),
-    getProfessionalServices(profile.id),
-  ])
+  // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE: o snapshot do
+  // probe de lista não depende de nenhum dos outros cinco — antes rodava
+  // isolado, DEPOIS deste Promise.all, uma waterfall evitável.
+  const [requestsResult, trustSummary, stats, recentActivity, services, syncSnapshot] =
+    await Promise.all([
+      getMyRequestsAsProfessionalAction({ limit: 50 }),
+      getProfessionalTrustSummary(profile.id),
+      getProfessionalDashboardStats(profile.id, profile.trustScore),
+      findRecentProfessionalActivity(
+        profile.id,
+        { isVerified: profile.isVerified, verifiedIdentity: profile.verifiedIdentity },
+        3
+      ),
+      getProfessionalServices(profile.id),
+      getProfessionalRequestListSyncSnapshot(profile.id),
+    ])
 
+  // CRITICAL FLOW PERFORMANCE — FINAL CLOSURE: falha real de busca NÃO é
+  // "nenhuma solicitação". Antes, `success ? data : []` colapsava os dois, e o
+  // profissional via "Nenhuma solicitação nova" mesmo com pedidos reais
+  // esperando resposta — o pior caso possível nesta tela. As demais seções
+  // (reputação, métricas de histórico, atividade, confiança) vêm de outras
+  // queries e seguem renderizando normalmente.
+  const requestsFailed = !requestsResult.success
   const requests = requestsResult.success ? requestsResult.data : []
   const pendingRequests = requests.filter((r) => r.status === "PENDING")
   const nextAppointment = pickNextAppointment(requests)
@@ -83,9 +96,7 @@ export default async function ProfessionalHomePage() {
     .join("")
     .toUpperCase()
 
-  const initialSyncToken = buildRequestListSyncToken(
-    await getProfessionalRequestListSyncSnapshot(profile.id)
-  )
+  const initialSyncToken = buildRequestListSyncToken(syncSnapshot)
 
   return (
     <RequestListAutoRefresh role="professional" initialToken={initialSyncToken}>
@@ -152,8 +163,21 @@ export default async function ProfessionalHomePage() {
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr] lg:items-start">
         <div className="flex flex-col gap-5">
-          <ProfessionalAttentionCard pendingRequests={pendingRequests} />
-          <ProfessionalNextAppointmentCard appointment={nextAppointment} />
+          {/* Os dois cards vêm da MESMA busca — um único ErrorState no lugar
+              dos dois, com um só "Tentar novamente", em vez de repetir o
+              mesmo aviso e o mesmo botão duas vezes seguidas. */}
+          {requestsFailed ? (
+            <ErrorState
+              compact
+              title="Não deu para carregar suas solicitações"
+              description="Algo falhou ao buscar seus pedidos e atendimentos. Tente novamente em alguns instantes."
+            />
+          ) : (
+            <>
+              <ProfessionalAttentionCard pendingRequests={pendingRequests} />
+              <ProfessionalNextAppointmentCard appointment={nextAppointment} />
+            </>
+          )}
 
           <div className="lg:hidden">
             <ProfessionalQuickActions />
@@ -165,8 +189,17 @@ export default async function ProfessionalHomePage() {
             completedServices={stats.completedServices}
           />
 
+          {/* "Ativas" é a ÚNICA das três métricas que depende da busca de
+              requests (soma pendentes a `stats.inProgressRequests`). Com a
+              busca falha o total sairia subcontado e pareceria definitivo —
+              então vira "—". `averageRating` (trustSummary) e
+              `completedServices` (stats) vêm de outras queries e continuam
+              exibindo seus números normalmente. A definição funcional de
+              "Ativas" não mudou. */}
           <ProfessionalMetricsRow
-            activeRequests={stats.inProgressRequests + pendingRequests.length}
+            activeRequests={
+              requestsFailed ? null : stats.inProgressRequests + pendingRequests.length
+            }
             averageRating={trustSummary?.averageRating ?? null}
             completedServices={stats.completedServices}
           />

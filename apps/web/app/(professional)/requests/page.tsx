@@ -7,6 +7,7 @@ import { resolveHomeForRoles } from "@/modules/identity/domain/role-routing"
 import { getMyRequestsAsProfessionalAction } from "@/modules/service-request/application/actions"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
 import { EmptyState } from "@/components/shared/feedback/EmptyState"
+import { ErrorState } from "@/components/shared/feedback/ErrorState"
 import { ProfessionalRequestCard } from "@/modules/professional-crm/components/professional-request-card"
 import { ProfessionalRequestsTabs } from "@/modules/professional-crm/components/professional-requests-tabs"
 import { PROFESSIONAL_REQUEST_GROUP } from "@/modules/professional-crm/domain/request-status-display"
@@ -59,14 +60,19 @@ export default async function RequestsPage() {
     redirect(resolveHomeForRoles(roles, primaryRole))
   }
 
-  const result = await getMyRequestsAsProfessionalAction({ limit: 50 })
+  // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE:
+  // `findProfessionalProfileByUserId` não depende de `getMyRequestsAsProfessionalAction`
+  // — antes rodava em série, DEPOIS dela, uma waterfall evitável.
+  const [result, professionalProfile] = await Promise.all([
+    getMyRequestsAsProfessionalAction({ limit: 50 }),
+    findProfessionalProfileByUserId(ctx.user.id),
+  ])
   const requests: ServiceRequestWithParticipants[] = result.success ? result.data : []
   const { new: newRequests, ongoing, history } = groupRequests(requests)
 
   // Token inicial calculado no MESMO render que já produziu `requests` —
   // seeda o probe do cliente para comparar contra o que esta tela já mostra,
   // não contra nada (mesma razão do detalhe de uma Request).
-  const professionalProfile = await findProfessionalProfileByUserId(ctx.user.id)
   const initialSyncToken = professionalProfile
     ? buildRequestListSyncToken(
         await getProfessionalRequestListSyncSnapshot(professionalProfile.id)
@@ -83,7 +89,16 @@ export default async function RequestsPage() {
         </p>
       </header>
 
-      {requests.length === 0 ? (
+      {!result.success ? (
+        // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE: antes,
+        // uma falha real de `getMyRequestsAsProfessionalAction` virava lista
+        // vazia silenciosa — o profissional veria "Aguardando solicitações"
+        // mesmo com pedidos reais, sem nenhum aviso nem forma de tentar de novo.
+        <ErrorState
+          title="Não deu para carregar suas solicitações"
+          description="Algo falhou ao buscar seus pedidos. Tente novamente em alguns instantes."
+        />
+      ) : requests.length === 0 ? (
         <EmptyState
           icon={<Inbox className="size-7" />}
           title="Aguardando solicitações"

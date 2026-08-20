@@ -19,14 +19,50 @@ import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/A
 import { buildRequestSyncToken } from "@/modules/service-request/domain/active-request-sync";
 import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot";
 import type { RequestStatus } from "@/modules/service-request/domain/types";
+import { ErrorState } from "@/components/shared/feedback/ErrorState";
 
 export const metadata: Metadata = {
   title: "Diário de cuidado",
 };
 
+/**
+ * Mensagens de `getServiceRequestDetailAction` em que 404 é a resposta
+ * certa — ver o mesmo comentário na página de detalhe.
+ */
+const NOT_FOUND_DETAIL_ERRORS = new Set(["Solicitação não encontrada.", "Acesso negado."]);
+
+/**
+ * Mensagens de `getCareTimelineAction` em que 404 é a resposta certa. "Erro
+ * interno ao carregar a timeline." é falha real — antes desta correção
+ * também virava 404 aqui, na tela onde o profissional registra evidência
+ * DURANTE um atendimento real.
+ */
+const NOT_FOUND_TIMELINE_ERRORS = new Set([
+  "Solicitação não encontrada.",
+  "Você não tem acesso a esta timeline.",
+]);
+
 type PageProps = {
   params: Promise<{ id: string }>;
 };
+
+function DiarioErrorPage({ id }: { id: string }) {
+  return (
+    <div className="page-container max-w-2xl pb-4">
+      <div className="mb-5 flex items-center gap-3">
+        <Link
+          href={`/requests/${id}`}
+          aria-label="Voltar para a solicitação"
+          className="border-border/70 text-muted-foreground hover:bg-muted/40 hover:text-foreground grid size-9 shrink-0 place-items-center rounded-full border transition-colors"
+        >
+          <ChevronLeft className="size-5" />
+        </Link>
+        <h1 className="text-foreground text-base font-semibold">Diário de cuidado</h1>
+      </div>
+      <ErrorState />
+    </div>
+  );
+}
 
 /**
  * /requests/[id]/diario — superfície COMPLETA da Care Timeline, visão do
@@ -53,6 +89,9 @@ export default async function ProfessionalCareDiaryPage({ params }: PageProps) {
   ]);
 
   if (!detailResult.success || !detailResult.data) {
+    if (!detailResult.success && !NOT_FOUND_DETAIL_ERRORS.has(detailResult.error)) {
+      return <DiarioErrorPage id={id} />;
+    }
     notFound();
   }
 
@@ -70,7 +109,18 @@ export default async function ProfessionalCareDiaryPage({ params }: PageProps) {
     notFound();
   }
 
-  const dispute = await findDisputeForProfessionalRequest(id, request.professional.id);
+  // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE: as três
+  // buscas abaixo são independentes entre si (nenhuma depende do resultado
+  // de outra — todas só de `id`/`request.professional.id`, já conhecidos) e
+  // antes rodavam em série, uma waterfall de 3 estágios.
+  const [dispute, careTimelineResult, syncSnapshot] = await Promise.all([
+    findDisputeForProfessionalRequest(id, request.professional.id),
+    getCareTimelineAction(id),
+    // Token do MESMO render que produziu a página. O CareUpdateForm suspende
+    // o auto-sync enquanto houver rascunho, foto ou envio em voo — ver
+    // formularioTemTrabalhoEmAndamento.
+    getRequestSyncSnapshot(id),
+  ]);
   const hasActiveDispute =
     dispute?.status === "OPEN" || dispute?.status === "UNDER_REVIEW";
 
@@ -79,16 +129,14 @@ export default async function ProfessionalCareDiaryPage({ params }: PageProps) {
   // bata no erro. A LEITURA é preservada em ambos os casos.
   const canPublish = request.status === "IN_PROGRESS" && !hasActiveDispute;
 
-  const careTimelineResult = await getCareTimelineAction(id);
   if (!careTimelineResult.success) {
+    if (!NOT_FOUND_TIMELINE_ERRORS.has(careTimelineResult.error)) {
+      return <DiarioErrorPage id={id} />;
+    }
     notFound();
   }
   const careUpdates = careTimelineResult.data;
 
-  // Token do MESMO render que produziu a página. O CareUpdateForm suspende o
-  // auto-sync enquanto houver rascunho, foto ou envio em voo — ver
-  // formularioTemTrabalhoEmAndamento.
-  const syncSnapshot = await getRequestSyncSnapshot(id);
   const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null;
 
   return (

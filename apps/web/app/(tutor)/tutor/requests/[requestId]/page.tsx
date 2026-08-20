@@ -28,6 +28,7 @@ import { ContextualPushSection } from "@/modules/notifications/components/contex
 import { DisputeStatusCard } from "@/modules/disputes/components/dispute-status-card"
 import { CareTimelineSummary, getCareTimelineAction } from "@/modules/care-timeline"
 import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
+import { ErrorState } from "@/components/shared/feedback/ErrorState"
 import {
   buildRequestSyncToken,
   REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
@@ -37,6 +38,14 @@ import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
 }
+
+/**
+ * Mensagens de `getServiceRequestDetailAction` (modules/service-request/
+ * application/actions.ts) em que 404 é a resposta certa — o request
+ * genuinamente não existe ou não pertence a este usuário. Qualquer outro
+ * `error` (hoje só "Erro ao buscar solicitação.") é falha real, não 404.
+ */
+const NOT_FOUND_DETAIL_ERRORS = new Set(["Solicitação não encontrada.", "Acesso negado."])
 
 type PageProps = {
   params: Promise<{ requestId: string }>
@@ -160,6 +169,30 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
   const detailResult = await getServiceRequestDetailAction(requestId)
 
   if (!detailResult.success || !detailResult.data) {
+    // "Solicitação não encontrada."/"Acesso negado." são os únicos casos em
+    // que 404 é a resposta certa — vêm de `getServiceRequestDetailAction`
+    // (modules/service-request/application/actions.ts). Qualquer outro erro
+    // (ex.: "Erro ao buscar solicitação.", falha real de banco/rede) NÃO é
+    // "não encontrado": era tratado como 404 antes desta correção, escondendo
+    // uma falha transitória atrás de uma tela que sugere que o pedido nunca
+    // existiu, sem opção de tentar de novo.
+    if (!detailResult.success && !NOT_FOUND_DETAIL_ERRORS.has(detailResult.error)) {
+      return (
+        <div className="page-container max-w-2xl pb-4">
+          <div className="mb-5 flex items-center gap-3">
+            <Link
+              href="/tutor/requests"
+              aria-label="Voltar"
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+            >
+              <ChevronLeft className="size-5" />
+            </Link>
+            <h1 className="text-base font-semibold text-foreground">Detalhe da solicitação</h1>
+          </div>
+          <ErrorState />
+        </div>
+      )
+    }
     notFound()
   }
 
@@ -188,31 +221,43 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
   // do profissional. Só relevante a partir de ACCEPTED.
   const needsAcceptedAt = request.status !== "PENDING"
 
-  const [existingReviewResult, myRelationship, dispute, professionalPhone, acceptedAt, syncSnapshot] =
-    await Promise.all([
-      isCompleted && hasReview ? getReviewForRequestAction(requestId) : null,
-      getMyRelationshipWithProfessional(request.professional.id),
-      findDisputeByRequestId(requestId),
-      // Contato só é buscado quando o profissional já aceitou — ownership
-      // validado dentro da própria query (tutorId).
-      isAccepted
-        ? getProfessionalPhoneByRequestId(requestId, tutorProfile.id)
-        : Promise.resolve(null),
-      needsAcceptedAt ? findRequestAcceptedAt(requestId) : Promise.resolve(null),
-      // Token inicial do auto-sync (R2B.2 hardening) — mesma função que o
-      // probe do cliente usa, calculado agora para que o primeiro probe do
-      // ActiveRequestAutoRefresh compare contra o que esta página JÁ mostra,
-      // não contra `null`. Ver o comentário no componente para o motivo.
-      getRequestSyncSnapshot(requestId),
-    ])
-
-  const existingReview = existingReviewResult?.success ? existingReviewResult.data : null
-  const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null
-
   // Care Timeline — a Request mostra apenas um RESUMO (Care Operations R0);
   // o histórico completo vive em /tutor/requests/[requestId]/diario.
   const showCareTimeline = ["IN_PROGRESS", "COMPLETED"].includes(request.status)
-  const careTimelineResult = showCareTimeline ? await getCareTimelineAction(requestId) : null
+
+  // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE: `getCareTimelineAction`
+  // não depende de nada deste bloco (só de `requestId`/`showCareTimeline`, já
+  // conhecidos) e antes rodava num `await` isolado DEPOIS deste Promise.all —
+  // uma query extra em série sem necessidade. Entrar aqui elimina essa
+  // waterfall sem mudar nenhum dado buscado.
+  const [
+    existingReviewResult,
+    myRelationship,
+    dispute,
+    professionalPhone,
+    acceptedAt,
+    syncSnapshot,
+    careTimelineResult,
+  ] = await Promise.all([
+    isCompleted && hasReview ? getReviewForRequestAction(requestId) : null,
+    getMyRelationshipWithProfessional(request.professional.id),
+    findDisputeByRequestId(requestId),
+    // Contato só é buscado quando o profissional já aceitou — ownership
+    // validado dentro da própria query (tutorId).
+    isAccepted
+      ? getProfessionalPhoneByRequestId(requestId, tutorProfile.id)
+      : Promise.resolve(null),
+    needsAcceptedAt ? findRequestAcceptedAt(requestId) : Promise.resolve(null),
+    // Token inicial do auto-sync (R2B.2 hardening) — mesma função que o
+    // probe do cliente usa, calculado agora para que o primeiro probe do
+    // ActiveRequestAutoRefresh compare contra o que esta página JÁ mostra,
+    // não contra `null`. Ver o comentário no componente para o motivo.
+    getRequestSyncSnapshot(requestId),
+    showCareTimeline ? getCareTimelineAction(requestId) : Promise.resolve(null),
+  ])
+
+  const existingReview = existingReviewResult?.success ? existingReviewResult.data : null
+  const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null
   const careUpdates = careTimelineResult?.success ? careTimelineResult.data : []
 
   const pro = request.professional

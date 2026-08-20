@@ -24,10 +24,17 @@ import {
   REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
 } from "@/modules/service-request/domain/active-request-sync"
 import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
+import { ErrorState } from "@/components/shared/feedback/ErrorState"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
 }
+
+/**
+ * Mensagens de `getServiceRequestDetailAction` em que 404 é a resposta
+ * certa — ver o mesmo comentário na página equivalente do tutor.
+ */
+const NOT_FOUND_DETAIL_ERRORS = new Set(["Solicitação não encontrada.", "Acesso negado."])
 
 type DetailPageProps = {
   params: Promise<{ id: string }>
@@ -67,6 +74,23 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
   ])
 
   if (!detailResult.success || !detailResult.data) {
+    if (!detailResult.success && !NOT_FOUND_DETAIL_ERRORS.has(detailResult.error)) {
+      return (
+        <div className="page-container max-w-2xl pb-4">
+          <div className="mb-5 flex items-center gap-3">
+            <Link
+              href="/requests"
+              aria-label="Voltar"
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+            >
+              <ChevronLeft className="size-5" />
+            </Link>
+            <h1 className="text-base font-semibold text-foreground">Solicitação</h1>
+          </div>
+          <ErrorState />
+        </div>
+      )
+    }
     notFound()
   }
 
@@ -88,26 +112,30 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
   // aceite, então não vale a query.
   const needsAcceptedAt = request.status !== "PENDING"
 
-  const [dispute, priorRelationship, acceptedAt, syncSnapshot] = await Promise.all([
-    isProfessionalView
-      ? findDisputeForProfessionalRequest(id, request.professional.id)
-      : Promise.resolve(null),
-    isProfessionalView
-      ? findRelationship(request.tutor.id, request.professional.id)
-      : Promise.resolve(null),
-    needsAcceptedAt ? findRequestAcceptedAt(id) : Promise.resolve(null),
-    // Token inicial do auto-sync (R2B.2 hardening) — ver comentário
-    // equivalente na página do tutor.
-    getRequestSyncSnapshot(id),
-  ])
-  const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null
-
   // Care Timeline — a Request mostra apenas um RESUMO (Care Operations R0). A
   // leitura completa e a publicação vivem em /requests/[id]/diario: inline e
   // sem teto, a timeline crescia indefinidamente no meio da página.
   const showCareTimeline =
     isProfessionalView && ["IN_PROGRESS", "COMPLETED"].includes(request.status)
-  const careTimelineResult = showCareTimeline ? await getCareTimelineAction(id) : null
+
+  // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE:
+  // `getCareTimelineAction` não depende de nada deste bloco — antes rodava
+  // num `await` isolado DEPOIS deste Promise.all, uma waterfall evitável.
+  const [dispute, priorRelationship, acceptedAt, syncSnapshot, careTimelineResult] =
+    await Promise.all([
+      isProfessionalView
+        ? findDisputeForProfessionalRequest(id, request.professional.id)
+        : Promise.resolve(null),
+      isProfessionalView
+        ? findRelationship(request.tutor.id, request.professional.id)
+        : Promise.resolve(null),
+      needsAcceptedAt ? findRequestAcceptedAt(id) : Promise.resolve(null),
+      // Token inicial do auto-sync (R2B.2 hardening) — ver comentário
+      // equivalente na página do tutor.
+      getRequestSyncSnapshot(id),
+      showCareTimeline ? getCareTimelineAction(id) : Promise.resolve(null),
+    ])
+  const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null
   const careUpdates = careTimelineResult?.success ? careTimelineResult.data : []
 
   return (

@@ -15,14 +15,51 @@ import { CareTimeline, getCareTimelineAction } from "@/modules/care-timeline";
 import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh";
 import { buildRequestSyncToken } from "@/modules/service-request/domain/active-request-sync";
 import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot";
+import { ErrorState } from "@/components/shared/feedback/ErrorState";
 
 export const metadata: Metadata = {
   title: "Diário de cuidado",
 };
 
+/**
+ * Mensagens de `getServiceRequestDetailAction` em que 404 é a resposta
+ * certa — ver o mesmo comentário em `requests/[requestId]/page.tsx`.
+ */
+const NOT_FOUND_DETAIL_ERRORS = new Set(["Solicitação não encontrada.", "Acesso negado."]);
+
+/**
+ * Mensagens de `getCareTimelineAction` (modules/care-timeline/application/
+ * actions.ts) em que 404 é a resposta certa. "Erro interno ao carregar a
+ * timeline." é falha real — antes desta correção também virava 404, o que é
+ * particularmente grave aqui: é a tela onde o profissional registra
+ * evidência DURANTE um atendimento real.
+ */
+const NOT_FOUND_TIMELINE_ERRORS = new Set([
+  "Solicitação não encontrada.",
+  "Você não tem acesso a esta timeline.",
+]);
+
 type PageProps = {
   params: Promise<{ requestId: string }>;
 };
+
+function DiarioErrorPage({ requestId }: { requestId: string }) {
+  return (
+    <div className="page-container max-w-2xl pb-4">
+      <div className="mb-5 flex items-center gap-3">
+        <Link
+          href={`/tutor/requests/${requestId}`}
+          aria-label="Voltar para a solicitação"
+          className="border-border/70 text-muted-foreground hover:bg-muted/40 hover:text-foreground grid size-9 shrink-0 place-items-center rounded-full border transition-colors"
+        >
+          <ChevronLeft className="size-5" />
+        </Link>
+        <h1 className="text-foreground text-base font-semibold">Diário de cuidado</h1>
+      </div>
+      <ErrorState />
+    </div>
+  );
+}
 
 /**
  * /tutor/requests/[requestId]/diario — superfície COMPLETA da Care Timeline,
@@ -54,6 +91,9 @@ export default async function TutorCareDiaryPage({ params }: PageProps) {
   const detailResult = await getServiceRequestDetailAction(requestId);
 
   if (!detailResult.success || !detailResult.data) {
+    if (!detailResult.success && !NOT_FOUND_DETAIL_ERRORS.has(detailResult.error)) {
+      return <DiarioErrorPage requestId={requestId} />;
+    }
     notFound();
   }
 
@@ -69,15 +109,25 @@ export default async function TutorCareDiaryPage({ params }: PageProps) {
     notFound();
   }
 
-  const careTimelineResult = await getCareTimelineAction(requestId);
+  // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE: as duas
+  // buscas abaixo são independentes entre si (nenhuma depende do resultado
+  // da outra) e antes rodavam em série — waterfall desnecessária.
+  const [careTimelineResult, syncSnapshot] = await Promise.all([
+    getCareTimelineAction(requestId),
+    // Token calculado no MESMO render que produziu a página — o primeiro
+    // probe do cliente compara contra o que a tela já mostra, nunca contra
+    // nada.
+    getRequestSyncSnapshot(requestId),
+  ]);
+
   if (!careTimelineResult.success) {
+    if (!NOT_FOUND_TIMELINE_ERRORS.has(careTimelineResult.error)) {
+      return <DiarioErrorPage requestId={requestId} />;
+    }
     notFound();
   }
   const careUpdates = careTimelineResult.data;
 
-  // Token calculado no MESMO render que produziu a página — o primeiro probe
-  // do cliente compara contra o que a tela já mostra, nunca contra nada.
-  const syncSnapshot = await getRequestSyncSnapshot(requestId);
   const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null;
 
   return (

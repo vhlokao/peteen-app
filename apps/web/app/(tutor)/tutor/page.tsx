@@ -29,6 +29,7 @@ import { TutorTrustNetworkCard } from "@/components/tutor/TutorTrustNetworkCard"
 import { RequestListAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
 import { buildRequestListSyncToken } from "@/modules/service-request/domain/active-request-sync"
 import { getTutorRequestListSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
+import { ErrorState } from "@/components/shared/feedback/ErrorState"
 
 export const metadata: Metadata = {
   title: "Portal do tutor",
@@ -83,12 +84,23 @@ export default async function TutorDashboardPage() {
     redirect("/onboarding/tutor")
   }
 
-  const [hiredProfessionals, pets, requestsResult] = await Promise.all([
+  // PRE-PILOT POLISH — CRITICAL FLOW PERFORMANCE & RESILIENCE: o snapshot do
+  // probe de lista não depende de nenhum dos outros três — antes rodava
+  // isolado, DEPOIS deste Promise.all, uma waterfall evitável.
+  const [hiredProfessionals, pets, requestsResult, syncSnapshot] = await Promise.all([
     findHiredProfessionalsByTutorId(tutorProfile.id),
     findRecentPetsByTutorId(tutorProfile.id, 4),
     getMyRequestsAsTutorAction({ limit: 10 }),
+    getTutorRequestListSyncSnapshot(tutorProfile.id),
   ])
 
+  // CRITICAL FLOW PERFORMANCE — FINAL CLOSURE: falha real de busca NÃO é
+  // "nenhum atendimento". Antes, `success ? data : []` colapsava os dois, e o
+  // tutor via o convite "Que tal agendar o primeiro passeio?" mesmo tendo um
+  // atendimento em andamento que o servidor não conseguiu ler. As demais
+  // seções (pets, tipos de cuidado, rede de confiança) vêm de outras queries
+  // e seguem renderizando normalmente — só a seção afetada muda.
+  const requestsFailed = !requestsResult.success
   const requests = requestsResult.success ? requestsResult.data : []
   const activeRequestRaw = requests.find((r) => OPEN_STATUSES.has(r.status)) ?? null
 
@@ -108,9 +120,7 @@ export default async function TutorDashboardPage() {
   const firstName = tutorProfile.displayName.split(" ")[0] || "tutor"
   const greeting = greetingForHour(new Date().getHours())
 
-  const initialSyncToken = buildRequestListSyncToken(
-    await getTutorRequestListSyncSnapshot(tutorProfile.id)
-  )
+  const initialSyncToken = buildRequestListSyncToken(syncSnapshot)
 
   return (
     <RequestListAutoRefresh role="tutor" initialToken={initialSyncToken}>
@@ -121,7 +131,13 @@ export default async function TutorDashboardPage() {
         <p className="mb-2.5 text-xs font-extrabold tracking-[.05em] text-muted-foreground">
           PRÓXIMO ATENDIMENTO
         </p>
-        {activeRequest ? (
+        {requestsFailed ? (
+          <ErrorState
+            compact
+            title="Não deu para carregar seus atendimentos"
+            description="Algo falhou ao buscar seus pedidos. Tente novamente em alguns instantes."
+          />
+        ) : activeRequest ? (
           <TutorActiveRequestCard request={activeRequest} />
         ) : (
           <TutorEmptyActiveRequestCard />

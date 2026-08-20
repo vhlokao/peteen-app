@@ -32,6 +32,11 @@
  * otimizador exigiria liberar o host do Storage em `remotePatterns` e produziria
  * cache de conteúdo privado na borda. Para mídia privada e efêmera, a tag
  * nativa é a escolha correta, não um atalho.
+ *
+ * A otimização que o `next/image` daria vem, aqui, do próprio Storage: a grade
+ * pede uma MINIATURA redimensionada na leitura (mesma URL assinada, mesmo
+ * objeto, mesma autorização) e o lightbox pede a ORIGINAL. Ver
+ * lib/storage/care-media-transform.ts.
  */
 
 import { useRef, useState } from "react"
@@ -45,6 +50,11 @@ import {
 } from "@/components/ui/dialog"
 import type { CareMediaView } from "../domain/types"
 import { imagemChegouQuebrada } from "../domain/media-display"
+import {
+  CARE_MEDIA_THUMBNAIL_PX,
+  resolveLightboxImageSrc,
+  resolveTimelineImageSrc,
+} from "@/lib/storage/care-media-transform"
 
 /**
  * Alt text descritivo o suficiente para leitor de tela sem descrever o que não
@@ -118,7 +128,17 @@ export function CareMediaGallery({ media }: { media: CareMediaView[] }) {
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={m.signedUrl}
+                    /* MINIATURA (288px), não a original: a grade desenha um
+                       quadrado de ~96 CSS px. Medido nas fotos reais do QA,
+                       isso troca 4,7 MB por 11 KB por foto. Cai para a
+                       original quando a miniatura não pôde ser assinada. */
+                    src={resolveTimelineImageSrc(m)}
+                    /* Dimensões intrínsecas = as da miniatura. Com o
+                       `aspect-square` do container o layout já não pulava;
+                       declará-las evita que o navegador reserve caixa a partir
+                       da resolução da original em qualquer contexto futuro. */
+                    width={CARE_MEDIA_THUMBNAIL_PX}
+                    height={CARE_MEDIA_THUMBNAIL_PX}
                     alt={altDaFoto(indice, media.length)}
                     loading="lazy"
                     decoding="async"
@@ -154,7 +174,11 @@ export function CareMediaGallery({ media }: { media: CareMediaView[] }) {
           {ampliada ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
-              src={ampliada.signedUrl}
+              /* ORIGINAL — o lightbox é a visualização de EVIDÊNCIA. É onde
+                 se olha pelo, olho, etiqueta, ambiente; recomprimir aqui
+                 economizaria bytes justamente na tela aberta para ver
+                 detalhe. Sob demanda, uma foto por vez. */
+              src={resolveLightboxImageSrc(ampliada)}
               alt={altDaFoto(indiceAmpliada, media.length)}
               onError={() => {
                 marcarQuebrada(ampliada.id)

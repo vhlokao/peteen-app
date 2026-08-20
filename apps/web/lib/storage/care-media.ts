@@ -46,6 +46,7 @@ import {
   CARE_MEDIA_MAX_OBJECTS_PER_REQUEST,
   type CareMediaMimeType,
 } from "./care-media-path"
+import { careMediaThumbnailTransform, type CareMediaTransform } from "./care-media-transform"
 import { CARE_MEDIA_BUCKET_NAME } from "@/modules/care-timeline/domain/care-media-bucket"
 
 /**
@@ -206,6 +207,11 @@ export async function createCareMediaReadUrl(params: {
   path: string
   requestId: string
   expiresInSeconds?: number
+  /**
+   * Redimensionamento aplicado na LEITURA. O objeto no bucket não é tocado —
+   * o Storage deriva a renderização e a serve por CDN. Ausente = original.
+   */
+  transform?: CareMediaTransform
 }): Promise<string | null> {
   const partes = parseCareMediaPath(params.path)
   if (!partes || partes.requestId !== params.requestId) {
@@ -216,16 +222,43 @@ export async function createCareMediaReadUrl(params: {
   const supabase = createCareMediaStorageClient()
   const { data, error } = await supabase.storage
     .from(CARE_MEDIA_BUCKET)
-    .createSignedUrl(params.path, params.expiresInSeconds ?? CARE_MEDIA_READ_TTL_SECONDS)
+    .createSignedUrl(
+      params.path,
+      params.expiresInSeconds ?? CARE_MEDIA_READ_TTL_SECONDS,
+      params.transform ? { transform: params.transform } : undefined
+    )
 
   if (error || !data) {
     console.error("[care-media] read_url_failed", {
       erro: String(error?.message ?? "sem data").slice(0, 120),
+      // Distingue falha da miniatura (degradação aceitável — cai para a
+      // original) de falha da original (a foto some da tela).
+      variante: params.transform ? "thumbnail" : "original",
     })
     return null
   }
 
   return data.signedUrl
+}
+
+/**
+ * URL assinada da MINIATURA usada na grade da timeline.
+ *
+ * Mesma autorização, mesmo bucket privado, mesma expiração da original — a
+ * única diferença é o parâmetro de redimensionamento. Não existe caminho aqui
+ * que produza URL pública, e a miniatura não é acessível por quem não poderia
+ * ler a original: a assinatura é sobre o mesmo objeto.
+ *
+ * `null` (Storage instável, transformação indisponível no projeto) é
+ * degradação PREVISTA, não erro: `resolveTimelineImageSrc` cai para a original
+ * e a foto continua aparecendo — só pesada, como era antes.
+ */
+export async function createCareMediaThumbnailUrl(params: {
+  path: string
+  requestId: string
+  expiresInSeconds?: number
+}): Promise<string | null> {
+  return createCareMediaReadUrl({ ...params, transform: careMediaThumbnailTransform() })
 }
 
 /**

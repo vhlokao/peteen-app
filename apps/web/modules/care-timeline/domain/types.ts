@@ -51,8 +51,20 @@ export const CARE_CATEGORY_LABELS: Record<CareUpdateCategory, string> = {
 export type CareMediaView = {
   id: string
   type: "PHOTO"
-  /** URL assinada de leitura, de vida curta. Nunca persistida no banco. */
+  /**
+   * URL assinada da ORIGINAL, de vida curta. Nunca persistida no banco.
+   * Usada pelo lightbox — a visualização de evidência.
+   */
   signedUrl: string
+  /**
+   * URL assinada da MINIATURA (redimensionada na leitura pelo Storage) para a
+   * grade da timeline. `null` quando a assinatura da variante falhou: a grade
+   * cai para `signedUrl` e a foto continua aparecendo, só pesada — ver
+   * `resolveTimelineImageSrc` em lib/storage/care-media-transform.ts.
+   *
+   * Nenhum objeto novo existe no bucket por causa deste campo.
+   */
+  thumbnailUrl: string | null
   /** Só o necessário para o browser renderizar. */
   mimeType: string
 }

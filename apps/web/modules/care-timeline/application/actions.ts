@@ -55,6 +55,7 @@ import {
 } from "@/lib/storage/care-media-path"
 import {
   createCareMediaReadUrl,
+  createCareMediaThumbnailUrl,
   deleteCareMediaObject,
   readCareMediaForValidation,
 } from "@/lib/storage/care-media"
@@ -221,16 +222,24 @@ async function validateMediaPaths(params: {
 async function toCareMediaViews(
   update: CareUpdateWithInternalMedia
 ): Promise<CareMediaView[]> {
-  const views: CareMediaView[] = []
-  for (const m of update.media) {
-    const signedUrl = await createCareMediaReadUrl({
-      path: m.storagePath,
-      requestId: update.requestId,
+  // Em PARALELO, não em série. Cada assinatura é uma ida ao Storage; o laço
+  // sequencial anterior somava a latência de todas — com 3 fotos por
+  // atualização e várias atualizações na timeline, isso era parte do "demora
+  // para aparecer" observado, independentemente do tamanho dos arquivos.
+  const resultados = await Promise.all(
+    update.media.map(async (m) => {
+      const [signedUrl, thumbnailUrl] = await Promise.all([
+        createCareMediaReadUrl({ path: m.storagePath, requestId: update.requestId }),
+        createCareMediaThumbnailUrl({ path: m.storagePath, requestId: update.requestId }),
+      ])
+      // Sem a ORIGINAL a foto é omitida, como sempre foi — é ela que o
+      // lightbox precisa e o único fallback da grade. Sem a MINIATURA a foto
+      // continua: `thumbnailUrl: null` faz a grade usar a original.
+      if (!signedUrl) return null
+      return { id: m.id, type: m.type, signedUrl, thumbnailUrl, mimeType: m.mimeType }
     })
-    if (!signedUrl) continue
-    views.push({ id: m.id, type: m.type, signedUrl, mimeType: m.mimeType })
-  }
-  return views
+  )
+  return resultados.filter((v): v is CareMediaView => v !== null)
 }
 
 /**

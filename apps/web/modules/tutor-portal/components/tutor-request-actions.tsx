@@ -3,7 +3,7 @@
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { Loader2, XCircle } from "lucide-react"
+import { XCircle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { cancelServiceRequestAction } from "@/modules/service-request/application/actions"
@@ -54,12 +54,10 @@ export function TutorRequestActions({
       style={{ borderColor: `${CORAL}66`, color: CORAL }}
       onClick={handleCancel}
       disabled={isPending}
+      pending={isPending}
+      pendingText="Cancelando…"
     >
-      {isPending ? (
-        <Loader2 className="size-4 animate-spin" />
-      ) : (
-        <XCircle className="size-4" />
-      )}
+      <XCircle />
       Cancelar solicitação
     </Button>
   )

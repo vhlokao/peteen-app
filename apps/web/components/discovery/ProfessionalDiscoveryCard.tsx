@@ -13,6 +13,7 @@ import { TrustStateChip } from "@/components/shared/trust/TrustStateChip"
 import { ReputationBadgePill } from "@/modules/reputation-badges/components/reputation-badge-pill"
 import type { ReputationBadge } from "@/modules/reputation-badges/domain/types"
 import type { PartnerEndorsement } from "@/modules/partners/domain/types"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 const NAVY = "#1D2F6F"
 const GREEN = "#40916C"
@@ -105,7 +106,7 @@ export function ProfessionalDiscoveryCard({
   return (
     <Link
       href={`/discover/${id}`}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+      className={`group relative flex flex-col overflow-hidden rounded-2xl border border-border/70 bg-card shadow-[var(--shadow-card)] duration-200 ${cardInteractiveClasses}`}
     >
       {/* Faixa decorativa sutil no topo */}
       <div

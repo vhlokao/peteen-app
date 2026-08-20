@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { RELATIONSHIP_LEVEL_ICONS } from "@/modules/relationship/domain/constants"
 import type { RelationshipLevel } from "@/modules/relationship/domain/types"
 import type { ProfessionalClientRow } from "../domain/types"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 function formatDate(date: Date | null): string {
   if (!date) return "—"
@@ -37,7 +38,7 @@ export function ProfessionalClientsList({ clients }: { clients: ProfessionalClie
           <Link
             key={client.tutorId}
             href={`/professional/clients/${client.tutorId}`}
-            className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+            className={`flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] ${cardInteractiveClasses}`}
           >
             <div className="flex items-start gap-3">
               <Avatar className="size-11 shrink-0 rounded-xl">

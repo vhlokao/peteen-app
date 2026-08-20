@@ -63,7 +63,13 @@ export function ProfessionalRequestCard({
   const ctaLabel = PROFESSIONAL_REQUEST_CARD_CTA[request.status] ?? "Ver detalhes"
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]">
+    // Achado do polimento pré-piloto (item 10.E): este card inteiro tinha
+    // hover de card CLICÁVEL (lift + sombra), mas só o botão "Ver detalhes"
+    // no rodapé navega — o resto da área não faz nada ao clicar. O hover no
+    // card inteiro convidava a clicar em qualquer lugar e não acontecia
+    // nada. Removido daqui; o botão já tem seu próprio hover/active/focus
+    // via buttonVariants, que é o único elemento realmente interativo.
+    <div className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)]">
       <div className="flex items-start gap-3">
         <Avatar className="size-11 shrink-0 rounded-xl">
           {tutor.avatarUrl && <AvatarImage src={tutor.avatarUrl} alt={tutor.displayName} />}

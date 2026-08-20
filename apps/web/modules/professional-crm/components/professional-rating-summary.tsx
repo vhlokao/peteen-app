@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { ChevronRight, Star } from "lucide-react"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 type ProfessionalRatingSummaryProps = {
   averageRating: number | null
@@ -13,7 +14,7 @@ export function ProfessionalRatingSummary({
   return (
     <Link
       href="/professional/reviews"
-      className="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+      className={`flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] ${cardInteractiveClasses}`}
     >
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">

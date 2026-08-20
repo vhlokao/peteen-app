@@ -2,6 +2,37 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Recipe compartilhada para um card CLICÁVEL (`<Link>` ou `<button>` que
+ * envolve o conteúdo de um card, nunca `<div onClick>` — teclado precisa
+ * alcançar a ação).
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * POR QUE ISTO EXISTE
+ *
+ * Vários cards clicáveis do produto já tinham hover próprio
+ * (`hover:-translate-y-0.5 hover:border-primary/25
+ * hover:shadow-[var(--shadow-card-hover)]`), copiado e colado arquivo a
+ * arquivo — sem `active:` (nenhum feedback de toque/clique enquanto
+ * pressionado) e sem `focus-visible:` explícito (o card ficava só com o
+ * outline padrão do navegador, que não usa o token `--ring` do resto do
+ * produto). Extrair para cá é o que evita a próxima tela repetir a mesma
+ * lacuna — mesmo raciocínio de `buttonVariants` em button.tsx.
+ *
+ * `focus-visible:ring-3 focus-visible:ring-ring/50` é literal do Button, de
+ * propósito: um card clicável é, na prática, um botão grande — o anel de
+ * foco precisa ser o MESMO token, não uma variação.
+ *
+ * `active:translate-y-0` desfaz o lift do hover: como o hover já sobe o card
+ * (`-translate-y-0.5`), "soltar" no active/press é o card voltar ao lugar —
+ * a sensação de afundar, sem introduzir uma transformação nova.
+ *
+ * NÃO aplicar a card que não navega nem executa ação — um card estático com
+ * hover de botão engana o usuário a tentar clicar nele (item 10.E).
+ */
+export const cardInteractiveClasses =
+  "transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)] active:translate-y-0 active:shadow-[var(--shadow-card)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+
 function Card({
   className,
   size = "default",

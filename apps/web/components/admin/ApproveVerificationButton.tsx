@@ -5,6 +5,7 @@ import { useTransition } from "react"
 import { CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
 import { approveVerificationAction } from "@/modules/verification/application/actions"
 
 type Props = {
@@ -31,14 +32,21 @@ export function ApproveVerificationButton({ requestId, entityName }: Props) {
   }
 
   return (
-    <button
+    // Migrado de <button> cru (achado do polimento: sem active/focus-visible
+    // consistentes, e "…" como texto de loading não dizia o que estava
+    // acontecendo). O Button central resolve hover/press/foco/disabled de
+    // graça; `pending` cobre o resto — aria-busy, spinner, texto contextual.
+    <Button
       type="button"
+      size="xs"
+      variant="success"
       onClick={handleApprove}
-      disabled={isPending}
-      className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+      pending={isPending}
+      pendingText="Aprovando…"
+      className="gap-1"
     >
-      <CheckCircle2 className="size-3.5" />
-      {isPending ? "…" : "Aprovar"}
-    </button>
+      <CheckCircle2 />
+      Aprovar
+    </Button>
   )
 }

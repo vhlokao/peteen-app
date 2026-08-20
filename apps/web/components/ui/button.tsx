@@ -1,5 +1,7 @@
+import * as React from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
+import { Loader2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -42,18 +44,48 @@ const buttonVariants = cva(
   }
 )
 
+type ButtonPendingProps = {
+  /**
+   * Ação em voo — a mesma prop cobre as três coisas que "loading" precisa
+   * fazer de uma vez: desabilitar (impede segundo clique), anunciar para
+   * leitor de tela (`aria-busy`) e mostrar o spinner. Antes disso era
+   * hand-rolled em cada formulário (`disabled={isPending}` +
+   * `{isPending && <Loader2 .../>}` +  texto condicional repetidos por tela);
+   * centralizar aqui é o que evita a próxima tela reinventar o padrão errado.
+   *
+   * `disabled` explícito continua funcionando em conjunto — os dois motivos
+   * de desabilitar (dado inválido E ação em voo) coexistem sem conflito.
+   */
+  pending?: boolean
+  /**
+   * Texto exibido NO LUGAR de `children` enquanto `pending` — "Salvando…",
+   * "Publicando…", "Aceitando…". Opcional: um ícone-botão ou um botão cujo
+   * rótulo já funciona sem mudar (raro) pode omitir e manter `children`.
+   */
+  pendingText?: React.ReactNode
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  pending = false,
+  pendingText,
+  disabled,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & ButtonPendingProps) {
   return (
     <ButtonPrimitive
       data-slot="button"
+      aria-busy={pending || undefined}
+      disabled={pending || disabled}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
-    />
+    >
+      {pending ? <Loader2 className="animate-spin" aria-hidden /> : null}
+      {pending && pendingText !== undefined ? pendingText : children}
+    </ButtonPrimitive>
   )
 }
 

@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { Repeat2 } from "lucide-react"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 type ProfessionalRecurrenceCardProps = {
   recurringClients: number
@@ -18,7 +19,7 @@ export function ProfessionalRecurrenceCard({
   return (
     <Link
       href="/professional/clients"
-      className="block rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+      className={`block rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] ${cardInteractiveClasses}`}
     >
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">

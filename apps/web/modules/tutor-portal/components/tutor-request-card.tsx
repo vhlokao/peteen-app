@@ -7,6 +7,7 @@ import type { ServiceRequestWithParticipants } from "@/modules/service-request/d
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { REQUEST_STATUS_META } from "../domain/request-status-display"
 import { TutorRequestStatusPill } from "./TutorRequestStatusPill"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 const NAVY = "#1D2F6F"
 
@@ -49,7 +50,7 @@ export function TutorRequestCard({
   return (
     <Link
       href={`/tutor/requests/${request.id}`}
-      className="flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+      className={`flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] ${cardInteractiveClasses}`}
     >
       <Avatar className="size-12 shrink-0 rounded-xl" style={{ background: "#E8EEF6" }}>
         {pro.avatarUrl && <AvatarImage src={pro.avatarUrl} alt={pro.displayName} />}

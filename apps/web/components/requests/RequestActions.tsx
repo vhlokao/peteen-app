@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { CheckCircle2, XCircle, Play, Loader2 } from "lucide-react"
+import { CheckCircle2, XCircle, Play } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -48,6 +48,19 @@ const SUCCESS_MESSAGES: Partial<Record<RequestStatus, string>> = {
   CANCELLED_BY_PROFESSIONAL: "Solicitação recusada.",
   IN_PROGRESS: "Atendimento iniciado!",
   COMPLETED: "Atendimento concluído! O tutor já pode avaliar o serviço.",
+}
+
+/**
+ * Texto do botão ENQUANTO a ação está em voo — item 5 da missão. Antes o
+ * rótulo ficava parado ("Aceitar solicitação") e só o ícone virava spinner;
+ * num clique real isso lê como "não reagiu", e é o tipo de dúvida que convida
+ * a clicar de novo.
+ */
+const PENDING_LABELS: Partial<Record<RequestStatus, string>> = {
+  ACCEPTED: "Aceitando…",
+  CANCELLED_BY_PROFESSIONAL: "Recusando…",
+  IN_PROGRESS: "Iniciando…",
+  COMPLETED: "Concluindo…",
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -122,6 +135,11 @@ export function RequestActions({
 }: RequestActionsProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
+  // PENDING tem DOIS botões (Aceitar/Recusar) sob o MESMO isPending — sem
+  // isto, os dois mostrariam o mesmo texto genérico enquanto só um foi
+  // clicado. Guarda qual transição está em voo para dar o texto certo a cada
+  // botão e deixar o outro só desabilitado, sem alegar uma ação que não pediu.
+  const [acaoEmVoo, setAcaoEmVoo] = useState<RequestStatus | null>(null)
 
   // Mesma razão do lado do tutor: uma transição de status em voo não pode
   // disputar o ciclo de render com um refresh automático concorrente.
@@ -133,11 +151,13 @@ export function RequestActions({
     action: () => Promise<ActionResult<ServiceRequestData>>,
     targetStatus: RequestStatus
   ) {
+    setAcaoEmVoo(targetStatus)
     startTransition(async () => {
       const result = await action()
 
       if (!result.success) {
         toast.error(result.error ?? "Erro ao processar ação. Tente novamente.")
+        setAcaoEmVoo(null)
         // Mesmo numa falha, o servidor pode ter mudado o status por baixo
         // (ex.: aceite bloqueado porque a request acabou de expirar) — sem
         // isso, os botões continuariam visíveis para uma request que já não
@@ -149,7 +169,10 @@ export function RequestActions({
       const message = SUCCESS_MESSAGES[targetStatus] ?? "Ação realizada com sucesso."
       toast.success(message)
 
-      // Re-renderiza o Server Component com os dados atualizados
+      // Não reseta acaoEmVoo no sucesso: router.refresh() troca o
+      // currentStatus e este branch some antes do próximo render terminar —
+      // resetar aqui só arriscaria um piscar do rótulo original entre o
+      // sucesso e a re-renderização.
       router.refresh()
     })
   }
@@ -170,12 +193,10 @@ export function RequestActions({
               )
             }
             disabled={isPending}
+            pending={acaoEmVoo === "ACCEPTED"}
+            pendingText={PENDING_LABELS.ACCEPTED}
           >
-            {isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="size-4" />
-            )}
+            <CheckCircle2 />
             Aceitar solicitação
           </Button>
 
@@ -189,12 +210,10 @@ export function RequestActions({
               )
             }
             disabled={isPending}
+            pending={acaoEmVoo === "CANCELLED_BY_PROFESSIONAL"}
+            pendingText={PENDING_LABELS.CANCELLED_BY_PROFESSIONAL}
           >
-            {isPending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <XCircle className="size-4" />
-            )}
+            <XCircle />
             Recusar
           </Button>
         </div>
@@ -217,12 +236,10 @@ export function RequestActions({
             )
           }
           disabled={isPending || !startEligibility.eligible}
+          pending={acaoEmVoo === "IN_PROGRESS"}
+          pendingText={PENDING_LABELS.IN_PROGRESS}
         >
-          {isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Play className="size-4" />
-          )}
+          <Play />
           Iniciar atendimento
         </Button>
         {!startEligibility.eligible && (
@@ -248,12 +265,10 @@ export function RequestActions({
           )
         }
         disabled={isPending}
+        pending={acaoEmVoo === "COMPLETED"}
+        pendingText={PENDING_LABELS.COMPLETED}
       >
-        {isPending ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <CheckCircle2 className="size-4" />
-        )}
+        <CheckCircle2 />
         Concluir atendimento
       </Button>
     )

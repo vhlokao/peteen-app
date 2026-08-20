@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { CheckCircle2, Repeat2, Users } from "lucide-react"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 const CORAL = "#E07A5F"
 const NAVY = "#1D2F6F"
@@ -25,7 +26,7 @@ export function ProfessionalClientsSummary({
   return (
     <Link
       href="/professional/clients"
-      className="block rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+      className={`block rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] ${cardInteractiveClasses}`}
     >
       <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
         Reputação humana

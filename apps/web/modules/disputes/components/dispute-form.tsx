@@ -1,7 +1,6 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { createDisputeForRequestAction } from "../application/actions"
@@ -98,8 +97,14 @@ export function DisputeForm({ requestId, onSuccess, onCancel }: Props) {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" size="sm" disabled={isPending} className="gap-1.5">
-              {isPending && <Loader2 className="size-4 animate-spin" />}
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isPending}
+              pending={isPending}
+              pendingText="Enviando…"
+              className="gap-1.5"
+            >
               Enviar disputa
             </Button>
             <Button

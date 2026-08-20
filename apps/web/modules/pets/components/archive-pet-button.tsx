@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Archive, Loader2 } from "lucide-react"
+import { Archive } from "lucide-react"
 import { toast } from "sonner"
 
 import { archivePetAction } from "@/modules/pets/application/actions"
@@ -60,12 +60,10 @@ export function ArchivePetButton({ petId, petName }: ArchivePetButtonProps) {
           size="sm"
           onClick={handleArchive}
           disabled={isPending}
+          pending={isPending}
+          pendingText="Arquivando…"
         >
-          {isPending ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            "Confirmar"
-          )}
+          Confirmar
         </Button>
         <Button
           type="button"

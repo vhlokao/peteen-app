@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { User, Wrench } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 const NAVY = "#1D2F6F"
 
@@ -26,7 +27,7 @@ export function ProfessionalQuickActions() {
           <Link
             key={href}
             href={href}
-            className="flex flex-col items-center gap-2 rounded-2xl border border-border/70 bg-card p-4 text-center shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+            className={`flex flex-col items-center gap-2 rounded-2xl border border-border/70 bg-card p-4 text-center shadow-[var(--shadow-card)] ${cardInteractiveClasses}`}
           >
             <span className="flex size-10 items-center justify-center rounded-xl" style={{ background: `${NAVY}14`, color: NAVY }}>
               <Icon className="size-5" />

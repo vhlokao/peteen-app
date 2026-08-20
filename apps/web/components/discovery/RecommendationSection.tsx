@@ -18,6 +18,7 @@ import type {
   RecommendedProfessional,
 } from "@/modules/recommendation/domain/types"
 import { resolvePublicLocation } from "@/modules/location"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 const NAVY = "#1D2F6F"
 const NAVY_SOFT = "#2C4893"
@@ -117,7 +118,7 @@ function RecommendedCard({
   return (
     <Link
       href={`/discover/${pro.professionalId}`}
-      className="flex w-[10.5rem] shrink-0 flex-col gap-2.5 rounded-2xl border border-border/70 bg-card p-3.5 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+      className={`flex w-[10.5rem] shrink-0 flex-col gap-2.5 rounded-2xl border border-border/70 bg-card p-3.5 shadow-[var(--shadow-card)] duration-200 ${cardInteractiveClasses}`}
     >
       <div className="flex items-center gap-2">
         <Avatar

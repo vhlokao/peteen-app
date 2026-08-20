@@ -2,6 +2,7 @@ import Link from "next/link"
 import { ShieldCheck } from "lucide-react"
 
 import { TRUST_LEVEL_LABELS, type TrustLevel } from "@/modules/professional/domain/types"
+import { cardInteractiveClasses } from "@/components/ui/card"
 
 type ProfessionalTrustOverviewProps = {
   trustScore: number
@@ -31,7 +32,7 @@ export function ProfessionalTrustOverview({ trustScore, trustLevel }: Profession
   return (
     <Link
       href="/professional/metricas"
-      className="block rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] transition-all hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-[var(--shadow-card-hover)]"
+      className={`block rounded-2xl border border-border/70 bg-card p-5 shadow-[var(--shadow-card)] ${cardInteractiveClasses}`}
     >
       <div className="flex items-center gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">

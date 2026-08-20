@@ -5,6 +5,8 @@ import { useState, useTransition } from "react"
 import { XCircle } from "lucide-react"
 import { toast } from "sonner"
 
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
 import { rejectVerificationAction } from "@/modules/verification/application/actions"
 
 type Props = {
@@ -40,47 +42,57 @@ export function RejectVerificationButton({ requestId, entityName }: Props) {
   if (showForm) {
     return (
       <div className="flex min-w-[220px] flex-col gap-2">
-        <textarea
+        <Textarea
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="Motivo da rejeição *"
           rows={2}
-          className="w-full rounded border border-input bg-background px-2 py-1 text-xs"
+          disabled={isPending}
+          className="text-xs"
         />
         <div className="flex gap-1">
-          <button
+          {/* "Confirmar" antes ficava com o MESMO texto durante o envio —
+              disabled sozinho não avisa que algo está acontecendo (item 5:
+              "evitar botão parecer congelado depois do clique"). */}
+          <Button
             type="button"
+            size="xs"
+            variant="destructive"
             onClick={handleReject}
-            disabled={isPending}
-            className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white disabled:opacity-50"
+            pending={isPending}
+            pendingText="Rejeitando…"
           >
             Confirmar
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="xs"
+            variant="outline"
             onClick={() => setShowForm(false)}
-            className="rounded border px-2 py-1 text-xs text-muted-foreground"
+            disabled={isPending}
           >
             Cancelar
-          </button>
+          </Button>
         </div>
       </div>
     )
   }
 
   return (
-    <button
+    <Button
       type="button"
+      size="xs"
+      variant="destructive"
       onClick={() => {
         if (window.confirm(`Rejeitar verificação de "${entityName}"?`)) {
           setShowForm(true)
         }
       }}
       disabled={isPending}
-      className="inline-flex items-center gap-1 rounded border border-red-300 px-2.5 py-1 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30"
+      className="gap-1"
     >
-      <XCircle className="size-3.5" />
+      <XCircle />
       Rejeitar
-    </button>
+    </Button>
   )
 }

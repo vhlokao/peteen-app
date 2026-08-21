@@ -16,8 +16,10 @@ const TRUST_LEVEL_CONTEXT: Record<TrustLevel, string> = {
     "Você já está construindo uma reputação sólida. Continue concluindo atendimentos com qualidade para evoluir de nível.",
   ESTABLISHED:
     "Seu perfil já é reconhecido como confiável na rede. Recorrência e boas avaliações continuam fortalecendo sua posição.",
+  // Sem a palavra "destaque": ela lê como posição patrocinada, e o Ranking
+  // não considera plano nem pagamento. Ver a nota em TRUST_LEVEL_LABELS.
   TRUSTED:
-    "Você está entre os profissionais de destaque da rede. Sua reputação reflete um histórico consistente de bons atendimentos.",
+    "Sua reputação reflete um histórico consistente de bons atendimentos, reconhecido por quem já contratou você.",
   ELITE:
     "Você alcançou o nível mais alto de confiança da rede Peteen — resultado de um histórico consistente e recorrente.",
 }
@@ -46,8 +48,12 @@ export function ProfessionalTrustOverview({ trustScore, trustLevel }: Profession
             <span className="text-lg font-semibold text-foreground">
               {TRUST_LEVEL_LABELS[trustLevel]}
             </span>
+            {/* Escala explícita e mesma precisão do Discovery (inteiro): antes
+                o painel mostrava "59.0" e o card do Discovery "59", o mesmo
+                profissional parecendo ter dois números. E um valor solto não
+                responde "59 é bom?" — "de 100" dá a régua sem expor a fórmula. */}
             <span className="text-xs text-muted-foreground">
-              Índice de Confiança {trustScore.toFixed(1)}
+              Índice de Confiança {trustScore.toFixed(0)} de 100
             </span>
           </p>
         </div>

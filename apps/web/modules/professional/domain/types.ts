@@ -56,12 +56,47 @@ export const TRUST_LEVELS = [
 ] as const
 export type TrustLevel = (typeof TRUST_LEVELS)[number]
 
+/**
+ * Rótulo humano de cada faixa do Índice de Confiança.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE ESTES NOMES E NÃO OS ANTERIORES
+ *
+ * A escada anterior era "Novo → Confiável → Verificado → Destaque → Elite", e
+ * tinha três defeitos que a auditoria pré-piloto mediu:
+ *
+ *   1. "Verificado" (faixa 41–60) AFIRMAVA UMA VERIFICAÇÃO QUE NÃO EXISTE.
+ *      Verificação é um fato próprio no produto (`verifiedIdentity`,
+ *      VerificationRequest com aprovação de admin, badge `verified` em
+ *      reputation-badges). Um profissional com 41 pontos e ZERO verificação
+ *      exibia "Verificado" — e podia exibir isso ao lado da ausência do badge
+ *      real de verificação, na mesma tela. Reputação é o ativo do produto;
+ *      um selo que mente sobre um fato verificável é o pior defeito possível.
+ *
+ *   2. "Destaque" (faixa 61–80) lê como posição paga/patrocinada. O Ranking
+ *      não considera plano nem pagamento (ver modules/ranking/domain/scoring),
+ *      mas o rótulo sugeria o contrário — exatamente o que a marca não pode
+ *      insinuar.
+ *
+ *   3. A ordem não era monotônica em significado: nada em "Verificado" soa
+ *      mais alto que "Confiável", nem "Destaque" mais que "Verificado". O
+ *      tutor não conseguia ordenar dois profissionais pelos rótulos.
+ *
+ * A escada nova é uma progressão legível de uma coisa só — confiança — e não
+ * reivindica nenhum fato externo:
+ *
+ *   Novo → Confiança em evolução → Confiança consistente → Alta confiança
+ *        → Confiança excepcional
+ *
+ * NENHUM threshold, peso ou fórmula mudou. Ver TRUST_LEVEL_THRESHOLDS em
+ * modules/trust-engine/domain/constants.ts — as faixas são as mesmas.
+ */
 export const TRUST_LEVEL_LABELS: Record<TrustLevel, string> = {
   INITIAL:     "Novo",
-  BUILDING:    "Confiável",
-  ESTABLISHED: "Verificado",
-  TRUSTED:     "Destaque",
-  ELITE:       "Elite",
+  BUILDING:    "Confiança em evolução",
+  ESTABLISHED: "Confiança consistente",
+  TRUSTED:     "Alta confiança",
+  ELITE:       "Confiança excepcional",
 }
 
 export const PLAN_TYPES = ["FREE", "PROFESSIONAL", "PROFESSIONAL_PLUS"] as const

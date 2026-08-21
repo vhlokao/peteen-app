@@ -21,6 +21,8 @@
 
 import type { RecommendationInput, RecommendationScore, RecommendationFactor } from "./types"
 import { computeLocalRecommendationBonus } from "@/modules/growth-engine/domain/scoring"
+import { resolveTrustLevel } from "@/modules/trust-engine/domain/scoring"
+import { TRUST_LEVEL_LABELS } from "@/modules/professional/domain/types"
 
 export const MAX_RECOMMENDATION_SCORE = 100
 
@@ -45,11 +47,20 @@ export function computeRecommendationScore(input: RecommendationInput): Recommen
   }
 
   // ── 3. Trust Score normalizado (0–25 pts) ────────────────────────────────────
+  //
+  // O RÓTULO usa a faixa humana, não o número cru. Este texto aparece para o
+  // tutor na lista de "por que recomendamos", ao lado de fatores qualitativos
+  // ("Serviço compatível", "Bem recomendado") — só o trust expunha um número
+  // solto, que não responde "59 é bom?" e divergia do que o card e o perfil
+  // do MESMO profissional mostram. `resolveTrustLevel` é a mesma função que o
+  // Trust Engine usa, então as faixas continuam com uma fonte única.
+  //
+  // A PONTUAÇÃO segue idêntica: nenhuma mudança de matemática, só de texto.
   const trustPts = Math.round((Math.min(input.trustScore, 100) / 100) * 25)
   if (trustPts > 0) {
     factors.push({
       key:    "trust",
-      label:  `Índice de Confiança ${input.trustScore.toFixed(0)}`,
+      label:  TRUST_LEVEL_LABELS[resolveTrustLevel(input.trustScore)],
       points: trustPts,
     })
   }

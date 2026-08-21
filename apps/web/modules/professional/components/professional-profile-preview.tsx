@@ -10,6 +10,7 @@ import {
 import { resolvePublicLocation } from "@/modules/location"
 import { AvatarUploadButton } from "@/components/shared/avatar/AvatarUploadButton"
 import { uploadProfessionalAvatarAction } from "@/modules/professional/application/actions"
+import { ShareProfileButton } from "@/modules/invite/components/share-profile-button"
 
 const NAVY = "#1D2F6F"
 
@@ -78,6 +79,17 @@ export function ProfessionalProfilePreview({ profile }: { profile: ProfessionalP
             {resolvePublicLocation({ city: profile.city, state: profile.state }).label}
           </p>
         </div>
+      </div>
+
+      {/* Convite — o profissional compartilha a landing pública dele.
+          Fica aqui (perfil) e no dashboard, os dois lugares onde ele pensa
+          na própria presença; deliberadamente NÃO espalhado pelo app. */}
+      <div className="relative mt-4">
+        <ShareProfileButton
+          professionalId={profile.id}
+          professionalName={profile.displayName}
+          className="w-full border-white/25 bg-white/[.12] text-white hover:bg-white/20 hover:text-white"
+        />
       </div>
     </section>
   )

@@ -88,7 +88,7 @@ export function LoginForm({ errorCode, next }: LoginFormProps) {
     setServerError(null);
     startGoogleTransition(async () => {
       try {
-        await signInWithGoogle();
+        await signInWithGoogle(next);
       } catch (err) {
         const message = err instanceof Error ? err.message : "";
         if (!message.includes("NEXT_REDIRECT")) {

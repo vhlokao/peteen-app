@@ -25,6 +25,7 @@ import {
   type PetSummary,
 } from "../domain/types"
 import { recordPetAudit } from "../infrastructure/audit"
+import { trackInvitePetCreated } from "@/modules/invite/application/track"
 import {
   archivePetRecord,
   countActivePetsByTutorId,
@@ -128,6 +129,10 @@ export async function createPetAction(
 
     const pet = await createPetRecord(tutorProfile.id, parsed.data)
     await recordPetAudit(session.id, "pet.created", pet)
+
+    // Funil de convite — PET_CREATED. Só marca onde ainda está vazio, então
+    // um segundo pet não reescreve a data do primeiro. Best-effort.
+    await trackInvitePetCreated(session.id)
 
     revalidatePetPaths()
     return { success: true, data: pet }

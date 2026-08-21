@@ -6,6 +6,7 @@ import { ChevronLeft } from "lucide-react";
 import { getAuthContext } from "@/modules/identity/application/get-session";
 import { TutorStepBar } from "@/modules/tutor/components/tutor-step-bar";
 import { TutorProfileForm } from "@/modules/tutor/components/tutor-profile-form";
+import { parseNextParam, withNext } from "@/modules/invite/domain/onboarding-next";
 
 export const metadata: Metadata = { title: "Criar conta — Perfil de Tutor" };
 
@@ -17,14 +18,22 @@ export const metadata: Metadata = { title: "Criar conta — Perfil de Tutor" };
  *   - Já tem TutorProfile (TUTOR) → pular para o passo do pet
  *   - Sem onboarding geral → redirecionar para /onboarding
  */
-export default async function OnboardingTutorPage() {
+export default async function OnboardingTutorPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
   const ctx = await getAuthContext();
+  const { next: rawNext } = await searchParams;
+  // Contexto do convite carregado pela URL — ver modules/invite/domain/
+  // onboarding-next.ts para por que a URL e não estado de servidor.
+  const next = parseNextParam(rawNext);
 
   if (!ctx.authenticated) redirect("/login");
 
   // Já completou onboarding como tutor → pular direto para pet
   if (ctx.user.primaryRole === "TUTOR") {
-    redirect("/onboarding/tutor/pet");
+    redirect(withNext("/onboarding/tutor/pet", next));
   }
 
   // Tem outra persona → já fez onboarding, vai para área principal
@@ -50,7 +59,7 @@ export default async function OnboardingTutorPage() {
         </p>
       </header>
 
-      <TutorProfileForm redirectTo="/onboarding/tutor/pet" />
+      <TutorProfileForm redirectTo={withNext("/onboarding/tutor/pet", next)} />
     </section>
   );
 }

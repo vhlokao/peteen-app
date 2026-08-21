@@ -43,8 +43,19 @@ function isPartnerPortalRoute(pathname: string): boolean {
 /** Rotas completamente públicas — nunca redirecionar para login */
 const PUBLIC_PATHS = new Set(["/", "/login", "/sobre", "/como-funciona", "/termos", "/privacidade"]);
 
-/** Prefixos de rotas de infraestrutura — sempre permitir */
-const INFRA_PREFIXES = ["/auth/", "/api/"];
+/**
+ * Prefixos de rotas de infraestrutura e de superfícies públicas por
+ * definição — sempre permitir.
+ *
+ * `/p/` é a landing de convite do profissional. Ela PRECISA abrir sem sessão:
+ * o público-alvo é justamente quem ainda não tem conta, e uma parede de login
+ * antes de qualquer contexto ("quem é essa pessoa que me convidou?") mata a
+ * hipótese que o canal existe para testar. É deliberadamente uma rota NOVA e
+ * enxuta, não `/discover/[id]` tornado público: o Discovery continua
+ * autenticado, e a landing carrega só identidade + confiança pública +
+ * serviços ativos + CTA.
+ */
+const INFRA_PREFIXES = ["/auth/", "/api/", "/p/"];
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });

@@ -219,7 +219,10 @@ export default async function ProfessionalHomePage() {
             />
           )}
 
-          <ProfessionalPublicProfileCTA professionalId={profile.id} />
+          <ProfessionalPublicProfileCTA
+            professionalId={profile.id}
+            professionalName={profile.displayName}
+          />
         </div>
       </div>
     </div>

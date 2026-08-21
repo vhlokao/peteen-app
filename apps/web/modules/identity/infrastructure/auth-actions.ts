@@ -59,13 +59,20 @@ export async function signInWithMagicLink(
  * signInWithGoogle — inicia OAuth com Google.
  * Redireciona o browser para a URL de autorização do Google.
  */
-export async function signInWithGoogle() {
+export async function signInWithGoogle(next?: string) {
   const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+      // `next` propagado igual ao magic link — antes esta era a ÚNICA via de
+      // autenticação que descartava o destino, mandando todo mundo para
+      // /dashboard. Num convite (`/p/[id]` → login → Google), isso significava
+      // perder silenciosamente o profissional que originou a visita, logo no
+      // caminho mais provável de quem chega pelo WhatsApp.
+      // `buildMagicLinkRedirectUrl` já valida com `isSafeRedirectPath`, então
+      // um `next` externo/hostil nunca vira redirect.
+      redirectTo: buildMagicLinkRedirectUrl(next),
     },
   });
 

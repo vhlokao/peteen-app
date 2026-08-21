@@ -65,6 +65,10 @@ import {
 import { isRecurrenceCreditEligible } from "@/modules/trust-engine/infrastructure/reputation-eligibility"
 import { REPUTATION_CREDIT_WINDOW_HOURS } from "@/modules/trust-engine/domain/reputation-window"
 import { recordRequestAudit } from "../infrastructure/audit"
+import {
+  trackInviteRequestCreated,
+  trackInviteServiceCompleted,
+} from "@/modules/invite/application/track"
 import { getRequestExpiryInfo } from "../domain/request-expiry"
 import {
   LEAD_TIME_ERROR_MESSAGE,
@@ -347,6 +351,11 @@ export async function createServiceRequestAction(
     // O destinatário (profissional) é resolvido server-side lá dentro, a partir
     // da própria request — nunca vem do client.
     await notifyRequestCreated(request.id)
+
+    // Funil de convite — REQUEST_CREATED. Só credita a visita cujo
+    // profissional é o MESMO desta request: um tutor que chegou pela landing
+    // de A e contratou B não conta para A. Best-effort, nunca bloqueia.
+    await trackInviteRequestCreated(session.id, request.professionalId)
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -910,6 +919,12 @@ export async function completeServiceRequestAction(
     // A conclusão e o relacionamento já estão gravados; uma falha aqui não
     // reverte nada e não impede Trust nem a detecção de recorrência abaixo.
     await notifyServiceCompleted(requestId)
+
+    // Funil de convite — SERVICE_COMPLETED. Atribuído ao TUTOR da request
+    // (`tutorUserId`), não a `session.id`: quem conclui é o profissional, e a
+    // visita pertence ao tutor que chegou pela landing. Mesma trava de
+    // profissional da etapa de Request. NÃO toca Trust nem gera bônus algum.
+    await trackInviteServiceCompleted(tutorUserId, request.professionalId)
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")

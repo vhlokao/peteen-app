@@ -81,6 +81,9 @@ model User {
   // NotificationRead no fim do arquivo.
   notificationReads NotificationRead[]
 
+  // Aquisição via convite — visitas anônimas que converteram neste usuário.
+  inviteVisits InviteVisit[] @relation("InviteVisitConvertedUser")
+
   @@index([authId])
   @@index([email])
   @@index([activePrimaryRole])
@@ -192,6 +195,10 @@ model ProfessionalProfile {
 
   // Etapa 5.8 — Trust Graph: conexões de confiança apontando para este profissional
   trustConnections TrustConnection[]
+
+  // Aquisição via convite — visitas à landing pública /p/[id]. Puramente
+  // observacional: NUNCA alimenta Trust nem Ranking. Ver model InviteVisit.
+  inviteVisits InviteVisit[]
 
   @@index([city])
   @@index([neighborhood])
@@ -1402,4 +1409,68 @@ model NotificationRead {
   @@unique([userId, notificationKey])
   @@index([userId, readAt])
   @@map("notification_reads")
+}
+
+// ─────────────────────────────────────────────
+// AQUISIÇÃO VIA CONVITE — funil da landing /p/[id]
+// ─────────────────────────────────────────────
+
+/// Uma visita à landing pública de convite de um profissional, e o funil de
+/// conversão que ela originou.
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// O QUE ESTA TABELA É — E O QUE ELA DELIBERADAMENTE NÃO É
+///
+/// É observabilidade de canal: responde "a landing deste profissional está
+/// convertendo?". NÃO é CRM, não é analytics de navegação, e NUNCA alimenta
+/// Trust, Ranking ou qualquer bônus — convidar, abrir link ou cadastrar não
+/// são sinais de confiança, só eventos de aquisição.
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// SEMÂNTICA DA ATRIBUIÇÃO (importante para não ler a métrica errado)
+///
+/// A linha atribui a conversão ao profissional da LANDING QUE FOI ABERTA —
+/// não a quem enviou a mensagem, que não é observável (qualquer pessoa pode
+/// encaminhar o link de qualquer profissional). Leia sempre como "conversão
+/// originada pela landing de X", nunca como "X enviou o convite".
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// PRIVACIDADE
+///
+/// `visitorKey` é um identificador ALEATÓRIO first-party, gerado por nós e
+/// guardado num cookie próprio. Não é fingerprint, não deriva de IP nem de
+/// user-agent, não atravessa domínios e não identifica a pessoa — só permite
+/// não contar o mesmo F5 dez vezes. IP e user-agent NÃO são persistidos aqui
+/// (diferente de AuditLog, que os tem para fins de segurança).
+model InviteVisit {
+  id String @id @default(cuid())
+
+  professionalId String
+  professional   ProfessionalProfile @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+
+  /// Aleatório, first-party, sem PII — ver nota de privacidade acima.
+  visitorKey String @db.VarChar(64)
+
+  openedAt DateTime @default(now())
+
+  /// Preenchido quando a visita anônima passa a ter dono. `SetNull` (e não
+  /// `Cascade`) de propósito: se o usuário for removido, a VISITA continua
+  /// tendo existido — apagá-la falsificaria o histórico do canal.
+  convertedUserId String?
+  convertedUser   User?   @relation("InviteVisitConvertedUser", fields: [convertedUserId], references: [id], onDelete: SetNull)
+
+  /// Marcos do funil. Todos derivados no SERVIDOR, a partir de eventos reais
+  /// de domínio — nenhum é aceito como flag vinda do cliente.
+  signedUpAt         DateTime?
+  petCreatedAt       DateTime?
+  requestCreatedAt   DateTime?
+  serviceCompletedAt DateTime?
+
+  // Uma visita canônica por (visitante, profissional) — é o que torna o
+  // OPENED idempotente no BANCO, não só na aplicação: refresh não vira
+  // visita nova. Ver domain/invite-visit.ts para a janela de reabertura.
+  @@unique([visitorKey, professionalId])
+  @@index([professionalId, openedAt])
+  @@index([convertedUserId])
+  @@map("invite_visits")
 }

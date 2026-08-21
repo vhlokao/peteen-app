@@ -12,6 +12,7 @@ import {
   createPetAction,
   updatePetAction,
 } from "@/modules/pets/application/actions"
+import { resolveOnboardingDestination } from "@/modules/invite/domain/onboarding-next"
 import {
   SPECIES,
   SPECIES_LABELS,
@@ -418,14 +419,25 @@ type OnboardingPetFormValues = z.infer<typeof onboardingPetSchema>
 type OnboardingPetFormProps = {
   /** Primeiro nome do tutor, usado na mensagem de sucesso. */
   firstName?: string
+  /**
+   * Destino contextual quando o tutor chegou por um convite (`/p/<id>`).
+   * `null` mantém o comportamento de sempre (Discovery). Já vem validado por
+   * `parseNextParam` na página — ver modules/invite/domain/onboarding-next.ts.
+   */
+  next?: string | null
 }
 
 /**
  * Formulário de onboarding — pet é obrigatório para concluir o cadastro,
  * então não expõe a opção de pular. Ao concluir, mostra uma tela de sucesso
- * antes de seguir para o Discovery.
+ * antes de seguir adiante.
+ *
+ * O destino final deixou de ser `/discover` fixo: quem chegou por um convite
+ * volta para o profissional que o convidou. Mandar essa pessoa para uma busca
+ * genérica depois de cadastrar conta e pet era perder o contexto no exato
+ * ponto em que a conversão aconteceria.
  */
-export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
+export function OnboardingPetForm({ firstName = "", next = null }: OnboardingPetFormProps) {
   const router = useRouter()
   const [serverError, setServerError] = useState<string | null>(null)
   const [justCompleted, setJustCompleted] = useState(false)
@@ -493,7 +505,7 @@ export function OnboardingPetForm({ firstName = "" }: OnboardingPetFormProps) {
         <button
           type="button"
           onClick={() => {
-            router.push("/discover")
+            router.push(resolveOnboardingDestination(next))
             router.refresh()
           }}
           className="w-full rounded-[14px] py-[15px] text-[14.5px] font-bold text-white transition active:scale-[.99]"

@@ -20,6 +20,7 @@ import {
   Sparkles,
   Network,
   MapPin,
+  Share2,
   Handshake,
   ClipboardCheck,
   Activity,
@@ -56,6 +57,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Expansão",
     items: [
       { href: "/admin/growth", label: "Expansão local", icon: MapPin, exact: true },
+      { href: "/admin/invites", label: "Convites", icon: Share2, exact: true },
     ],
   },
   {

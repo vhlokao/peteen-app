@@ -27,6 +27,7 @@ import {
   deleteAvatarByUrl,
   AvatarValidationError,
 } from "@/lib/storage/avatar-photo"
+import { trackInviteSignup } from "@/modules/invite/application/track"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TUTOR PROFILE
@@ -93,6 +94,11 @@ export async function createTutorProfileAction(
 
       return p
     })
+
+    // Funil de convite — SIGNED_UP. Derivado do servidor, depois do perfil já
+    // existir; nenhuma flag do cliente participa. Best-effort: não lança e
+    // nunca bloqueia o onboarding. Ver modules/invite.
+    await trackInviteSignup(session.id)
 
     revalidatePath("/onboarding")
     revalidatePath("/(tutor)/onboarding")

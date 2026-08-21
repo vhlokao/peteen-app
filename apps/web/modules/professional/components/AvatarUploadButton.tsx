@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation"
 import { Camera, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
-import { uploadAvatar } from "@/lib/storage/upload-avatar"
-import { updateProfessionalProfileAction } from "@/modules/professional/application/actions"
+import { uploadProfessionalAvatarAction } from "@/modules/professional/application/actions"
 
 const CORAL = "#E07A5F"
 
@@ -14,22 +13,27 @@ type UploadState = "idle" | "uploading" | "success" | "error"
 
 type AvatarUploadButtonProps = {
   professionalId: string
-  userId: string
   onUploadComplete?: (url: string) => void
   className?: string
 }
 
 /**
  * Botão de upload de foto de perfil — mesmo visual do antigo botão de
- * câmera decorativo (círculo sobre o avatar), agora funcional: abre o
- * file picker, valida + envia via uploadAvatar (client-side, bucket
- * "avatars"), salva a URL pública através da mesma
- * updateProfessionalProfileAction já usada pelo form de edição (nenhuma
- * Server Action nova), e dá refresh na página pra refletir a foto nova.
+ * câmera decorativo (círculo sobre o avatar), funcional: abre o file picker
+ * e envia via `uploadProfessionalAvatarAction` (Server Action).
+ *
+ * P1 SECURITY — AVATAR STORAGE OWNERSHIP: antes o upload ia direto do
+ * browser para o Supabase Storage, com o path montado a partir de um
+ * `userId` recebido como prop — controlável pelo cliente e, por causa de
+ * duas policies de RLS permissivas então existentes, suficiente para
+ * sobrescrever o avatar de QUALQUER outro profissional (bucket público).
+ * Agora o upload é uma Server Action: o path usa `session.authId`, resolvido
+ * no servidor a partir da sessão real, e a ownership do perfil é checada
+ * antes de qualquer escrita no Storage. Ver lib/storage/avatar-photo.ts e
+ * uploadProfessionalAvatarAction.
  */
 export function AvatarUploadButton({
   professionalId,
-  userId,
   onUploadComplete,
   className,
 }: AvatarUploadButtonProps) {
@@ -46,25 +50,21 @@ export function AvatarUploadButton({
     setState("uploading")
     setError(null)
 
-    try {
-      const url = await uploadAvatar(file, userId)
+    const formData = new FormData()
+    formData.set("file", file)
 
-      const result = await updateProfessionalProfileAction(professionalId, {
-        avatarUrl: url,
-      })
+    const result = await uploadProfessionalAvatarAction(professionalId, formData)
 
-      if (!result.success) {
-        throw new Error(result.error || "Foto enviada, mas não foi possível salvar no perfil.")
-      }
-
-      setState("success")
-      onUploadComplete?.(url)
-      toast.success("Foto atualizada com sucesso.")
-      router.refresh()
-    } catch (err) {
+    if (!result.success) {
       setState("error")
-      setError(err instanceof Error ? err.message : "Não foi possível enviar a foto. Tente novamente.")
+      setError(result.error || "Não foi possível enviar a foto. Tente novamente.")
+      return
     }
+
+    setState("success")
+    onUploadComplete?.(result.data.avatarUrl)
+    toast.success("Foto atualizada com sucesso.")
+    router.refresh()
   }
 
   return (

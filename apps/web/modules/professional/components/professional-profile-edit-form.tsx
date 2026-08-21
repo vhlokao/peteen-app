@@ -182,7 +182,6 @@ export function ProfessionalProfileEditForm({
           </Avatar>
           <AvatarUploadButton
             professionalId={profile.id}
-            userId={profile.userId}
             className="absolute -bottom-1 -right-1"
           />
         </div>

@@ -52,6 +52,11 @@ import {
   DuplicateActiveServiceError,
 } from "../infrastructure/repository"
 import { recordProfessionalProfileAudit } from "../infrastructure/audit"
+import {
+  uploadAvatarPhoto,
+  deleteAvatarByUrl,
+  AvatarValidationError,
+} from "@/lib/storage/avatar-photo"
 import { normalizeCityName, normalizeNeighborhoodName, normalizeLocationInput } from "@/modules/location"
 
 /**
@@ -214,6 +219,68 @@ export async function updateProfessionalProfileAction(
   } catch (err) {
     console.error("[updateProfessionalProfileAction]", err)
     return { success: false, error: "Erro interno ao atualizar perfil." }
+  }
+}
+
+/**
+ * Envia um novo avatar para o profissional autenticado.
+ *
+ * P1 SECURITY — AVATAR STORAGE OWNERSHIP: substitui o upload client-side
+ * direto ao Supabase Storage (removido — ver lib/storage/avatar-photo.ts).
+ * `session.authId` só existe aqui, resolvido do lado do servidor a partir da
+ * sessão real — nunca de um campo do formulário. É essa garantia, não a
+ * policy de RLS sozinha, que impede um usuário de escrever no avatar de
+ * outro: mesmo que o cliente tentasse informar outro `profileId`, a
+ * ownership abaixo bloqueia antes de qualquer upload acontecer.
+ */
+export async function uploadProfessionalAvatarAction(
+  profileId: string,
+  formData: FormData
+): Promise<ActionResult<{ avatarUrl: string }>> {
+  try {
+    const session = await requireAuth()
+
+    const profile = await findProfessionalProfileById(profileId)
+    if (!profile) {
+      return { success: false, error: "Perfil não encontrado." }
+    }
+    if (profile.userId !== session.id) {
+      return { success: false, error: "Acesso negado." }
+    }
+
+    const file = formData.get("file")
+    if (!(file instanceof File) || file.size === 0) {
+      return { success: false, error: "Nenhuma imagem enviada." }
+    }
+
+    let avatarUrl: string
+    try {
+      avatarUrl = await uploadAvatarPhoto(file, session.authId)
+    } catch (err) {
+      if (err instanceof AvatarValidationError) {
+        return { success: false, error: err.message }
+      }
+      throw err
+    }
+
+    const previousAvatarUrl = profile.avatarUrl
+    const updated = await updateProfessionalProfileRecord(profileId, { avatarUrl })
+    await recordProfessionalProfileAudit(session.id, updated, profile)
+
+    // Só remove o avatar ANTERIOR depois que o banco já aponta para o novo —
+    // nunca antes. Best-effort: uma falha aqui não desfaz o upload, que já
+    // está salvo e funcional; só deixa um objeto órfão no bucket.
+    await deleteAvatarByUrl(previousAvatarUrl)
+
+    revalidatePath("/professional")
+    revalidatePath("/professional/profile")
+    revalidatePath("/discover")
+    revalidatePath(`/discover/${profileId}`)
+
+    return { success: true, data: { avatarUrl } }
+  } catch (err) {
+    console.error("[uploadProfessionalAvatarAction]", err)
+    return { success: false, error: "Erro interno ao enviar a foto." }
   }
 }
 

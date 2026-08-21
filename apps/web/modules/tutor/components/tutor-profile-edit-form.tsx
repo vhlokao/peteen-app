@@ -7,7 +7,10 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { Loader2, AlertCircle, MapPin, User } from "lucide-react"
 import { toast } from "sonner"
 
-import { updateTutorProfileAction } from "@/modules/tutor/application/actions"
+import {
+  updateTutorProfileAction,
+  uploadTutorAvatarAction,
+} from "@/modules/tutor/application/actions"
 import {
   UpdateTutorProfileSchema,
   type TutorProfileData,
@@ -18,6 +21,8 @@ import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { AvatarUploadButton } from "@/components/shared/avatar/AvatarUploadButton"
 
 type TutorProfileEditFormProps = {
   profile: TutorProfileData
@@ -26,6 +31,13 @@ type TutorProfileEditFormProps = {
 export function TutorProfileEditForm({ profile }: TutorProfileEditFormProps) {
   const router = useRouter()
   const [serverError, setServerError] = useState<string | null>(null)
+
+  const initials = profile.displayName
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
 
   const {
     register,
@@ -71,6 +83,25 @@ export function TutorProfileEditForm({ profile }: TutorProfileEditFormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
+      <div className="flex items-center gap-4">
+        <div className="relative shrink-0">
+          <Avatar className="size-16 rounded-2xl">
+            {profile.avatarUrl && <AvatarImage src={profile.avatarUrl} alt={profile.displayName} />}
+            <AvatarFallback className="rounded-2xl bg-primary/10 text-lg font-extrabold text-primary">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <AvatarUploadButton
+            profileId={profile.id}
+            uploadAction={uploadTutorAvatarAction}
+            className="absolute -bottom-2 -right-2"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Foto de perfil. JPEG, PNG ou WEBP, até 5MB.
+        </p>
+      </div>
+
       {serverError ? (
         <div
           role="alert"

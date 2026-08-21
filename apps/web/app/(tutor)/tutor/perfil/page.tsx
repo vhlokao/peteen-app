@@ -23,7 +23,7 @@ export default async function TutorProfilePage() {
     <div className="page-container max-w-2xl">
       <PageHeader
         title="Meu perfil"
-        description="Suas informações de contato e localização para profissionais."
+        description="Sua foto, dados de contato e localização para profissionais."
       />
       <Card>
         <CardHeader>

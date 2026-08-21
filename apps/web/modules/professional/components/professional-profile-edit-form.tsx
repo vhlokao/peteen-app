@@ -8,7 +8,10 @@ import { z } from "zod"
 import { Loader2, AlertCircle, MapPin, User, Briefcase, Phone, Pencil, X } from "lucide-react"
 import { toast } from "sonner"
 
-import { updateProfessionalProfileAction } from "@/modules/professional/application/actions"
+import {
+  updateProfessionalProfileAction,
+  uploadProfessionalAvatarAction,
+} from "@/modules/professional/application/actions"
 import {
   SERVICE_TYPES,
   SERVICE_TYPE_LABELS,
@@ -22,7 +25,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { AvatarUploadButton } from "./AvatarUploadButton"
+import { AvatarUploadButton } from "@/components/shared/avatar/AvatarUploadButton"
 import { cn } from "@/lib/utils"
 
 const NAVY = "#1D2F6F"
@@ -181,12 +184,17 @@ export function ProfessionalProfileEditForm({
             </AvatarFallback>
           </Avatar>
           <AvatarUploadButton
-            professionalId={profile.id}
-            className="absolute -bottom-1 -right-1"
+            profileId={profile.id}
+            uploadAction={uploadProfessionalAvatarAction}
+            className="absolute -bottom-2 -right-2"
           />
         </div>
         <p className="text-xs text-muted-foreground">
-          Foto de perfil. JPEG, PNG, WEBP ou GIF, até 5MB.
+          {/* JPEG/PNG/WEBP — não GIF: desde o hardening de storage, a
+              validação por magic bytes (pet-photo-signature.ts, reutilizada
+              aqui) não reconhece GIF. A copy antiga prometia um formato que
+              o validador já rejeitava silenciosamente com erro genérico. */}
+          Foto de perfil. JPEG, PNG ou WEBP, até 5MB.
         </p>
       </div>
 

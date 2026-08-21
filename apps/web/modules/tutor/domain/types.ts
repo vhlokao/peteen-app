@@ -104,6 +104,18 @@ export const CreateTutorProfileSchema = z.object({
 
   lng: z.number().min(-180).max(180).optional(),
 
+  // TUTOR AVATAR / IDENTITY COMPLETENESS — mesmo campo já existente em
+  // CreateProfessionalProfileSchema. `updateTutorProfileRecord` só grava
+  // uma URL que o próprio servidor gerou (uploadTutorAvatarAction nunca
+  // aceita a URL vinda do cliente) — a validação aqui é defesa em
+  // profundidade, não a fronteira de confiança real.
+  avatarUrl: z
+    .string()
+    .url("Informe uma URL válida")
+    .max(500, "URL muito longa")
+    .optional()
+    .or(z.literal("")),
+
 })
 
 

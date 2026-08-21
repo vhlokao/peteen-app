@@ -8,7 +8,8 @@ import {
   type ProfessionalProfileData,
 } from "@/modules/professional/domain/types"
 import { resolvePublicLocation } from "@/modules/location"
-import { AvatarUploadButton } from "./AvatarUploadButton"
+import { AvatarUploadButton } from "@/components/shared/avatar/AvatarUploadButton"
+import { uploadProfessionalAvatarAction } from "@/modules/professional/application/actions"
 
 const NAVY = "#1D2F6F"
 
@@ -63,8 +64,9 @@ export function ProfessionalProfilePreview({ profile }: { profile: ProfessionalP
             </AvatarFallback>
           </Avatar>
           <AvatarUploadButton
-            professionalId={profile.id}
-            className="absolute -bottom-1 -right-1"
+            profileId={profile.id}
+            uploadAction={uploadProfessionalAvatarAction}
+            className="absolute -bottom-2 -right-2"
           />
         </div>
         <div className="min-w-0 flex-1">

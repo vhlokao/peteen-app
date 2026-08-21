@@ -100,6 +100,7 @@ export async function updateTutorProfileRecord(
       ...(location.state !== undefined && { state: location.state }),
       ...(input.lat !== undefined && { lat: input.lat ?? null }),
       ...(input.lng !== undefined && { lng: input.lng ?? null }),
+      ...(input.avatarUrl !== undefined && { avatarUrl: input.avatarUrl || null }),
     },
   })
 }

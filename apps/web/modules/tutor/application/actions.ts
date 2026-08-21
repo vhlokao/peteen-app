@@ -22,6 +22,11 @@ import {
 } from "../infrastructure/repository"
 import { recordTutorProfileAudit } from "../infrastructure/audit"
 import { normalizeLocationInput } from "@/modules/location"
+import {
+  uploadAvatarPhoto,
+  deleteAvatarByUrl,
+  AvatarValidationError,
+} from "@/lib/storage/avatar-photo"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TUTOR PROFILE
@@ -138,6 +143,67 @@ export async function updateTutorProfileAction(
   } catch (err) {
     console.error("[updateTutorProfileAction]", err)
     return { success: false, error: "Erro interno ao atualizar perfil." }
+  }
+}
+
+/**
+ * Envia um novo avatar para o tutor autenticado.
+ *
+ * Espelha `uploadProfessionalAvatarAction` (modules/professional/application/
+ * actions.ts) sobre a MESMA infraestrutura de storage — nenhuma arquitetura
+ * nova, nenhum path novo, nenhuma RLS nova. `session.authId` só existe aqui,
+ * resolvido do lado do servidor a partir da sessão real, nunca de um campo
+ * do formulário: é essa garantia, e a checagem de ownership logo abaixo, que
+ * impedem um tutor de alterar o avatar de outro — a mesma dupla trava do
+ * hardening do bucket `avatars`.
+ */
+export async function uploadTutorAvatarAction(
+  profileId: string,
+  formData: FormData
+): Promise<ActionResult<{ avatarUrl: string }>> {
+  try {
+    const session = await requireAuth()
+
+    const profile = await findTutorProfileById(profileId)
+    if (!profile) {
+      return { success: false, error: "Perfil não encontrado." }
+    }
+    if (profile.userId !== session.id) {
+      return { success: false, error: "Acesso negado." }
+    }
+
+    const file = formData.get("file")
+    if (!(file instanceof File) || file.size === 0) {
+      return { success: false, error: "Nenhuma imagem enviada." }
+    }
+
+    let avatarUrl: string
+    try {
+      avatarUrl = await uploadAvatarPhoto(file, session.authId)
+    } catch (err) {
+      if (err instanceof AvatarValidationError) {
+        return { success: false, error: err.message }
+      }
+      throw err
+    }
+
+    const previousAvatarUrl = profile.avatarUrl
+    const updated = await updateTutorProfileRecord(profileId, { avatarUrl })
+    await recordTutorProfileAudit(session.id, updated, profile)
+
+    // Só remove o avatar ANTERIOR depois que o banco já aponta para o novo —
+    // nunca antes. Best-effort: uma falha aqui não desfaz o upload, que já
+    // está salvo e funcional; só deixa um objeto órfão no bucket.
+    await deleteAvatarByUrl(previousAvatarUrl)
+
+    revalidatePath("/tutor")
+    revalidatePath("/tutor/perfil")
+    revalidatePath("/tutor/conta")
+
+    return { success: true, data: { avatarUrl } }
+  } catch (err) {
+    console.error("[uploadTutorAvatarAction]", err)
+    return { success: false, error: "Erro interno ao enviar a foto." }
   }
 }
 

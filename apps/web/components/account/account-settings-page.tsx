@@ -1,67 +1,119 @@
-import Link from "next/link"
-import { Bell, ChevronRight, UserCircle } from "lucide-react"
+import { Bell, UserCircle } from "lucide-react"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PageHeader } from "@/components/layout/page-header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { PushOptInSection } from "@/modules/notifications/components/push-opt-in-section"
 import { AccountSignOutButton } from "@/components/account/account-sign-out-button"
+import {
+  SettingsGroup,
+  SettingsLinkRow,
+  SettingsStaticRow,
+} from "@/components/account/settings-row"
 
 /**
- * Conta/Configurações — estrutura V0 compartilhada entre tutor e profissional
- * (UX R1). Só contém seções com funcionalidade real por trás:
- *   - Perfil: link para a página de identidade já existente da persona.
- *   - Notificações: controle de ativação de push (movido para cá — antes
- *     vivia dentro da página de Perfil, que é sobre identidade, não
- *     comportamento).
- *   - Sair: ação de sessão única e canônica.
+ * Minha conta — central compartilhada entre tutor e profissional.
  *
- * "Segurança" e "Privacidade/Termos" NÃO entram nesta V0: não existe troca de
- * senha nem página de termos/privacidade no produto ainda — criar a seção
- * aqui seria prometer uma funcionalidade que não existe.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O QUE ESTA TELA DELIBERADAMENTE NÃO TEM
+ *
+ * A auditoria desta missão mediu o que o backend realmente suporta hoje. Cada
+ * ausência abaixo é uma lacuna REPORTADA, não um esquecimento — e nenhuma
+ * delas virou um botão que não faz nada:
+ *
+ *   - SEGURANÇA (trocar e-mail/senha): `supabase.auth.updateUser` não é
+ *     chamado em lugar nenhum do projeto. Só existem magic link, Google OAuth
+ *     e sign-in por senha. Além disso, quem entrou por magic link ou Google
+ *     pode nem ter senha — um "alterar senha" seria falso para essas contas.
+ *
+ *   - PRIVACIDADE E LEGAL: `/termos` e `/privacidade` NÃO existem como rotas
+ *     (o login já linka para as duas e devolve 404). Apontar para elas daqui
+ *     multiplicaria o link quebrado em vez de resolvê-lo.
+ *
+ *   - AJUDA/SUPORTE: não existe e-mail, rota ou contrato de suporte no
+ *     produto — só menções em prosa.
+ *
+ *   - EXCLUIR/DESATIVAR CONTA: não há nenhuma action de exclusão ou
+ *     desativação de User. Exclusão pela metade é pior que exclusão nenhuma.
+ *
+ *   - TEMA/APARÊNCIA: fora da superfície do piloto por decisão de produto.
+ *     A infraestrutura dark continua existindo, só não é exposta.
+ *
+ * O que sobrou tem funcionalidade real por trás: identidade, perfil,
+ * notificações push (preferência de verdade, com backend) e sair.
  */
 export function AccountSettingsPage({
+  displayName,
+  email,
+  avatarUrl,
+  roleLabel,
   profileHref,
   profileLabel,
   profileDescription,
 }: {
+  displayName: string
+  email: string
+  avatarUrl: string | null
+  roleLabel: string
   profileHref: string
   profileLabel: string
   profileDescription: string
 }) {
+  const initials = displayName
+    .split(" ")
+    .slice(0, 2)
+    .map((parte) => parte[0] ?? "")
+    .join("")
+    .toUpperCase()
+
   return (
-    <div className="page-container max-w-2xl space-y-6">
-      <PageHeader
-        title="Conta"
-        description="Configurações da sua conta no Peteen."
-      />
+    <div className="page-container max-w-2xl space-y-6 pb-4">
+      <PageHeader title="Minha conta" description="Suas informações e preferências no Peteen." />
 
-      <Card className="p-0">
-        <Link
+      {/* Identidade — quem está logado, respondido antes de qualquer ação.
+          O e-mail só aparecia no menu do avatar até aqui; numa tela chamada
+          "Minha conta", não mostrar de qual conta se trata é a primeira
+          pergunta sem resposta. */}
+      <section className="flex items-center gap-3.5 rounded-2xl border border-border bg-card p-4">
+        <Avatar className="size-14 shrink-0">
+          {avatarUrl ? <AvatarImage src={avatarUrl} alt={displayName} /> : null}
+          <AvatarFallback className="text-sm font-semibold">{initials}</AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-base font-semibold text-foreground">{displayName}</p>
+          {/* `break-all`: e-mails longos quebram o layout em 320px sem isto. */}
+          <p className="break-all text-xs text-muted-foreground">{email}</p>
+          <span className="mt-1 inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[0.65rem] font-medium text-primary">
+            {roleLabel}
+          </span>
+        </div>
+      </section>
+
+      <SettingsGroup title="Perfil">
+        <SettingsLinkRow
           href={profileHref}
-          className="flex items-center gap-3 px-4 py-4 transition-colors hover:bg-muted/40"
+          icon={UserCircle}
+          title={profileLabel}
+          description={profileDescription}
+        />
+      </SettingsGroup>
+
+      <SettingsGroup title="Notificações">
+        {/* Linha estática, não link: hospeda o próprio controle de ativação.
+            Uma linha-link com botão dentro criaria alvos aninhados. */}
+        <SettingsStaticRow
+          icon={Bell}
+          title="Notificações push"
+          description="Avisos sobre seus atendimentos neste aparelho."
         >
-          <UserCircle className="size-5 shrink-0 text-muted-foreground" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">{profileLabel}</p>
-            <p className="text-xs text-muted-foreground">{profileDescription}</p>
-          </div>
-          <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
-        </Link>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Bell className="size-4 text-muted-foreground" />
-            Notificações
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
           <PushOptInSection />
-        </CardContent>
-      </Card>
+        </SettingsStaticRow>
+      </SettingsGroup>
 
-      <AccountSignOutButton />
+      {/* Ação destrutiva separada do resto, no fim — nunca no meio das linhas
+          de navegação normais. */}
+      <section className="pt-2">
+        <AccountSignOutButton />
+      </section>
     </div>
   )
 }

@@ -28,11 +28,20 @@ type ProvidersProps = {
  * Providers são infraestrutura de UI e estado, não domínio.
  */
 export function Providers({ children, initialUser }: ProvidersProps) {
+  // PILOTO: tema fixo em light e `enableSystem` desligado.
+  // `defaultTheme="system"` fazia um usuário com o SO em modo escuro receber o
+  // app inteiro em dark sem nunca ter escolhido — e o modo escuro nunca passou
+  // por QA visual. Com o toggle removido da superfície (ver top-bar.tsx),
+  // manter "system" significaria expor exatamente a experiência não validada,
+  // sem nenhuma forma de sair dela. A infraestrutura dark permanece intacta:
+  // reativar é devolver `defaultTheme="system"` + `enableSystem` e reexibir o
+  // toggle.
   return (
     <NextThemesProvider
       attribute="class"
-      defaultTheme="system"
-      enableSystem
+      defaultTheme="light"
+      forcedTheme="light"
+      enableSystem={false}
       disableTransitionOnChange
     >
       <SupabaseAuthProvider initialUser={initialUser}>

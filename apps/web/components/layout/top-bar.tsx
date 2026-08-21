@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
 
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { AvatarMenu } from "@/components/layout/avatar-menu";
 import { TopNavLinks } from "@/components/layout/top-nav-links";
 import { NotificationBell } from "@/modules/notifications/components/notification-bell";
@@ -13,7 +11,6 @@ import { getVariantForRole, getHomeHrefForVariant } from "@/lib/navigation/app-n
 import type { AppShellVariant, ShellSessionUser } from "@/types";
 
 type TopBarProps = {
-  showThemeToggle?: boolean;
   /** Persona ativa — normalmente "marketing" na landing pública. */
   variant?: AppShellVariant;
   /** Usuário serializado vindo do AppShell (Server Component). Null se não autenticado. */
@@ -23,14 +20,12 @@ type TopBarProps = {
 };
 
 export function TopBar({
-  showThemeToggle = true,
   variant = "marketing",
   user,
   notificationCount = 0,
   notificationsHref,
 }: TopBarProps) {
   const pathname = usePathname();
-  const { resolvedTheme, setTheme } = useTheme();
   const isAuthenticated = !!user;
 
   // Persona efetiva: quando um usuário autenticado acessa a landing pública,
@@ -82,20 +77,13 @@ export function TopBar({
             <NotificationBell href={notificationsHref} count={notificationCount} />
           ) : null}
 
-          {/* Toggle de tema */}
-          {showThemeToggle ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Alternar tema"
-              onClick={() =>
-                setTheme(resolvedTheme === "dark" ? "light" : "dark")
-              }
-            >
-              <Sun className="size-4 scale-100 rotate-0 transition-all dark:scale-0 dark:-rotate-90" />
-              <Moon className="absolute size-4 scale-0 rotate-90 transition-all dark:scale-100 dark:rotate-0" />
-            </Button>
-          ) : null}
+          {/* Toggle de tema REMOVIDO da superfície do piloto (decisão de
+              produto — item 10 da missão Minha Conta). A infraestrutura dark
+              continua intacta (ThemeProvider, tokens e variantes `dark:` no
+              CSS): só a escolha deixou de ser exposta, porque o modo escuro
+              nunca passou por QA visual e o piloto precisa de uma experiência
+              única e coerente. Reexpor é trocar uma constante em
+              app/providers.tsx e devolver este bloco. */}
 
           {/* Menu da conta — central operacional do ator logado */}
           {isAuthenticated && user ? (

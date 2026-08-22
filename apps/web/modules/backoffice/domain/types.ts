@@ -79,6 +79,8 @@ export type AdminRequestRow = {
    *  apps/web/docs/AGENDA_TEMPORAL_PRECISION_CONTRACT.md. */
   scheduledHasTime: boolean
   createdAt: Date
+  /** Instante real do início. Não passa pelo contrato de precisão temporal. */
+  startedAt: Date | null
   completedAt: Date | null
 }
 
@@ -176,6 +178,13 @@ export type AdminUsersFilter = {
 export type AdminRequestsFilter = {
   status?: string
   serviceType?: string
+  /** Recorte temporal por `createdAt`, em dias a partir de agora. */
+  dias?: number
+  /**
+   * Busca por id de solicitação. Prefixo basta — a tela mostra os 8 primeiros
+   * caracteres, e é isso que alguém copia de um relato de incidente.
+   */
+  requestId?: string
 }
 
 export type AdminRelationshipsFilter = {

@@ -18,6 +18,15 @@ import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
 import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge"
 import { getAdminCareTimelineInspectionAction } from "@/modules/care-timeline/application/admin-actions"
 import { AdminCareTimelineInspection } from "@/modules/care-timeline/components/AdminCareTimelineInspection"
+import { AdminRequestOperationalTimeline } from "@/components/admin/AdminRequestOperationalTimeline"
+import { getRequestTimelineFacts } from "@/modules/backoffice/infrastructure/request-timeline-repository"
+import { getPushDeliveriesForEntity } from "@/modules/backoffice/infrastructure/push-observability-repository"
+import { montarTimelineOperacional } from "@/modules/backoffice/domain/request-timeline"
+import {
+  exigeAtencao,
+  lerEntregaPush,
+  PUSH_OUTCOME_LABELS,
+} from "@/modules/backoffice/domain/push-observability"
 
 export const dynamic = "force-dynamic"
 
@@ -76,10 +85,42 @@ export default async function AdminRequestDetailPage({ params }: Props) {
 
   if (!request) notFound()
 
-  const inspectionResult = await getAdminCareTimelineInspectionAction(requestId)
+  // Paralelo: as três leituras são independentes. Em série, a página somaria
+  // round-trips sem ganho nenhum.
+  const [inspectionResult, timelineFacts, pushes] = await Promise.all([
+    getAdminCareTimelineInspectionAction(requestId),
+    getRequestTimelineFacts(requestId),
+    getPushDeliveriesForEntity(requestId),
+  ])
+
   const inspection = inspectionResult.success
     ? inspectionResult.data
     : { requestId, items: [] }
+
+  // A classificação de push é do domínio do backoffice — a página só traduz o
+  // veredito para o formato que a timeline consome.
+  const eventos = montarTimelineOperacional({
+    request: {
+      createdAt: request.createdAt,
+      startedAt: request.startedAt,
+      completedAt: request.completedAt,
+      status: request.status,
+      updatedAt: request.updatedAt,
+    },
+    careUpdates: timelineFacts.careUpdates,
+    auditLogs: timelineFacts.auditLogs,
+    disputes: timelineFacts.disputes,
+    pushes: pushes.map((p) => {
+      const leitura = lerEntregaPush(p)
+      return {
+        createdAt: p.createdAt,
+        eventType: p.eventType,
+        recipientLabel: p.recipientEmail,
+        outcomeLabel: PUSH_OUTCOME_LABELS[leitura.outcome],
+        atencao: exigeAtencao(leitura),
+      }
+    }),
+  })
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -131,6 +172,8 @@ export default async function AdminRequestDetailPage({ params }: Props) {
           </div>
         </dl>
       </section>
+
+      <AdminRequestOperationalTimeline eventos={eventos} />
 
       {!inspectionResult.success ? (
         <section className="rounded-2xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">

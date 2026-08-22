@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   Activity,
   Bell,
+  BellRing,
   FlaskConical,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -76,6 +77,10 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/flags",    label: "Flags",        icon: Flag,                 exact: false },
       { href: "/admin/disputes", label: "Disputas",     icon: MessageSquareWarning, exact: false },
       { href: "/admin/notifications", label: "Notificações", icon: Bell, exact: false },
+      // Observabilidade de entrega de push. Fica em Segurança junto de Flags e
+      // Disputas porque a pergunta que ela responde é operacional ("por que
+      // fulano não recebeu?"), não de produto.
+      { href: "/admin/push",     label: "Push",         icon: BellRing,             exact: false },
       { href: "/admin/activity", label: "Atividades",   icon: Activity,             exact: false },
       { href: "/admin/audit",    label: "Auditoria",    icon: ScrollText,           exact: false },
       { href: "/admin/risk",     label: "Índice de Risco",   icon: ShieldAlert,          exact: false },

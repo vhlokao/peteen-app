@@ -327,10 +327,22 @@ export async function getAdminProfessionals(): Promise<AdminProfessionalRow[]> {
 export async function getAdminRequests(
   filter: AdminRequestsFilter = {}
 ): Promise<AdminRequestRow[]> {
+  // Recorte temporal por `createdAt`. Sem ele, "Hoje" e "Últimos 7 dias"
+  // teriam que ser filtrados em memória depois do `take`, o que devolveria
+  // resultado errado assim que a base passar de 300 solicitações.
+  const desde =
+    filter.dias && filter.dias > 0
+      ? new Date(Date.now() - filter.dias * 24 * 60 * 60 * 1000)
+      : undefined
+
   const requests = await prisma.serviceRequest.findMany({
     where: {
       ...(filter.status      ? { status:      { equals: filter.status      as never } } : {}),
       ...(filter.serviceType ? { serviceType: { equals: filter.serviceType as never } } : {}),
+      ...(desde ? { createdAt: { gte: desde } } : {}),
+      // `startsWith` e não `equals`: a lista exibe os 8 primeiros caracteres do
+      // id, e é esse prefixo que alguém copia de um relato de incidente.
+      ...(filter.requestId ? { id: { startsWith: filter.requestId } } : {}),
     },
     select: {
       id:          true,
@@ -338,6 +350,7 @@ export async function getAdminRequests(
       status:      true,
       scheduledAt: true,
       scheduledHasTime: true,
+      startedAt:   true,
       completedAt: true,
       createdAt:   true,
       tutor:       { select: { displayName: true } },
@@ -358,6 +371,7 @@ export async function getAdminRequests(
     scheduledAt:      r.scheduledAt,
     scheduledHasTime: r.scheduledHasTime,
     createdAt:        r.createdAt,
+    startedAt:        r.startedAt,
     completedAt:      r.completedAt,
   }))
 }
@@ -540,10 +554,26 @@ export async function getAdminRelationships(
 // OPERATIONAL FLAGS — Etapa 5.5
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ERRO NÃO É VAZIO — POR QUE O `catch { return [] }` SAIU DAQUI
+ *
+ * Esta função (e `getAdminDisputes`) engolia a exceção e devolvia lista vazia.
+ * O efeito no backoffice era o pior possível para uma tela de investigação:
+ * banco fora do ar produzia exatamente a mesma imagem que "não há flags" —
+ * tabela vazia, sem aviso — e quem estava investigando concluía que não havia
+ * nada a investigar.
+ *
+ * O silenciamento provavelmente existia porque não havia fronteira de erro no
+ * admin: sem ela, deixar a exceção subir daria tela em branco. Agora existe
+ * (`app/(admin)/admin/error.tsx`), com mensagem que separa "falhou ao carregar"
+ * de "não há registros" e botão de tentar de novo. Deixar a exceção subir passou
+ * a ser a opção correta.
+ */
 export async function getAdminFlags(
   filter: AdminFlagsFilter = {}
 ): Promise<AdminFlagRow[]> {
-  try {
+  {
     const flags = await prisma.operationalFlag.findMany({
       where: {
         ...(filter.status     && { status:     filter.status     as never }),
@@ -565,8 +595,6 @@ export async function getAdminFlags(
       createdAt:  f.createdAt,
       resolvedAt: f.resolvedAt,
     }))
-  } catch {
-    return []
   }
 }
 
@@ -574,10 +602,11 @@ export async function getAdminFlags(
 // DISPUTES — Etapa 5.5
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Erro não é vazio — ver o bloco em `getAdminFlags`. */
 export async function getAdminDisputes(
   filter: AdminDisputesFilter = {}
 ): Promise<AdminDisputeRow[]> {
-  try {
+  {
     const disputes = await prisma.dispute.findMany({
       where: {
         ...(filter.status && { status: filter.status as never }),
@@ -605,8 +634,6 @@ export async function getAdminDisputes(
       createdAt:        d.createdAt,
       resolvedAt:       d.resolvedAt,
     }))
-  } catch {
-    return []
   }
 }
 

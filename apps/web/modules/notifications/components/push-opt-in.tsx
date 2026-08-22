@@ -2,84 +2,106 @@
 
 /**
  * Módulo: notifications
- * Camada: components — opt-in explícito de notificações push.
+ * Camada: components — opt-in e SAÚDE de notificações push.
  *
  * REGRA INEGOCIÁVEL: `Notification.requestPermission()` NUNCA é chamado no load
  * da página. Só a partir do clique no CTA. Um `denied` é permanente no browser
- * — não há segunda chance, nem via UI, nem via código.
+ * — não há segunda chance, nem via UI, nem via código. Há um teste estrutural
+ * (contextual-push-invite.test.ts) que falha se esta chamada sair do handler
+ * `ativar`.
  *
  * Não é Preference Center: no V0, "push ligado" é exatamente "existe
  * subscription ativa". Desinscrever É o desligar — sem segunda fonte de verdade.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * PERMISSÃO ≠ PUSH ATIVO
+ * "ATIVADO" AGORA EXIGE CONCORDÂNCIA DOS DOIS LADOS
  *
- * `Notification.permission === "granted"` sozinho NÃO significa que push está
- * funcionando. "Ativo" exige TODAS estas condições:
- *   1. APIs suportadas (SW + PushManager + Notification)
- *   2. VAPID configurada no ambiente
- *   3. permission === "granted"
- *   4. Service Worker ATIVO
- *   5. PushSubscription válida no browser
- *   6. subscription aceita e registrada pelo servidor
+ * A versão anterior decidia "ativo" olhando só o browser: se
+ * `pushManager.getSubscription()` devolvia algo, mostrava o check verde. Nunca
+ * perguntava ao servidor se aquela subscription ainda existia — então uma linha
+ * revogada no backend deixava esta tela afirmando "Notificações ativadas" para
+ * sempre, enquanto o dispatcher já nem tentava enviar.
  *
- * Tratar (3) como suficiente era o motivo de o estado "voltar ao início" depois
- * que o usuário liberava a permissão manualmente: a permissão estava concedida,
- * mas a subscription nunca fora criada, e a UI mostrava o mesmo CTA de antes
- * sem explicar que faltava um passo.
+ * O veredito passou inteiro para `avaliarSaudePush` (domínio), alimentado pelas
+ * DUAS observações. Este componente não decide mais nada sobre saúde — ele
+ * renderiza um estado e oferece a ação correspondente.
+ *
  * ─────────────────────────────────────────────────────────────────────────────
+ * REPARO ANTES DE PEDIR QUALQUER COISA
+ *
+ * Quando a permissão já está concedida, um estado quebrado é problema NOSSO, não
+ * uma decisão pendente do usuário — e é consertado sozinho, sem prompt e sem
+ * clique. Só o que o reparo automático não resolve vira botão.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { BellRing, BellOff, Check, Loader2, AlertCircle, Clock } from "lucide-react"
+import { BellRing, BellOff, Check, Loader2, AlertCircle, Clock, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
-  assinar,
-  avaliarAmbientePush,
+  avaliarSaudePushNesteDispositivo,
   obterEndpointAtual,
-  registrarServiceWorker,
-  renegociarSubscription,
-  type EstadoDoAmbientePush,
 } from "@/lib/push/client"
-import {
-  subscribeToPushAction,
-  unsubscribeFromPushAction,
-} from "../application/push-actions"
+import { repararPush, type MotivoFalhaReparo } from "@/lib/push/repair"
+import { limparOptOutLocal, marcarOptOutLocal } from "@/lib/push/opt-out"
+import { resolvePushHealthCopy, type SaudePush } from "../domain/push-health"
+import { unsubscribeFromPushAction } from "../application/push-actions"
 
 /**
- * Cada causa distinta tem seu próprio estado. Reaproveitar um estado para
- * causas diferentes foi exatamente o que tornou o problema indiagnosticável:
- * "sem suporte", "sem VAPID" e "falhou ao assinar" produziam telas
- * indistinguíveis (ou nenhuma mudança visível).
+ * Fase da INTERAÇÃO, não do ambiente.
+ *
+ * A saúde do push (ambiente) mora em `SaudePush` e vem do domínio; aqui só
+ * vivem os momentos que existem por causa de um clique ou de uma operação em
+ * curso. Misturar os dois eixos num enum só foi o que tornava a versão anterior
+ * difícil de ler: "ativo" e "carregando" não são o mesmo tipo de coisa.
  */
-type Estado =
-  /**
-   * Estados OBSERVADOS do ambiente (sem-suporte, iOS, não-configurado,
-   * desativado, permitido-sem-subscription, ativo, negado) vêm de
-   * `avaliarAmbientePush` — compartilhado com o convite contextual da Request
-   * (R2B.5), para que as duas telas nunca discordem sobre "push está ativo?".
-   */
-  | EstadoDoAmbientePush
-  /** Inspecionando o ambiente no mount. Nunca pede permissão. */
-  | "carregando"
+type Fase =
+  | { tipo: "carregando" }
+  | { tipo: "pronto"; saude: SaudePush }
   /** Prompt nativo aberto, aguardando decisão do usuário. */
-  | "solicitando-permissao"
-  /** Permissão concedida; criando SW + subscription + registro no servidor. */
-  | "criando-subscription"
-  /** Falha recuperável — oferece tentar de novo. */
-  | "erro"
-  /** Limite atingido. Mensagem própria, sem spam de novas tentativas. */
-  | "rate-limited"
+  | { tipo: "solicitando-permissao" }
+  /** Criando/reparando subscription. */
+  | { tipo: "trabalhando" }
+  | { tipo: "erro"; mensagem: string }
+  /** Limite atingido. Mensagem própria, sem convidar a novas tentativas. */
+  | { tipo: "rate-limited"; mensagem: string }
 
 type Props = {
   /** NEXT_PUBLIC_VAPID_PUBLIC_KEY — pública por design. Vazia = push desligado. */
   vapidPublicKey: string
 }
 
+/** Mensagem para o que o reparo não conseguiu resolver sozinho. */
+function mensagemDeFalha(motivo: MotivoFalhaReparo, detalhe?: string): string {
+  switch (motivo) {
+    case "sem-service-worker":
+      return "Não foi possível preparar o serviço de notificações."
+    case "falha-assinatura":
+      if (detalhe === "chave-invalida" || detalhe === "chave-divergente") {
+        return "A configuração de notificações deste ambiente mudou. Recarregue a página e tente de novo."
+      }
+      if (detalhe === "sem-worker-ativo") {
+        return "O serviço de notificações ainda não estava pronto. Tente novamente."
+      }
+      if (detalhe === "push-serviço-indisponivel") {
+        return "O serviço de notificações do navegador não respondeu. Verifique sua conexão e tente de novo."
+      }
+      return "Não foi possível registrar este dispositivo."
+    case "nao-autenticado":
+      return "Sua sessão expirou. Entre novamente para ativar as notificações."
+    case "rate-limit-devices":
+      return "Você já ativou notificações no número máximo de dispositivos."
+    case "rate-limit-creates":
+      return "Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente de novo."
+    case "sem-permissao":
+    case "push-desabilitado":
+    case "interno":
+      return "Não foi possível ativar as notificações."
+  }
+}
+
 export function PushOptIn({ vapidPublicKey }: Props) {
-  const [estado, setEstado] = useState<Estado>("carregando")
-  const [detalhe, setDetalhe] = useState<string | null>(null)
+  const [fase, setFase] = useState<Fase>({ tipo: "carregando" })
 
   /**
    * Trava SÍNCRONA contra double-click. `disabled` depende de re-render, o que
@@ -90,22 +112,51 @@ export function PushOptIn({ vapidPublicKey }: Props) {
    */
   const emAndamentoRef = useRef(false)
 
-  /** Avalia o estado real do ambiente. Só observa — nunca pede permissão. */
-  const avaliar = useCallback(
-    (): Promise<EstadoDoAmbientePush> => avaliarAmbientePush(vapidPublicKey),
-    [vapidPublicKey]
-  )
+  /**
+   * Lê o estado canônico e, se houver algo reparável, conserta em silêncio
+   * antes de mostrar qualquer coisa.
+   *
+   * O reparo acontece ANTES do primeiro render de conteúdo justamente para que
+   * a pessoa não veja um aviso de problema que o produto já ia resolver sozinho
+   * em 200ms. Só o que sobreviver ao reparo é mostrado.
+   */
+  const sincronizar = useCallback(async (): Promise<void> => {
+    let saude = await avaliarSaudePushNesteDispositivo(vapidPublicKey)
 
-  // Avaliação inicial.
+    // Marca obsoleta: push está comprovadamente funcionando apesar de existir
+    // um opt-out gravado (desativação que não chegou a concluir). Limpar aqui
+    // evita que a marca continue suprimindo o reparo de uma falha futura.
+    if (saude.state === "ACTIVE") limparOptOutLocal()
+
+    if (saude.autoReparavel) {
+      const resultado = await repararPush(vapidPublicKey)
+      if (resultado.ok) {
+        saude = await avaliarSaudePushNesteDispositivo(vapidPublicKey)
+      } else if (
+        resultado.motivo === "rate-limit-devices" ||
+        resultado.motivo === "rate-limit-creates"
+      ) {
+        setFase({ tipo: "rate-limited", mensagem: mensagemDeFalha(resultado.motivo) })
+        return
+      }
+      // Demais falhas: cai no render normal. O estado continuará
+      // NEEDS_REPAIR e a tela oferece o botão de reativar — sem inventar uma
+      // mensagem de erro para uma tentativa que a pessoa nem sabe que houve.
+    }
+
+    setFase({ tipo: "pronto", saude })
+  }, [vapidPublicKey])
+
+  // Avaliação inicial (com reparo silencioso embutido).
   useEffect(() => {
     let vivo = true
-    void avaliar().then((e) => {
-      if (vivo) setEstado(e)
+    void sincronizar().catch(() => {
+      if (vivo) setFase({ tipo: "erro", mensagem: "Não foi possível verificar as notificações." })
     })
     return () => {
       vivo = false
     }
-  }, [avaliar])
+  }, [sincronizar])
 
   /**
    * Reavalia quando a aba volta ao foco.
@@ -115,21 +166,17 @@ export function PushOptIn({ vapidPublicKey }: Props) {
    * esta reavaliação, o usuário liberava a permissão nas configurações, voltava
    * e via exatamente a mesma tela de antes — parecendo que nada tinha mudado.
    *
-   * Reage a eventos reais (focus / visibilitychange), sem polling. Nunca
-   * dispara pedido de permissão nem cria subscription sozinho: apenas atualiza
-   * o que está sendo mostrado.
+   * Aqui NÃO há o freio de tempo que governa o reconciliador global: esta é a
+   * tela dedicada ao assunto, aberta de propósito, e quem está olhando para ela
+   * espera ver o estado de agora.
+   *
+   * Reage a eventos reais (focus / visibilitychange), sem polling.
    */
   useEffect(() => {
     const reavaliar = () => {
       if (emAndamentoRef.current) return // não atropela uma operação em curso
       if (document.visibilityState !== "visible") return
-      void avaliar().then((novo) => {
-        setEstado(novo)
-        // Limpa a mensagem auxiliar junto com o estado. Sem isso, o texto de um
-        // estado anterior sobrevivia à transição e aparecia contradizendo o novo
-        // — ex.: "Permissão concedida…" junto de "Você ainda não permitiu…".
-        setDetalhe(null)
-      })
+      void sincronizar().catch(() => {})
     }
     window.addEventListener("focus", reavaliar)
     document.addEventListener("visibilitychange", reavaliar)
@@ -137,110 +184,77 @@ export function PushOptIn({ vapidPublicKey }: Props) {
       window.removeEventListener("focus", reavaliar)
       document.removeEventListener("visibilitychange", reavaliar)
     }
-  }, [avaliar])
-
-  /** Cria SW + subscription + registra no servidor. Assume permission granted. */
-  const criarSubscription = useCallback(async (): Promise<Estado> => {
-    const reg = await registrarServiceWorker()
-    if (!reg) {
-      setDetalhe("Não foi possível preparar o serviço de notificações.")
-      return "erro"
-    }
-
-    let assinatura = await assinar(reg, vapidPublicKey)
-    if (!assinatura.ok) {
-      setDetalhe(
-        assinatura.motivo === "chave-invalida" || assinatura.motivo === "chave-divergente"
-          ? "A configuração de notificações deste ambiente mudou. Recarregue a página e tente de novo."
-          : assinatura.motivo === "sem-worker-ativo"
-            ? "O serviço de notificações ainda não estava pronto. Tente novamente."
-            : assinatura.motivo === "push-serviço-indisponivel"
-              ? "O serviço de notificações do navegador não respondeu. Verifique sua conexão e tente de novo."
-              : "Não foi possível registrar este dispositivo."
-      )
-      return "erro"
-    }
-
-    let resultado = await subscribeToPushAction(assinatura.subscription)
-
-    // SUBSCRIPTION_CONFLICT → renegociar e tentar EXATAMENTE uma vez.
-    if (!resultado.success && resultado.code === "SUBSCRIPTION_CONFLICT") {
-      const nova = await renegociarSubscription(reg, vapidPublicKey)
-      if (nova.ok) {
-        assinatura = nova
-        resultado = await subscribeToPushAction(nova.subscription)
-      }
-    }
-
-    if (resultado.success) {
-      setDetalhe(null)
-      return "ativo"
-    }
-
-    if (resultado.code === "RATE_LIMIT_DEVICES") {
-      setDetalhe("Você já ativou notificações no número máximo de dispositivos.")
-      return "rate-limited"
-    }
-    if (resultado.code === "RATE_LIMIT_CREATES") {
-      setDetalhe("Muitas tentativas em pouco tempo. Aguarde alguns minutos e tente de novo.")
-      return "rate-limited"
-    }
-    if (resultado.code === "PUSH_DISABLED") {
-      return "nao-configurado"
-    }
-    if (resultado.code === "UNAUTHENTICATED") {
-      setDetalhe("Sua sessão expirou. Entre novamente para ativar as notificações.")
-      return "erro"
-    }
-    setDetalhe("Não foi possível ativar as notificações.")
-    return "erro"
-  }, [vapidPublicKey])
+  }, [sincronizar])
 
   const ativar = useCallback(async () => {
     if (emAndamentoRef.current) return // trava síncrona: 1 operação lógica por vez
     emAndamentoRef.current = true
-    setDetalhe(null)
+
+    // Pedir push de volta REVOGA a intenção anterior de não ter push. Limpo
+    // antes de qualquer trabalho: se ficasse para depois do sucesso, uma falha
+    // no meio deixaria a marca ativa e o reparo automático seguiria suprimido,
+    // exatamente quando ele passaria a ser necessário.
+    limparOptOutLocal()
 
     try {
       // Nunca pedir permissão de novo quando já está negada: o browser recusa
       // na hora e chamadas repetidas reforçam a marcação de abuso da origem.
       if (Notification.permission === "denied") {
-        setEstado("negado")
+        await sincronizar()
         return
       }
 
       let permissao: NotificationPermission = Notification.permission
       if (permissao !== "granted") {
-        setEstado("solicitando-permissao")
+        setFase({ tipo: "solicitando-permissao" })
         permissao = await Notification.requestPermission()
       }
 
-      if (permissao === "denied") {
-        setEstado("negado")
-        return
-      }
       if (permissao !== "granted") {
-        // "default": o usuário fechou/dispensou o prompt. Continua ofertável.
-        setEstado("desativado")
-        setDetalhe("Você ainda não permitiu as notificações neste navegador.")
+        // "denied" ou "default" (prompt dispensado). Nos dois casos o estado
+        // canônico já descreve a situação corretamente — não há mensagem a
+        // inventar aqui.
+        await sincronizar()
         return
       }
 
-      setEstado("criando-subscription")
-      setEstado(await criarSubscription())
+      setFase({ tipo: "trabalhando" })
+      const resultado = await repararPush(vapidPublicKey)
+
+      if (resultado.ok) {
+        await sincronizar()
+        return
+      }
+      if (
+        resultado.motivo === "rate-limit-devices" ||
+        resultado.motivo === "rate-limit-creates"
+      ) {
+        setFase({ tipo: "rate-limited", mensagem: mensagemDeFalha(resultado.motivo) })
+        return
+      }
+      setFase({
+        tipo: "erro",
+        mensagem: mensagemDeFalha(resultado.motivo, resultado.detalhe),
+      })
     } catch {
-      setDetalhe("Não foi possível ativar as notificações.")
-      setEstado("erro")
+      setFase({ tipo: "erro", mensagem: "Não foi possível ativar as notificações." })
     } finally {
       emAndamentoRef.current = false
     }
-  }, [criarSubscription])
+  }, [sincronizar, vapidPublicKey])
 
   const desativar = useCallback(async () => {
     if (emAndamentoRef.current) return
     emAndamentoRef.current = true
-    setEstado("criando-subscription")
-    setDetalhe(null)
+    setFase({ tipo: "trabalhando" })
+
+    // ANTES de desligar qualquer coisa. Depois da revogação, o estado técnico
+    // fica idêntico ao de um relogin (permissão concedida, sem subscription), e
+    // é esta marca — não o estado — que diz que houve intenção. Gravá-la só no
+    // fim deixaria uma janela em que o reconciliador global religaria o que
+    // acabou de ser desligado.
+    marcarOptOutLocal()
+
     try {
       const endpoint = await obterEndpointAtual()
       if (endpoint) {
@@ -249,17 +263,27 @@ export function PushOptIn({ vapidPublicKey }: Props) {
       }
       const { desinscreverLocalmente } = await import("@/lib/push/client")
       await desinscreverLocalmente()
-      setEstado(await avaliar())
     } catch {
-      setEstado(await avaliar())
-    } finally {
-      emAndamentoRef.current = false
+      // Segue para a releitura: o que a tela mostra vem do estado observado,
+      // nunca do que esta função achou que conseguiu fazer.
     }
-  }, [avaliar])
+
+    emAndamentoRef.current = false
+
+    // Releitura SEM reparo — `sincronizar` repararia, e reparar aqui desfaria
+    // a ação que o usuário acabou de pedir. Com a marca gravada acima, o estado
+    // canônico deste device é DISABLED/`desativado_pelo_usuario`.
+    try {
+      const saude = await avaliarSaudePushNesteDispositivo(vapidPublicKey)
+      setFase({ tipo: "pronto", saude })
+    } catch {
+      setFase({ tipo: "erro", mensagem: "Não foi possível verificar as notificações." })
+    }
+  }, [vapidPublicKey])
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (estado === "carregando") {
+  if (fase.tipo === "carregando") {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
@@ -268,108 +292,101 @@ export function PushOptIn({ vapidPublicKey }: Props) {
     )
   }
 
-  if (estado === "sem-suporte") {
+  if (fase.tipo === "erro") {
     return (
-      <p className="text-sm text-muted-foreground">
-        Este navegador não suporta notificações push.
+      <div className="space-y-2">
+        <p className="flex items-center gap-2 text-sm text-foreground">
+          <AlertCircle className="size-4 text-destructive" />
+          {fase.mensagem}
+        </p>
+        <Button type="button" onClick={ativar} className="gap-2">
+          <RefreshCw className="size-4" />
+          Tentar novamente
+        </Button>
+      </div>
+    )
+  }
+
+  if (fase.tipo === "rate-limited") {
+    return (
+      <p className="flex items-center gap-2 text-sm text-foreground">
+        <Clock className="size-4 text-muted-foreground" />
+        {fase.mensagem}
       </p>
     )
   }
 
-  if (estado === "ios-fora-da-tela-inicio") {
+  const ocupado = fase.tipo === "solicitando-permissao" || fase.tipo === "trabalhando"
+  if (ocupado) {
     return (
-      <p className="text-sm text-muted-foreground">
-        Para receber notificações no iPhone, adicione o Peteen à Tela de Início
-        e abra por lá.
-      </p>
+      <Button type="button" disabled className="gap-2">
+        <Loader2 className="size-4 animate-spin" />
+        {fase.tipo === "solicitando-permissao"
+          ? "Aguardando sua permissão…"
+          : "Ativando notificações…"}
+      </Button>
     )
   }
 
-  if (estado === "nao-configurado") {
+  // ── Estado canônico ───────────────────────────────────────────────────────
+  // A copy vem do domínio: é a mesma tabela que o teste percorre para garantir
+  // que nenhum estado além de ACTIVE afirme que push está funcionando.
+  const { saude } = fase
+  const copy = resolvePushHealthCopy(saude)
+
+  if (saude.state === "ACTIVE") {
     return (
-      <p className="text-sm text-muted-foreground">
-        Notificações push não estão configuradas neste ambiente.
-      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <Check className="size-4 text-primary" />
+          {copy.titulo} neste dispositivo
+        </span>
+        <Button type="button" variant="outline" size="sm" onClick={desativar}>
+          Desativar
+        </Button>
+      </div>
     )
   }
 
-  if (estado === "negado") {
+  if (saude.state === "DENIED") {
     return (
       <div className="space-y-1">
         <p className="flex items-center gap-2 text-sm text-foreground">
           <BellOff className="size-4 text-muted-foreground" />
-          Notificações bloqueadas no navegador.
+          {copy.titulo}
         </p>
-        <p className="text-xs text-muted-foreground">
-          Libere as notificações para este site nas configurações do navegador. A
-          página se atualiza sozinha quando você voltar.
-        </p>
+        {copy.detalhe ? <p className="text-xs text-muted-foreground">{copy.detalhe}</p> : null}
       </div>
     )
   }
 
-  if (estado === "ativo") {
+  // UNSUPPORTED — nada a oferecer. Um CTA aqui só produziria uma falha
+  // garantida, e as três razões (navegador, iOS fora da Tela de Início,
+  // ambiente sem VAPID) já têm cada uma o seu texto.
+  if (saude.state === "UNSUPPORTED") {
     return (
-      <div className="space-y-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Check className="size-4 text-primary" />
-            Notificações ativadas neste dispositivo
-          </span>
-          <Button type="button" variant="outline" size="sm" onClick={desativar}>
-            Desativar
-          </Button>
-        </div>
+      <div className="space-y-1">
+        <p className="text-sm text-muted-foreground">{copy.titulo}</p>
+        {copy.detalhe ? <p className="text-xs text-muted-foreground">{copy.detalhe}</p> : null}
       </div>
     )
   }
 
-  const ocupado = estado === "solicitando-permissao" || estado === "criando-subscription"
+  // NEEDS_REPAIR e DISABLED — os dois estados acionáveis. O texto do botão
+  // muda porque a promessa é diferente: um restabelece algo que existia, o
+  // outro liga pela primeira vez.
+  const reparando = saude.state === "NEEDS_REPAIR"
 
   return (
     <div className="space-y-2">
-      {estado === "permitido-sem-subscription" ? (
-        <p className="text-sm text-foreground">
-          Permissão concedida. Falta ativar as notificações neste dispositivo.
-        </p>
-      ) : estado === "erro" ? (
-        <p className="flex items-center gap-2 text-sm text-foreground">
-          <AlertCircle className="size-4 text-destructive" />
-          {detalhe ?? "Não foi possível ativar as notificações."}
-        </p>
-      ) : estado === "rate-limited" ? (
-        <p className="flex items-center gap-2 text-sm text-foreground">
-          <Clock className="size-4 text-muted-foreground" />
-          {detalhe}
-        </p>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Receba avisos importantes sobre suas solicitações.
-        </p>
-      )}
-
-      {estado !== "rate-limited" && (
-        <Button type="button" onClick={ativar} disabled={ocupado} className="gap-2">
-          {ocupado ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <BellRing className="size-4" />
-          )}
-          {estado === "solicitando-permissao"
-            ? "Aguardando sua permissão…"
-            : estado === "criando-subscription"
-              ? "Ativando notificações…"
-              : estado === "erro"
-                ? "Tentar novamente"
-                : estado === "permitido-sem-subscription"
-                  ? "Concluir ativação"
-                  : "Ativar notificações"}
-        </Button>
-      )}
-
-      {detalhe && estado !== "erro" && estado !== "rate-limited" ? (
-        <p className="text-xs text-muted-foreground">{detalhe}</p>
-      ) : null}
+      <div className="space-y-0.5">
+        <p className="text-sm text-foreground">{copy.titulo}</p>
+        {copy.detalhe ? <p className="text-xs text-muted-foreground">{copy.detalhe}</p> : null}
+      </div>
+      <Button type="button" onClick={ativar} className="gap-2">
+        {reparando ? <RefreshCw className="size-4" /> : <BellRing className="size-4" />}
+        {reparando ? "Reativar notificações" : "Ativar notificações"}
+      </Button>
     </div>
   )
 }

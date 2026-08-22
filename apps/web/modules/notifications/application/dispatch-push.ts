@@ -40,9 +40,77 @@ import {
   findActiveSubscriptionsForSend,
   revokeGoneSubscription,
 } from "../infrastructure/push-repository"
-import { sendPush } from "../infrastructure/push-sender"
+import { sendPush, type SendResult } from "../infrastructure/push-sender"
+import {
+  acumularFalha,
+  decidirRetry,
+  diagnosticoVazio,
+  ehSubscriptionMorta,
+  formatDeliveryDiagnostic,
+  temFalha,
+  type DeliveryDiagnostic,
+} from "../domain/push-failure"
 import { avaliarElegibilidade } from "../domain/vapid-fingerprint"
 import { getCurrentPushIdentity } from "../infrastructure/runtime-environment"
+
+/** Espera não-bloqueante entre retentativas. */
+function esperar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+type EnvioFinal = SendResult & {
+  /** Reenvios feitos DEPOIS do primeiro envio. 0 quando não houve retry. */
+  retries: number
+}
+
+/**
+ * Envia para UMA subscription, com retry limitado para falha TRANSITÓRIA.
+ *
+ * A política inteira (quais classes, quantas vezes, com que espera, até que
+ * prazo) vive em `decidirRetry`, no domínio — aqui só há o laço. Isso é o que
+ * permite exercer a política sem rede e sem relógio real nos testes.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE REENVIAR NÃO DUPLICA NOTIFICAÇÃO NA PRÁTICA
+ *
+ * O caso incômodo do retry é o timeout: o push service pode ter ACEITADO e a
+ * resposta ter se perdido, e aí o reenvio entrega a mesma mensagem duas vezes.
+ * Isso não vira duas notificações porque todo payload deste módulo carrega
+ * `tag` (ver COPY_POR_KIND) e o SO COLAPSA notificações de mesma tag — a
+ * segunda substitui a primeira na bandeja em vez de empilhar. O risco residual
+ * é um re-alerta (som/vibração), não uma notificação duplicada. Trocar isso por
+ * perder o aviso inteiro seria o negócio errado.
+ *
+ * O contador de idempotência do EVENTO (`PushDelivery`) não é tocado aqui:
+ * o claim já aconteceu antes, uma única vez, e retry é dentro do mesmo claim.
+ */
+async function enviarComRetry(
+  subscription: { endpoint: string; p256dh: string; auth: string },
+  payload: PushDispatchInput["payload"]
+): Promise<EnvioFinal> {
+  const inicio = Date.now()
+  let tentativas = 0
+  let ultimo: SendResult
+
+  for (;;) {
+    ultimo = await sendPush(subscription, payload)
+    tentativas++
+
+    if (ultimo.outcome === "accepted") break
+
+    const decisao = decidirRetry({
+      // `failureClass` só é null em sucesso, que já saiu do laço acima.
+      classe: ultimo.failureClass ?? "transient",
+      tentativasFeitas: tentativas,
+      decorridoMs: Date.now() - inicio,
+    })
+    if (!decisao.retry) break
+
+    await esperar(decisao.esperarMs)
+  }
+
+  return { ...ultimo, retries: tentativas - 1 }
+}
 
 const VAZIO: PushDispatchResult = {
   alreadyDispatched: false,
@@ -197,9 +265,14 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   })
 
   // ── 3. Envio — allSettled isola devices ───────────────────────────────────
-  // Um aparelho morto nunca pode impedir os demais de receber.
+  // Um aparelho morto nunca pode impedir os demais de receber. Cada device tem
+  // a PRÓPRIA sequência de retry: o prazo de `decidirRetry` é por device e as
+  // sequências correm em paralelo, então o retry não multiplica a latência
+  // total pelo número de aparelhos.
   const resultados = await Promise.allSettled(
-    subscriptions.map((s) => sendPush({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth }, input.payload))
+    subscriptions.map((s) =>
+      enviarComRetry({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth }, input.payload)
+    )
   )
 
   let accepted = 0
@@ -208,11 +281,18 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   const mortas: string[] = []
   /** Sem identidade completa que o push service ACEITOU — ver abaixo. */
   const identidadesProvadas: string[] = []
-  // Array em vez de `let ultimoErro`: o TypeScript não acompanha atribuições
-  // feitas dentro de callback, então uma variável mutável aqui seria estreitada
-  // para `never` no ponto de uso lá embaixo. Laço direto também evita o
-  // problema e deixa o índice explícito.
-  const erros: string[] = []
+
+  /**
+   * Telemetria classificada da entrega inteira.
+   *
+   * SEMÂNTICA, fixada aqui porque é o que o leitor precisa saber para não ler
+   * errado: `t`/`c`/`p` contam DEVICES pelo desfecho FINAL (um device que
+   * falhou transitoriamente duas vezes e depois foi aceito não conta em `t`);
+   * `r` conta o total de reenvios da entrega, incluindo os que terminaram em
+   * sucesso. Assim `t+c+p` responde "quantos aparelhos ficaram sem" e `r`
+   * responde "quanto trabalho extra isso custou", que são perguntas diferentes.
+   */
+  let diagnostico: DeliveryDiagnostic = diagnosticoVazio()
 
   for (let i = 0; i < resultados.length; i++) {
     const r = resultados[i]!
@@ -228,12 +308,24 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
           ? String((r.reason as { message: unknown }).message)
           : String(r.reason)
       console.error("[push] sender lançou", { motivo: motivo.slice(0, 120) })
-      erros.push(`sender_threw: ${motivo}`.slice(0, 120))
+      // Classe `configuration`: um sender que LANÇA é defeito nosso, não do
+      // canal — e não deve ser confundido com instabilidade do push service.
+      diagnostico = acumularFalha(diagnostico, {
+        classe: "configuration",
+        codigo: "sender_threw",
+        retries: 0,
+      })
       continue
     }
+
     const res = r.value
+
     if (res.outcome === "accepted") {
       accepted++
+      // Retentativa que terminou em sucesso continua sendo trabalho extra que
+      // aconteceu — some em `r` sem contar como device perdido.
+      diagnostico = { ...diagnostico, retries: diagnostico.retries + res.retries }
+
       // Prova de pertencimento de uma linha sem identidade completa: o push
       // service aceitou a mensagem assinada com ESTE par VAPID, a única
       // evidência real de que o par corresponde ao usado na criação. Só agora a
@@ -244,17 +336,40 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
       if (emProvaDeIdentidade.has(provada.id)) {
         identidadesProvadas.push(provada.id)
       }
-    } else if (res.outcome === "invalid") {
+      continue
+    }
+
+    diagnostico = acumularFalha(diagnostico, {
+      classe: res.failureClass ?? "transient",
+      codigo: res.shortError,
+      retries: res.retries,
+    })
+
+    if (res.outcome === "invalid") {
       invalid++
-      if (res.shortError) erros.push(res.shortError)
-      mortas.push(subscriptions[i]!.id)
     } else {
       failed++
-      if (res.shortError) erros.push(res.shortError)
+    }
+
+    // REVOGAÇÃO SÓ POR MORTE COMPROVADA. Chamada explícita a
+    // `ehSubscriptionMorta` em vez de reaproveitar `outcome === "invalid"`:
+    // as duas coincidem hoje, mas esta é a linha que decide destruir o acesso
+    // de um aparelho, e ela precisa apontar para a autoridade única do domínio.
+    // Uma falha de CONFIGURAÇÃO (401/403) jamais chega aqui — ver o comentário
+    // de `ehSubscriptionMorta`.
+    if (ehSubscriptionMorta(res.statusCode)) {
+      mortas.push(subscriptions[i]!.id)
     }
   }
 
-  const ultimoErro = erros.length > 0 ? erros[erros.length - 1]! : null
+  // Entrega totalmente limpa (nenhuma falha, nenhum reenvio) não grava
+  // diagnóstico: `null` continua significando "nada a relatar", e é isso que
+  // permite ao leitor distinguir uma linha saudável de uma que precisou de
+  // trabalho extra para chegar ao mesmo lugar.
+  const ultimoErro =
+    temFalha(diagnostico) || diagnostico.retries > 0
+      ? formatDeliveryDiagnostic(diagnostico)
+      : null
 
   // ── 3.1 Adoção de identidade PROVADA ─────────────────────────────────────
   // Transforma sucesso real do push service em identidade persistida — os dois
@@ -300,6 +415,10 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
   // ── 5. Contadores ─────────────────────────────────────────────────────────
   // `attemptedCount` = subscriptions efetivamente tentadas.
   // `acceptedCount`  = aceito pelo PUSH SERVICE. Nunca "delivered".
+  // `lastError`      = diagnóstico ESTRUTURADO (ver push-failure.ts). É o que
+  //                    torna transitório, configuração e permanente
+  //                    distinguíveis sem coluna nova — `formatDeliveryDiagnostic`
+  //                    já respeita o VARCHAR(120), então não há slice aqui.
   try {
     await prisma.pushDelivery.update({
       where: { id: deliveryId },
@@ -308,13 +427,16 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
         acceptedCount: accepted,
         failedCount: failed,
         invalidCount: invalid,
-        lastError: ultimoErro ? ultimoErro.slice(0, 120) : null,
+        lastError: ultimoErro,
       },
     })
   } catch (err) {
     console.error("[push] counters_failed", { deliveryId, erro: String(err).slice(0, 120) })
   }
 
+  // Log com as classes separadas: é o que permite distinguir, sem abrir o
+  // banco, "o canal oscilou" (transient) de "estamos mal configurados"
+  // (configuration) — os dois casos que antes se pareciam.
   console.info("[push] result", {
     deliveryId,
     eventType: input.eventType,
@@ -322,6 +444,10 @@ export async function dispatchPush(input: PushDispatchInput): Promise<PushDispat
     accepted,
     failed,
     invalid,
+    transient: diagnostico.transient,
+    configuration: diagnostico.configuration,
+    permanent: diagnostico.permanent,
+    retries: diagnostico.retries,
   })
 
   return {

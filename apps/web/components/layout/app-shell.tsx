@@ -32,6 +32,7 @@ import { getAuthContext } from "@/modules/identity/application/get-session";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { TopBar } from "@/components/layout/top-bar";
 import { AccountMenuScopeProvider } from "@/components/layout/account-menu-scope";
+import { PushHealthReconciler } from "@/modules/notifications/components/push-health-reconciler";
 import { cn } from "@/lib/utils";
 import type { AppShellVariant, ShellSessionUser } from "@/types";
 
@@ -129,6 +130,22 @@ export async function AppShell({
             sessionUser é sempre não-nulo aqui: hasNav já passou pelos redirects
             de auth/onboarding acima antes de chegar neste ponto. */}
         {hasNav && sessionUser ? <BottomNav variant={variant} user={sessionUser} /> : null}
+
+        {/* Reconciliação silenciosa de push. Não renderiza nada.
+            Só em rota autenticada: a Server Action que ela consulta exige
+            sessão, e em marketing não há o que reconciliar.
+
+            É este o ponto que faz o Push VOLTAR depois de um relogin — o
+            logout revoga (por segurança) e nada o restabelecia. Montado no
+            AppShell, e não numa tela específica, porque o momento que importa é
+            o primeiro carregamento após o login, qualquer que seja a rota de
+            destino (magic link, Google OAuth e senha caem em lugares
+            diferentes). */}
+        {hasNav && sessionUser ? (
+          <PushHealthReconciler
+            vapidPublicKey={process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""}
+          />
+        ) : null}
       </div>
     </AccountMenuScopeProvider>
   );

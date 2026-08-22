@@ -22,6 +22,31 @@ import { prisma } from "@/lib/prisma/client"
 import type { RevokedReason } from "../domain/push-types"
 import type { PushIdentity } from "../domain/vapid-fingerprint"
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * SEMÂNTICA DE `lastSeenAt` — LEIA ANTES DE USAR ESTE CAMPO
+ *
+ * `lastSeenAt` significa "quando esta subscription foi REGISTRADA OU
+ * REVALIDADA pelo browser". Nada mais.
+ *
+ * O que ele NÃO é, e é o erro fácil de cometer: NÃO é prova de entrega, NÃO é
+ * heartbeat do aparelho e NÃO diz que o device está vivo. Um envio ACEITO pelo
+ * push service não toca este campo — a auditoria encontrou uma subscription com
+ * `lastSeenAt` parado na data de criação depois de quatro pushes aceitos.
+ * Usá-lo para responder "este aparelho ainda recebe?" produziria conclusão
+ * errada nos dois sentidos.
+ *
+ * Só `refreshSubscription` o move. Com a reconciliação automática desta missão
+ * ele passa a ser atualizado com regularidade (login, retorno ao app), o que o
+ * torna um sinal de PRESENÇA DO USUÁRIO no produto — útil para higiene futura
+ * de linhas abandonadas, ainda assim inútil como prova de entrega.
+ *
+ * O nome certo seria `lastRegisteredAt`. Renomear exige migration numa tabela
+ * viva e não vale o risco agora; a semântica fica fixada aqui, que é onde quem
+ * for consumir o campo passa.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
 /** Projeção sem material de chave. Padrão para tudo que não seja envio. */
 const SAFE_SELECT = {
   id: true,
@@ -81,6 +106,35 @@ export async function findActiveByEndpoint(endpoint: string): Promise<SafeSubscr
   return prisma.pushSubscription.findFirst({
     where: { endpoint, revokedAt: null },
     select: SAFE_SELECT,
+  })
+}
+
+/**
+ * Identidade da subscription ATIVA deste usuário para ESTE endpoint.
+ *
+ * Existe para a reconciliação de saúde (push-health): a UI precisa saber se o
+ * que o browser segura ainda tem contrapartida válida no servidor.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ESCOPADA POR `userId` — E ISSO É O QUE IMPEDE UM ORÁCULO
+ *
+ * Sem o `userId` no WHERE, esta função responderia "este endpoint existe?" para
+ * qualquer endpoint que um autenticado quisesse testar — um oráculo de
+ * enumeração de devices alheios. Com ele, um endpoint de terceiro devolve
+ * exatamente o mesmo `null` que um endpoint inexistente, e o chamador não
+ * distingue os dois casos.
+ *
+ * NÃO seleciona `p256dh`/`auth`: material de chave sai deste arquivo por uma
+ * função só (`findActiveSubscriptionsForSend`). Fingerprint e ambiente não são
+ * segredo — o primeiro é hash de chave pública, o segundo é um rótulo.
+ */
+export async function findActiveDeviceIdentity(params: {
+  userId: string
+  endpoint: string
+}): Promise<{ vapidKeyFingerprint: string | null; runtimeEnvironment: string | null } | null> {
+  return prisma.pushSubscription.findFirst({
+    where: { userId: params.userId, endpoint: params.endpoint, revokedAt: null },
+    select: { vapidKeyFingerprint: true, runtimeEnvironment: true },
   })
 }
 

@@ -34,9 +34,11 @@ import {
 } from "../domain/push-types"
 import { getVapidConfig, isPushEnabled } from "../infrastructure/push-config"
 import { getCurrentPushIdentity } from "../infrastructure/runtime-environment"
+import { avaliarElegibilidade } from "../domain/vapid-fingerprint"
 import {
   createSubscriptionComLimites,
   findActiveByEndpoint,
+  findActiveDeviceIdentity,
   refreshSubscription,
   revokeSubscription,
 } from "../infrastructure/push-repository"
@@ -219,4 +221,79 @@ export async function revokePushOnLogoutAction(endpoint: string): Promise<PushAc
 /** Expõe ao client apenas se push está habilitado. Nunca expõe a config. */
 export async function isPushEnabledAction(): Promise<boolean> {
   return isPushEnabled()
+}
+
+/**
+ * O SERVIDOR considera este device apto a receber push agora?
+ *
+ * É a metade que faltava do estado canônico (ver domain/push-health.ts). Sem
+ * ela, a UI decidia "ativado" só com o que o browser sabe, e continuava
+ * afirmando isso mesmo depois de a linha do servidor ter sido revogada.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * RESPONDE COM UM BOOLEANO, NUNCA COM O MOTIVO
+ *
+ * Existe subscription? é do dono? a identidade de ambiente bate? o fingerprint
+ * bate? Todas essas perguntas colapsam num único `false`. Detalhar qual delas
+ * falhou não ajudaria o usuário em nada — a ação é a mesma (reativar) — e
+ * transformaria a action num descritor da configuração de push do servidor.
+ * O motivo real vai para o log, que é onde alguém investigando pode lê-lo.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE A ELEGIBILIDADE ENTRA AQUI, E NÃO SÓ `revokedAt IS NULL`
+ *
+ * Uma linha pode estar viva e ainda assim ser inalcançável por ESTE runtime —
+ * é literalmente o que o hardening de isolamento faz quando a subscription
+ * pertence a outro ambiente ou a outro par VAPID. Nesse caso o dispatcher
+ * jamais tentaria enviar (cai em `attempted = 0`, silencioso), e dizer
+ * "ativado" ao usuário seria repetir o mesmo bug de confiança num lugar novo.
+ * A pergunta certa não é "a linha existe?", é "um evento agora chegaria?".
+ */
+export async function getDevicePushStateAction(
+  endpoint: string
+): Promise<{ activeForThisDevice: boolean }> {
+  let userId: string
+  try {
+    const user = await requireAuth()
+    userId = user.id
+  } catch {
+    // Sem sessão não há o que reconciliar. `false` mantém a action com um tipo
+    // de retorno único e simples — o client trata "não consegui confirmar"
+    // pelo caminho de exceção, nunca por um valor especial.
+    return { activeForThisDevice: false }
+  }
+
+  if (typeof endpoint !== "string" || endpoint.length < 20 || endpoint.length > 1000) {
+    return { activeForThisDevice: false }
+  }
+
+  const vapid = getVapidConfig()
+  if (!vapid) return { activeForThisDevice: false }
+
+  try {
+    const linha = await findActiveDeviceIdentity({ userId, endpoint })
+    if (!linha) return { activeForThisDevice: false }
+
+    const identidade = getCurrentPushIdentity(vapid.publicKey)
+    const veredito = avaliarElegibilidade({
+      subscriptionFingerprint: linha.vapidKeyFingerprint,
+      subscriptionEnvironment: linha.runtimeEnvironment,
+      senderFingerprint: identidade.vapidKeyFingerprint,
+      senderEnvironment: identidade.runtimeEnvironment,
+    })
+
+    if (!veredito.eligible) {
+      // Contagem e motivo, nunca endpoint nem userId — mesmo padrão de log sem
+      // PII do dispatcher.
+      console.info("[push] health_inelegivel", { motivo: veredito.motivo })
+    }
+
+    return { activeForThisDevice: veredito.eligible }
+  } catch (err) {
+    console.error("[push] device_state_failed", { erro: String(err).slice(0, 120) })
+    // Relança: "não consegui verificar" NÃO pode virar "não está ativo", que a
+    // UI leria como NEEDS_REPAIR e mostraria alarme falso. O client trata a
+    // exceção como `servidor não consultado` e preserva o último estado bom.
+    throw err
+  }
 }

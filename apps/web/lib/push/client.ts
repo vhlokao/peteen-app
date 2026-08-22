@@ -10,6 +10,13 @@
  * chance para sempre.
  */
 
+import {
+  avaliarSaudePush,
+  type ObservacaoBrowser,
+  type SaudePush,
+} from "@/modules/notifications/domain/push-health"
+import { optOutLocalAtivo } from "./opt-out"
+
 export const SW_PATH = "/sw.js"
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +70,79 @@ export async function avaliarAmbientePush(
 
   if (Notification.permission === "granted") return "permitido-sem-subscription"
   return "desativado"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estado CANÔNICO — browser + servidor
+//
+// `avaliarAmbientePush` acima continua existindo e continua sendo só o lado do
+// BROWSER: o convite contextual da Request o usa para decidir se aparece, e
+// para essa pergunta ("vale oferecer ativação aqui?") o browser basta.
+//
+// O que vem abaixo responde a pergunta mais forte — "push realmente funciona
+// neste aparelho?" — e é a única fonte que a tela de Minha Conta pode usar para
+// dizer "ativado". Ver modules/notifications/domain/push-health.ts.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Fotografia do browser, no formato que o domínio consome. Só observa. */
+export async function observarBrowser(vapidPublicKey: string): Promise<ObservacaoBrowser> {
+  const suportado = pushSuportado()
+  return {
+    suportado,
+    iosForaDaTelaInicio: suportado ? false : iosForaDaTelaDeInicio(),
+    configurado: Boolean(vapidPublicKey),
+    // `Notification` pode não existir quando `suportado === false` — ler a
+    // propriedade nesse caso lançaria ReferenceError e derrubaria a avaliação
+    // inteira num navegador antigo, que é justamente o caso que precisa
+    // responder "sem suporte" com calma.
+    permissao: suportado ? Notification.permission : "default",
+    temSubscriptionLocal: suportado ? (await obterEndpointAtual()) !== null : false,
+    optOutLocal: optOutLocalAtivo(),
+  }
+}
+
+/**
+ * Estado canônico deste dispositivo, consultando o servidor quando faz sentido.
+ *
+ * A consulta ao servidor só acontece quando ela pode MUDAR a resposta: sem
+ * suporte, sem permissão ou sem subscription local, o veredito já está decidido
+ * pelo browser e a ida ao servidor seria latência pura.
+ *
+ * Falha da consulta NUNCA vira NEEDS_REPAIR — vira `consultado: false`, que o
+ * domínio trata preservando o último estado bom. Ver "FALHA DE CONSULTA NÃO É
+ * DIAGNÓSTICO" em push-health.ts.
+ */
+export async function avaliarSaudePushNesteDispositivo(
+  vapidPublicKey: string
+): Promise<SaudePush> {
+  const browser = await observarBrowser(vapidPublicKey)
+
+  const precisaDoServidor =
+    browser.suportado &&
+    browser.configurado &&
+    browser.permissao === "granted" &&
+    browser.temSubscriptionLocal
+
+  if (!precisaDoServidor) {
+    return avaliarSaudePush(browser, { consultado: false })
+  }
+
+  try {
+    const endpoint = await obterEndpointAtual()
+    if (!endpoint) {
+      // Corrida rara: a subscription sumiu entre a observação e agora.
+      return avaliarSaudePush({ ...browser, temSubscriptionLocal: false }, { consultado: false })
+    }
+    // Import dinâmico pelo mesmo motivo do fluxo de logout: mantém a Server
+    // Action fora do bundle inicial de todo componente que importa este módulo.
+    const { getDevicePushStateAction } = await import(
+      "@/modules/notifications/application/push-actions"
+    )
+    const { activeForThisDevice } = await getDevicePushStateAction(endpoint)
+    return avaliarSaudePush(browser, { consultado: true, ativaNesteDispositivo: activeForThisDevice })
+  } catch {
+    return avaliarSaudePush(browser, { consultado: false })
+  }
 }
 
 export function pushSuportado(): boolean {

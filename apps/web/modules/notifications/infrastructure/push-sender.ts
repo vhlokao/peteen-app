@@ -15,6 +15,7 @@ import webpush from "web-push"
 
 import type { PushPayload, PushSendOutcome } from "../domain/push-types"
 import { classifyPushStatus } from "../domain/push-events"
+import { classifyPushFailure, type PushFailureClass } from "../domain/push-failure"
 import { getVapidConfig } from "./push-config"
 
 export type SendResult = {
@@ -23,6 +24,15 @@ export type SendResult = {
   statusCode: number | null
   /** Motivo curto para PushDelivery.lastError. NUNCA corpo de resposta. */
   shortError: string | null
+  /**
+   * Classe da falha — o que decide se vale retry e se isto é problema NOSSO
+   * (configuração) ou do canal (transitório). `null` quando o envio foi aceito.
+   *
+   * Vive aqui, e não no dispatcher, porque só este arquivo enxerga o status
+   * HTTP cru: o dispatcher recebe o veredito já classificado e nunca precisa
+   * reinterpretar códigos.
+   */
+  failureClass: PushFailureClass | null
 }
 
 /**
@@ -103,10 +113,16 @@ export async function sendPush(
   if (!ensureVapid()) {
     // Distingue "push desligado de propósito" (sem env) de "env presente mas
     // inválida" — a segunda é um erro de operação que precisa ser visível.
+    //
+    // Classe `configuration` explícita, NÃO derivada de status (não há status
+    // nenhum aqui): nunca houve requisição. Repetir isto seria repetir a mesma
+    // env var errada, e é exatamente o tipo de falha que o retry não pode
+    // tentar curar.
     return {
       outcome: "failed",
       statusCode: null,
       shortError: vapidErroConfig ?? "push_disabled",
+      failureClass: "configuration",
     }
   }
 
@@ -119,10 +135,12 @@ export async function sendPush(
       JSON.stringify(payload),
       { timeout: PUSH_REQUEST_TIMEOUT_MS }
     )
+    const outcome = classifyPushStatus(res.statusCode)
     return {
-      outcome: classifyPushStatus(res.statusCode),
+      outcome,
       statusCode: res.statusCode,
       shortError: null,
+      failureClass: outcome === "accepted" ? null : classifyPushFailure(res.statusCode),
     }
   } catch (err) {
     // web-push lança WebPushError com `statusCode` em respostas não-2xx.
@@ -138,10 +156,16 @@ export async function sendPush(
         // Só o código. O corpo da resposta do push service pode ecoar o
         // endpoint, que não deve ser persistido.
         shortError: `http_${statusCode}`,
+        failureClass: classifyPushFailure(statusCode),
       }
     }
 
     // Falha de rede/DNS/timeout — transitória, não invalida a subscription.
-    return { outcome: "failed", statusCode: null, shortError: "network_error" }
+    return {
+      outcome: "failed",
+      statusCode: null,
+      shortError: "network_error",
+      failureClass: "transient",
+    }
   }
 }

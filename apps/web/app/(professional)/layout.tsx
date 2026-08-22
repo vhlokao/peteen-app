@@ -1,6 +1,8 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 
+import { PRIVATE_AREA_METADATA } from "@/lib/seo/private-area";
 import { AppShell } from "@/components/layout/app-shell";
 import { getProfessionalNotificationCountForLayoutAction } from "@/modules/notifications/application/actions";
 import { getAuthContext } from "@/modules/identity/application/get-session";
@@ -8,6 +10,9 @@ import {
   findProfessionalProfileByUserId,
   countActivePricedServicesByProfessionalId,
 } from "@/modules/professional/infrastructure/repository";
+
+/** Área privada — nunca indexada. Ver lib/seo/private-area.ts. */
+export const metadata: Metadata = PRIVATE_AREA_METADATA;
 
 export default async function ProfessionalLayout({ children }: { children: ReactNode }) {
   // Gate de conclusão do onboarding: sem ao menos um serviço ativo com preço,

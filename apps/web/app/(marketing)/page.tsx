@@ -2,10 +2,29 @@ import type { Metadata } from "next"
 import Image from "next/image"
 import Link from "next/link"
 
+import { LEGAL_LINK_LABELS, legalHref } from "@/modules/legal/domain/legal-documents"
+
+/**
+ * Única página do produto que DEVE ser indexada. Todo o resto é privado
+ * (noindex via lib/seo/private-area.ts) ou é link pessoal (a landing de
+ * convite). O `canonical` é relativo de propósito: `metadataBase` no root
+ * layout resolve o host, então trocar de domínio não exige tocar aqui.
+ */
 export const metadata: Metadata = {
   title: "Peteen — Encontre quem cuida do seu pet com confiança",
   description:
     "Profissionais com histórico real de atendimentos, avaliações de tutores e recomendação de parceiros locais. Grátis para tutores.",
+  alternates: { canonical: "/" },
+  robots: { index: true, follow: true },
+  openGraph: {
+    type: "website",
+    siteName: "Peteen",
+    locale: "pt_BR",
+    url: "/",
+    title: "Peteen — Encontre quem cuida do seu pet com confiança",
+    description:
+      "Profissionais com histórico real de atendimentos, avaliações de tutores e recomendação de parceiros locais.",
+  },
 }
 
 /**
@@ -618,6 +637,21 @@ export default function HomePage() {
             </a>
             <Link href="/login" className="text-[13px] text-white/40 transition-colors hover:text-white/80">
               Entrar
+            </Link>
+            {/* Links legais no footer: até aqui só o login apontava para eles
+                — e apontava para 404. Um site público sem acesso aos termos a
+                partir da home é uma lacuna por si só, independente do login. */}
+            <Link
+              href={legalHref("termos")}
+              className="text-[13px] text-white/40 transition-colors hover:text-white/80"
+            >
+              {LEGAL_LINK_LABELS.termos}
+            </Link>
+            <Link
+              href={legalHref("privacidade")}
+              className="text-[13px] text-white/40 transition-colors hover:text-white/80"
+            >
+              {LEGAL_LINK_LABELS.privacidade}
             </Link>
           </div>
         </div>

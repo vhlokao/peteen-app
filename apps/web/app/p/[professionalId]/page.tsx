@@ -14,11 +14,41 @@ import { buildInviteLandingPath } from "@/modules/invite/domain/invite-visit"
 import { InviteVisitTracker } from "@/modules/invite/components/invite-visit-tracker"
 import { InviteUnavailable } from "@/modules/invite/components/invite-unavailable"
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * noindex E COM PREVIEW SOCIAL — NÃO É CONTRADIÇÃO
+ *
+ * `robots: noindex` diz ao buscador para não colocar esta URL no índice. O
+ * preview do WhatsApp não passa pelo índice de ninguém: o app busca a própria
+ * URL que a pessoa colou e lê as meta tags na hora. As duas coisas convivem, e
+ * é exatamente o que se quer aqui — link pessoal, fora do catálogo, mas com
+ * cara de coisa séria quando alguém o cola numa conversa.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O PREVIEW É GENÉRICO DE PROPÓSITO
+ *
+ * `generateMetadata` poderia buscar o profissional e escrever o nome dele no
+ * título. Não faz, por dois motivos: a URL é adivinhável (basta um id), o que
+ * transformaria o preview num oráculo de "este id existe e chama-se X" para
+ * quem nunca recebeu o convite; e os previews ficam em cache nos servidores do
+ * WhatsApp/Meta, fora do nosso controle e sem prazo conhecido. Quem abrir o
+ * link vê o nome na página — que é onde ele deve estar.
+ */
 export const metadata: Metadata = {
   title: "Convite — Peteen",
+  description:
+    "Você recebeu um convite para acompanhar os cuidados do seu pet pela Peteen.",
   // Landing de convite não deve ser indexada: é um link pessoal compartilhado,
   // não uma página de catálogo. O perfil público indexável é outro assunto.
   robots: { index: false, follow: false },
+  openGraph: {
+    type: "website",
+    siteName: "Peteen",
+    locale: "pt_BR",
+    title: "Convite — Peteen",
+    description:
+      "Você recebeu um convite para acompanhar os cuidados do seu pet pela Peteen.",
+  },
 }
 
 type PageProps = {

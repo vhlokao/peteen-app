@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
+
+import { PRIVATE_AREA_METADATA } from "@/lib/seo/private-area";
+
+/** Login não é conteúdo público. Ver lib/seo/private-area.ts. */
+export const metadata: Metadata = PRIVATE_AREA_METADATA;
 
 /**
  * Layout do grupo (auth) — passthrough.

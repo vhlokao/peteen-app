@@ -30,7 +30,8 @@
     "test:invite": "node --experimental-strip-types --test modules/invite/domain/invite-visit.test.ts",
     "test:notification-read": "node --experimental-strip-types --test modules/notifications/domain/read-state.test.ts",
     "test:temporal": "node --experimental-strip-types --test lib/prisma/pg-timestamp-utc.test.ts",
-    "test:backoffice": "node --experimental-strip-types --test modules/backoffice/domain/push-observability.test.ts modules/backoffice/domain/request-timeline.test.ts"
+    "test:backoffice": "node --experimental-strip-types --test modules/backoffice/domain/push-observability.test.ts modules/backoffice/domain/request-timeline.test.ts",
+    "test:legal": "node --experimental-strip-types --test modules/legal/domain/legal-documents.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

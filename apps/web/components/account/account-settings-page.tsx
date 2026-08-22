@@ -1,9 +1,10 @@
-import { Bell, UserCircle } from "lucide-react"
+import { Bell, FileText, ShieldCheck, UserCircle } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PageHeader } from "@/components/layout/page-header"
 import { PushOptInSection } from "@/modules/notifications/components/push-opt-in-section"
 import { AccountSignOutButton } from "@/components/account/account-sign-out-button"
+import { LEGAL_LINK_LABELS, legalHref } from "@/modules/legal/domain/legal-documents"
 import {
   SettingsGroup,
   SettingsLinkRow,
@@ -25,9 +26,6 @@ import {
  *     e sign-in por senha. Além disso, quem entrou por magic link ou Google
  *     pode nem ter senha — um "alterar senha" seria falso para essas contas.
  *
- *   - PRIVACIDADE E LEGAL: `/termos` e `/privacidade` NÃO existem como rotas
- *     (o login já linka para as duas e devolve 404). Apontar para elas daqui
- *     multiplicaria o link quebrado em vez de resolvê-lo.
  *
  *   - AJUDA/SUPORTE: não existe e-mail, rota ou contrato de suporte no
  *     produto — só menções em prosa.
@@ -107,6 +105,25 @@ export function AccountSettingsPage({
         >
           <PushOptInSection />
         </SettingsStaticRow>
+      </SettingsGroup>
+
+      {/* Legal — as rotas passaram a existir nesta missão. Antes elas eram
+          deliberadamente omitidas daqui porque devolviam 404, e multiplicar um
+          link quebrado é pior que não oferecê-lo. O conteúdo jurídico ainda
+          está em elaboração, e a própria página declara isso. */}
+      <SettingsGroup title="Legal">
+        <SettingsLinkRow
+          href={legalHref("termos")}
+          icon={FileText}
+          title={LEGAL_LINK_LABELS.termos}
+          description="Condições de uso da plataforma."
+        />
+        <SettingsLinkRow
+          href={legalHref("privacidade")}
+          icon={ShieldCheck}
+          title={LEGAL_LINK_LABELS.privacidade}
+          description="Como tratamos seus dados."
+        />
       </SettingsGroup>
 
       {/* Ação destrutiva separada do resto, no fim — nunca no meio das linhas

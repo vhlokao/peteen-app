@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+
+import { PRIVATE_AREA_METADATA } from "@/lib/seo/private-area";
+
+/** Área privada — nunca indexada. Ver lib/seo/private-area.ts. */
+export const metadata: Metadata = PRIVATE_AREA_METADATA;
 
 /**
  * Layout do onboarding — minimalista, sem AppShell.

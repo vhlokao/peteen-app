@@ -52,9 +52,27 @@ export default function HomePage() {
     <main className="bg-[#FAFAF8] text-[#1A1A1A]">
       {/* ═══════════ NAV ═══════════ */}
       <nav className="fixed inset-x-0 top-0 z-50 flex items-center justify-between bg-[#16244F]/85 px-6 py-3.5 backdrop-blur-md lg:px-20">
-        <Link href="/" className="flex items-center gap-2 font-bold tracking-tight text-white">
-          <span className="size-2 rounded-full bg-[#E07A5F]" aria-hidden="true" />
-          <span className="text-lg">Peteen</span>
+        <Link href="/" aria-label="Peteen — página inicial" className="flex items-center">
+          {/* Wordmark oficial completo, versão clara (logo-horizontal-clara —
+              ver docs/BRAND_DOMAIN_PUBLIC_SURFACE.md §3). Substitui a
+              composição provisória símbolo+texto: aquela usava só o símbolo
+              (logo-clara.png) porque o wordmark completo em branco ainda não
+              existia; agora existe e é estritamente melhor — mesma
+              identidade de cor do logo colorido (símbolo azul+laranja
+              preservado, "ee" continua laranja), só a parte que era navy
+              escuro (ilegível sobre este mesmo navy) virou branca.
+              `alt="Peteen"`: a imagem é o ÚNICO conteúdo do link agora — sem
+              texto ao lado, ela precisa carregar o nome acessível sozinha.
+              `priority`: acima da dobra, primeiro elemento visível da
+              página. */}
+          <Image
+            src="/brand/logo-horizontal-clara.png"
+            alt="Peteen"
+            width={96}
+            height={32}
+            priority
+            className="h-8 w-auto"
+          />
         </Link>
         <div className="flex items-center gap-2">
           <a

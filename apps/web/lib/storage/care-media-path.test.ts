@@ -74,8 +74,19 @@ describe("buildCareMediaPath", () => {
     }
   })
 
-  it("recusa mimeType fora do contrato V0 (inclusive HEIC e vídeo)", () => {
-    for (const ruim of ["image/heic", "image/heif", "image/gif", "video/mp4", "application/pdf"]) {
+  it("recusa mimeType fora do contrato (HEIC, GIF, PDF, WebM)", () => {
+    // `video/mp4` e `video/quicktime` SAÍRAM desta lista na missão Video V0 —
+    // passaram a ser suportados, com bucket, teto e detector próprios. Tudo o
+    // mais continua recusado, incluindo WebM: fora da allowlist do bucket
+    // porque Safari não grava nem reproduz de forma confiável.
+    for (const ruim of [
+      "image/heic",
+      "image/heif",
+      "image/gif",
+      "video/webm",
+      "video/x-matroska",
+      "application/pdf",
+    ]) {
       assert.throws(
         () =>
           buildCareMediaPath({
@@ -84,9 +95,21 @@ describe("buildCareMediaPath", () => {
             // cast proposital: simula caller mal-intencionado furando o tipo
             mimeType: ruim as never,
           }),
-        /mimeType não suportado/
+        /mimeType não suportado/,
+        `deveria recusar ${ruim}`
       )
     }
+  })
+
+  it("aceita os dois containers de vídeo do contrato V0", () => {
+    assert.equal(
+      buildCareMediaPath({ requestId: REQ, fileId: FILE, mimeType: "video/mp4" }),
+      `requests/${REQ}/${FILE}.mp4`
+    )
+    assert.equal(
+      buildCareMediaPath({ requestId: REQ, fileId: FILE, mimeType: "video/quicktime" }),
+      `requests/${REQ}/${FILE}.mov`
+    )
   })
 })
 
@@ -138,8 +161,20 @@ describe("parseCareMediaPath", () => {
   })
 
   it("recusa extensão fora do contrato", () => {
-    for (const ext of ["heic", "gif", "mp4", "svg", "pdf", "php", "js"]) {
+    // `.mp4` e `.mov` saíram desta lista — ver o teste de aceitação abaixo.
+    // `.webm` entrou: é vídeo, mas não é um container que suportamos.
+    for (const ext of ["heic", "gif", "webm", "mkv", "svg", "pdf", "php", "js"]) {
       assert.equal(parseCareMediaPath(`requests/${REQ}/${FILE}.${ext}`), null, `recusar .${ext}`)
+    }
+  })
+
+  it("aceita as extensões de vídeo do contrato V0", () => {
+    // O parser precisa reconhecê-las: é ele que amarra path ↔ request na
+    // publicação. Recusar aqui faria todo vídeo publicado ser tratado como
+    // "path não pertence a este atendimento".
+    for (const ext of ["mp4", "mov"]) {
+      const r = parseCareMediaPath(`requests/${REQ}/${FILE}.${ext}`)
+      assert.deepEqual(r, { requestId: REQ, fileName: `${FILE}.${ext}` }, `aceitar .${ext}`)
     }
   })
 

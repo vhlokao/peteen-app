@@ -26,23 +26,33 @@
 // habilitado por `allowImportingTsExtensions` no tsconfig. Sem isso, a lógica
 // mais sensível desta feature ficaria sem teste unitário.
 import { detectImageTypeFromBytes } from "./pet-photo-signature.ts"
+import { detectVideoTypeFromBytes } from "./care-video-signature.ts"
 import {
   CARE_MEDIA_MAX_BYTES,
+  careMediaKindFromMimeType,
+  maxBytesForCareMediaKind,
+  type CareAnyMimeType,
   type CareMediaMimeType,
 } from "./care-media-path.ts"
 
 export type CareMediaRejectionReason =
   /** Bytes não são JPEG/PNG/WebP — inclui HEIC, GIF, PDF, script, tudo. */
   | "CONTENT_NOT_ALLOWED_IMAGE"
-  /** Bytes são de imagem válida, mas de tipo diferente do declarado no ticket. */
+  /** Bytes não são MP4/QuickTime — inclui WebM, HEIC, qualquer outro container. */
+  | "CONTENT_NOT_ALLOWED_VIDEO"
+  /** Bytes são de mídia válida, mas de tipo diferente do declarado no ticket. */
   | "CONTENT_TYPE_MISMATCH"
-  /** Excede o teto de 5 MB. */
+  /** Excede o teto do TIPO (5 MB foto, 50 MB vídeo). */
   | "TOO_LARGE"
   /** Arquivo vazio ou pequeno demais para conter assinatura. */
   | "EMPTY"
 
 export type CareMediaValidationResult =
   | { ok: true; mimeType: CareMediaMimeType; sizeBytes: number }
+  | { ok: false; reason: CareMediaRejectionReason }
+
+export type CareAnyValidationResult =
+  | { ok: true; mimeType: CareAnyMimeType; kind: "PHOTO" | "VIDEO"; sizeBytes: number }
   | { ok: false; reason: CareMediaRejectionReason }
 
 /** Bytes suficientes para as 3 assinaturas aceitas (WebP precisa de 12). */
@@ -95,16 +105,64 @@ export function validateCareMediaContent(params: {
   return { ok: true, mimeType: detected, sizeBytes }
 }
 
+/**
+ * Valida QUALQUER mídia do Diário — foto ou vídeo — decidindo o ramo pelo tipo
+ * DECLARADO no path (que o servidor gerou, ver `declaredMimeTypeFromCareMediaPath`).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O TETO É DO TIPO, NUNCA COMPARTILHADO
+ *
+ * Um vídeo é medido contra 50 MB, uma foto contra 5 MB. Usar um teto único
+ * (o maior) reabriria exatamente o buraco que os dois buckets fecham: foto de
+ * 50 MB aceita. `maxBytesForCareMediaKind` é a fonte única dessa distinção.
+ *
+ * Mesma política de incompatibilidade das fotos: conteúdo que não bate com o
+ * declarado é REJEITADO, nunca canonicalizado — porque o declarado gerou a
+ * extensão do path e o Content-Type do objeto, e aceitar a divergência deixaria
+ * os três em desacordo permanente.
+ */
+export function validateCareAnyMediaContent(params: {
+  declaredMimeType: CareAnyMimeType
+  header: Uint8Array
+  sizeBytes: number
+}): CareAnyValidationResult {
+  const { declaredMimeType, header, sizeBytes } = params
+
+  const kind = careMediaKindFromMimeType(declaredMimeType)
+  if (!kind) return { ok: false, reason: "CONTENT_TYPE_MISMATCH" }
+
+  if (sizeBytes <= 0 || header.length === 0) {
+    return { ok: false, reason: "EMPTY" }
+  }
+  if (sizeBytes > maxBytesForCareMediaKind(kind)) {
+    return { ok: false, reason: "TOO_LARGE" }
+  }
+
+  if (kind === "VIDEO") {
+    const detectado = detectVideoTypeFromBytes(header)
+    if (!detectado) return { ok: false, reason: "CONTENT_NOT_ALLOWED_VIDEO" }
+    if (detectado !== declaredMimeType) return { ok: false, reason: "CONTENT_TYPE_MISMATCH" }
+    return { ok: true, mimeType: detectado, kind: "VIDEO", sizeBytes }
+  }
+
+  const detectado = detectImageTypeFromBytes(header)
+  if (!detectado) return { ok: false, reason: "CONTENT_NOT_ALLOWED_IMAGE" }
+  if (detectado !== declaredMimeType) return { ok: false, reason: "CONTENT_TYPE_MISMATCH" }
+  return { ok: true, mimeType: detectado, kind: "PHOTO", sizeBytes }
+}
+
 /** Mensagem para o usuário. Nunca revela path, bucket ou detalhe de Storage. */
 export function careMediaRejectionMessage(reason: CareMediaRejectionReason): string {
   switch (reason) {
     case "CONTENT_NOT_ALLOWED_IMAGE":
       return "Este arquivo não parece ser uma imagem JPEG, PNG ou WebP válida."
+    case "CONTENT_NOT_ALLOWED_VIDEO":
+      return "Este arquivo não parece ser um vídeo MP4 ou MOV válido."
     case "CONTENT_TYPE_MISMATCH":
-      return "O conteúdo do arquivo não corresponde ao formato informado. Envie a foto novamente."
+      return "O conteúdo do arquivo não corresponde ao formato informado. Envie novamente."
     case "TOO_LARGE":
-      return "Esta foto é muito grande. Escolha outra imagem ou reduza o tamanho."
+      return "Este arquivo é muito grande. Escolha outro ou reduza o tamanho."
     case "EMPTY":
-      return "O arquivo enviado está vazio. Tente enviar a foto novamente."
+      return "O arquivo enviado está vazio. Tente enviar novamente."
   }
 }

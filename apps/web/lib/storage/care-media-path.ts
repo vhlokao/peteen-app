@@ -23,21 +23,75 @@
  * antes de qualquer uso.
  */
 
-/** Extensões aceitas, derivadas dos únicos MIME types do contrato V0. */
+/** Extensões de FOTO, derivadas dos MIME types do contrato V0. */
 export const CARE_MEDIA_EXTENSION_BY_TYPE = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
 } as const
 
+/** Extensões de VÍDEO. Ambos ISOBMFF — ver lib/storage/care-video-signature.ts. */
+export const CARE_VIDEO_EXTENSION_BY_TYPE = {
+  "video/mp4": "mp4",
+  "video/quicktime": "mov",
+} as const
+
 export type CareMediaMimeType = keyof typeof CARE_MEDIA_EXTENSION_BY_TYPE
+export type CareVideoMimeTypeForPath = keyof typeof CARE_VIDEO_EXTENSION_BY_TYPE
+/** Qualquer MIME que o Diário aceita, foto ou vídeo. */
+export type CareAnyMimeType = CareMediaMimeType | CareVideoMimeTypeForPath
 
 export const CARE_MEDIA_ALLOWED_TYPES = Object.keys(
   CARE_MEDIA_EXTENSION_BY_TYPE
 ) as CareMediaMimeType[]
 
-/** Igual ao file_size_limit do bucket — divergir faria o Storage recusar o que a app aceitou. */
+export const CARE_VIDEO_ALLOWED_TYPES_FOR_PATH = Object.keys(
+  CARE_VIDEO_EXTENSION_BY_TYPE
+) as CareVideoMimeTypeForPath[]
+
+/**
+ * Teto de FOTO. Igual ao `file_size_limit` do bucket `care-media` — divergir
+ * faria o Storage recusar o que a app aceitou (ou o contrário).
+ *
+ * NÃO FOI ALTERADO pela missão de vídeo, e não deve ser: vídeo tem bucket e
+ * teto próprios, justamente para que este número continue valendo.
+ */
 export const CARE_MEDIA_MAX_BYTES = 5 * 1024 * 1024
+
+/** Teto de VÍDEO. Igual ao `file_size_limit` do bucket `care-media-video`. */
+export const CARE_VIDEO_MAX_BYTES = 50 * 1024 * 1024
+
+/**
+ * Duração máxima do vídeo — REGRA DE PRODUTO, aplicada no CLIENTE.
+ *
+ * Deliberadamente NÃO é garantida no servidor: provar duração exigiria parsear
+ * a caixa `mvhd` do container, e um arquivo forjado pode mentir nela. O que o
+ * servidor prova é tamanho (do objeto real), container (magic bytes) e posse.
+ *
+ * Está aqui, junto dos outros limites, para não virar número solto no
+ * componente — mas o comentário existe para que ninguém leia esta constante
+ * como uma garantia server-side. Ver o comentário do enum em schema.prisma.
+ */
+export const CARE_VIDEO_MAX_DURATION_SECONDS = 60
+
+/** Teto de VÍDEOS por atualização. Um só — contrato V0. */
+export const CARE_VIDEO_MAX_PER_UPDATE = 1
+
+export function isCareVideoMimeType(mime: string): mime is CareVideoMimeTypeForPath {
+  return Object.prototype.hasOwnProperty.call(CARE_VIDEO_EXTENSION_BY_TYPE, mime)
+}
+
+/** Tipo de mídia (domínio) a partir do MIME. `null` para o que não é aceito. */
+export function careMediaKindFromMimeType(mime: string): "PHOTO" | "VIDEO" | null {
+  if (isCareVideoMimeType(mime)) return "VIDEO"
+  if (Object.prototype.hasOwnProperty.call(CARE_MEDIA_EXTENSION_BY_TYPE, mime)) return "PHOTO"
+  return null
+}
+
+/** Teto de bytes correspondente ao tipo. Nunca misturar os dois. */
+export function maxBytesForCareMediaKind(kind: "PHOTO" | "VIDEO"): number {
+  return kind === "VIDEO" ? CARE_VIDEO_MAX_BYTES : CARE_MEDIA_MAX_BYTES
+}
 
 /** Teto de arquivos por atualização (contrato V0), aplicado na publicação. */
 export const CARE_MEDIA_MAX_PER_UPDATE = 3
@@ -68,7 +122,17 @@ const PREFIXO = "requests"
  */
 const ID_SEGURO = /^[A-Za-z0-9_-]{1,64}$/
 
-const EXTENSOES = new Set(Object.values(CARE_MEDIA_EXTENSION_BY_TYPE))
+/** Extensões válidas de QUALQUER mídia do Diário — foto e vídeo. */
+const EXTENSOES = new Set<string>([
+  ...Object.values(CARE_MEDIA_EXTENSION_BY_TYPE),
+  ...Object.values(CARE_VIDEO_EXTENSION_BY_TYPE),
+])
+
+/** MIME → extensão, cobrindo os dois tipos. Fonte única do mapeamento. */
+const EXTENSION_BY_ANY_TYPE: Record<string, string> = {
+  ...CARE_MEDIA_EXTENSION_BY_TYPE,
+  ...CARE_VIDEO_EXTENSION_BY_TYPE,
+}
 
 /** Nome de arquivo: <uuid|id>.<ext>, sem ponto extra e sem caminho embutido. */
 const NOME_ARQUIVO = /^([A-Za-z0-9_-]{1,64})\.([a-z0-9]{2,5})$/
@@ -88,7 +152,8 @@ export function isCareMediaRequestId(valor: string): boolean {
 export function buildCareMediaPath(params: {
   requestId: string
   fileId: string
-  mimeType: CareMediaMimeType
+  /** Foto OU vídeo — a extensão sai daqui, e é ela que o parser reconhece. */
+  mimeType: CareAnyMimeType
 }): string {
   const { requestId, fileId, mimeType } = params
 
@@ -107,8 +172,8 @@ export function buildCareMediaPath(params: {
   // Hoje nenhum caller chega aqui com essas chaves (a allowlist a montante usa
   // Object.keys), mas este arquivo se declara defesa própria contra entrada
   // hostil: ele não pode depender de validação de terceiros para valer.
-  const extensao = Object.prototype.hasOwnProperty.call(CARE_MEDIA_EXTENSION_BY_TYPE, mimeType)
-    ? CARE_MEDIA_EXTENSION_BY_TYPE[mimeType]
+  const extensao = Object.prototype.hasOwnProperty.call(EXTENSION_BY_ANY_TYPE, mimeType)
+    ? EXTENSION_BY_ANY_TYPE[mimeType]
     : undefined
   if (!extensao) {
     throw new Error("mimeType não suportado para care-media")
@@ -144,18 +209,20 @@ export function parseCareMediaPath(path: unknown): CareMediaPathParts | null {
 
   const match = NOME_ARQUIVO.exec(fileName)
   if (!match) return null
-  if (!EXTENSOES.has(match[2] as (typeof CARE_MEDIA_EXTENSION_BY_TYPE)[CareMediaMimeType])) {
+  if (!EXTENSOES.has(match[2]!)) {
     return null
   }
 
   return { requestId, fileName }
 }
 
-/** Extensão → MIME. Inverso exato de CARE_MEDIA_EXTENSION_BY_TYPE. */
-const TYPE_BY_EXTENSION: Record<string, CareMediaMimeType> = {
+/** Extensão → MIME. Inverso exato dos dois mapas de extensão. */
+const TYPE_BY_EXTENSION: Record<string, CareAnyMimeType> = {
   jpg: "image/jpeg",
   png: "image/png",
   webp: "image/webp",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
 }
 
 /**
@@ -171,12 +238,22 @@ const TYPE_BY_EXTENSION: Record<string, CareMediaMimeType> = {
  *
  * É contra ESTE valor que os magic bytes são comparados na publicação.
  */
-export function declaredMimeTypeFromCareMediaPath(path: unknown): CareMediaMimeType | null {
+export function declaredMimeTypeFromCareMediaPath(path: unknown): CareAnyMimeType | null {
   const partes = parseCareMediaPath(path)
   if (!partes) return null
   const ext = partes.fileName.split(".").pop()
   if (!ext) return null
   return TYPE_BY_EXTENSION[ext] ?? null
+}
+
+/**
+ * Tipo de mídia derivado do PATH — que o servidor gerou. É assim que a
+ * publicação sabe em qual bucket procurar o objeto e qual teto aplicar, sem
+ * receber nada disso do cliente.
+ */
+export function careMediaKindFromPath(path: unknown): "PHOTO" | "VIDEO" | null {
+  const mime = declaredMimeTypeFromCareMediaPath(path)
+  return mime ? careMediaKindFromMimeType(mime) : null
 }
 
 /**

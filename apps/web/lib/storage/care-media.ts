@@ -44,20 +44,28 @@ import {
   isCareMediaRequestId,
   parseCareMediaPath,
   CARE_MEDIA_MAX_OBJECTS_PER_REQUEST,
-  type CareMediaMimeType,
+  type CareAnyMimeType,
 } from "./care-media-path"
 import {
   careMediaDisplayTransform,
   careMediaThumbnailTransform,
   type CareMediaTransform,
 } from "./care-media-transform"
-import { CARE_MEDIA_BUCKET_NAME } from "@/modules/care-timeline/domain/care-media-bucket"
+import {
+  bucketForCareMediaKind,
+  CARE_MEDIA_BUCKET_NAME,
+  type CareMediaKind,
+} from "@/modules/care-timeline/domain/care-media-bucket"
 
 /**
  * Importado, não declarado: o browser também precisa do nome do bucket para o
  * upload direto ao destino assinado (R2B.4), e este arquivo é `server-only`.
  * A fonte única vive em modules/care-timeline/domain/care-media-bucket.ts;
  * aqui ela é reexportada para não quebrar quem já importa daqui.
+ *
+ * Continua apontando para o bucket de FOTO: é o default histórico e o que os
+ * chamadores antigos esperam. Quem lida com vídeo resolve o bucket por
+ * `bucketForCareMediaKind(kind)`, nunca por esta constante.
  */
 export const CARE_MEDIA_BUCKET = CARE_MEDIA_BUCKET_NAME
 
@@ -133,12 +141,27 @@ export async function countCareMediaObjectsForRequest(
 
   try {
     const supabase = createCareMediaStorageClient()
-    const { data, error } = await supabase.storage
-      .from(CARE_MEDIA_BUCKET)
-      .list(`requests/${requestId}`, { limit: CARE_MEDIA_MAX_OBJECTS_PER_REQUEST + 1 })
 
-    if (error || !data) return null
-    return data.length
+    // Soma os DOIS buckets: o freio de custo é por REQUEST, não por bucket.
+    // Contar só o de foto deixaria vídeo fora do teto — e vídeo é justamente
+    // o que custa 10× mais por objeto.
+    const buckets = [CARE_MEDIA_BUCKET_NAME, bucketForCareMediaKind("VIDEO")]
+    let total = 0
+
+    for (const bucket of buckets) {
+      const { data, error } = await supabase.storage
+        .from(bucket)
+        .list(`requests/${requestId}`, { limit: CARE_MEDIA_MAX_OBJECTS_PER_REQUEST + 1 })
+
+      // Falha em QUALQUER bucket invalida a contagem inteira: um total parcial
+      // seria menor que o real e deixaria passar quem já estourou o teto.
+      // `null` aciona o fail-open documentado em care-media-authorization.ts —
+      // decisão consciente, não omissão.
+      if (error || !data) return null
+      total += data.length
+    }
+
+    return total
   } catch (err) {
     console.error("[care-media] count_objects_failed", {
       erro: String(err).slice(0, 120),
@@ -172,7 +195,10 @@ export type CareMediaUploadTicket = {
  */
 export async function createCareMediaUploadTicket(params: {
   requestId: string
-  mimeType: CareMediaMimeType
+  /** Foto ou vídeo — decide a EXTENSÃO do path. */
+  mimeType: CareAnyMimeType
+  /** Decide o BUCKET de destino. O path e a autorização são idênticos. */
+  kind: CareMediaKind
 }): Promise<CareMediaUploadTicket> {
   const path = buildCareMediaPath({
     requestId: params.requestId,
@@ -185,7 +211,7 @@ export async function createCareMediaUploadTicket(params: {
   // Como o path carrega um UUID novo a cada emissão, isso também impede que
   // uma URL reutilizada sobrescreva um arquivo já publicado.
   const { data, error } = await supabase.storage
-    .from(CARE_MEDIA_BUCKET)
+    .from(bucketForCareMediaKind(params.kind))
     .createSignedUploadUrl(path)
 
   if (error || !data) {
@@ -210,10 +236,16 @@ export async function createCareMediaUploadTicket(params: {
 export async function createCareMediaReadUrl(params: {
   path: string
   requestId: string
+  /** Default PHOTO: preserva o comportamento de todo chamador anterior. */
+  kind?: CareMediaKind
   expiresInSeconds?: number
   /**
    * Redimensionamento aplicado na LEITURA. O objeto no bucket não é tocado —
    * o Storage deriva a renderização e a serve por CDN. Ausente = original.
+   *
+   * NUNCA use com vídeo: a transformação do Storage opera só em imagem e
+   * devolveria uma URL que não reproduz. As funções de miniatura abaixo
+   * recusam VIDEO explicitamente por isso.
    */
   transform?: CareMediaTransform
 }): Promise<string | null> {
@@ -225,7 +257,7 @@ export async function createCareMediaReadUrl(params: {
 
   const supabase = createCareMediaStorageClient()
   const { data, error } = await supabase.storage
-    .from(CARE_MEDIA_BUCKET)
+    .from(bucketForCareMediaKind(params.kind ?? "PHOTO"))
     .createSignedUrl(
       params.path,
       params.expiresInSeconds ?? CARE_MEDIA_READ_TTL_SECONDS,
@@ -262,7 +294,16 @@ export async function createCareMediaThumbnailUrl(params: {
   requestId: string
   expiresInSeconds?: number
 }): Promise<string | null> {
-  return createCareMediaReadUrl({ ...params, transform: careMediaThumbnailTransform() })
+  // Sem parâmetro `kind`: esta função é EXCLUSIVA de foto, por construção.
+  // A transformação do Storage opera apenas em imagem; aplicada a um vídeo,
+  // devolveria uma URL que não reproduz nada. Não aceitar o parâmetro é mais
+  // forte que aceitá-lo e recusar VIDEO em runtime — o chamador nem consegue
+  // expressar o pedido errado.
+  return createCareMediaReadUrl({
+    ...params,
+    kind: "PHOTO",
+    transform: careMediaThumbnailTransform(),
+  })
 }
 
 /**
@@ -276,7 +317,12 @@ export async function createCareMediaDisplayUrl(params: {
   requestId: string
   expiresInSeconds?: number
 }): Promise<string | null> {
-  return createCareMediaReadUrl({ ...params, transform: careMediaDisplayTransform() })
+  // Exclusiva de foto pelo mesmo motivo da miniatura — ver acima.
+  return createCareMediaReadUrl({
+    ...params,
+    kind: "PHOTO",
+    transform: careMediaDisplayTransform(),
+  })
 }
 
 /**
@@ -328,6 +374,8 @@ export async function readCareMediaHeader(params: {
 export async function readCareMediaForValidation(params: {
   path: string
   requestId: string
+  /** Default PHOTO: preserva o comportamento de todo chamador anterior. */
+  kind?: CareMediaKind
   bytes?: number
 }): Promise<{ header: Uint8Array; sizeBytes: number } | null> {
   const partes = parseCareMediaPath(params.path)
@@ -335,7 +383,9 @@ export async function readCareMediaForValidation(params: {
 
   try {
     const supabase = createCareMediaStorageClient()
-    const { data, error } = await supabase.storage.from(CARE_MEDIA_BUCKET).download(params.path)
+    const { data, error } = await supabase.storage
+      .from(bucketForCareMediaKind(params.kind ?? "PHOTO"))
+      .download(params.path)
 
     if (error || !data) return null
 
@@ -351,6 +401,89 @@ export async function readCareMediaForValidation(params: {
 }
 
 /**
+ * Lê os PRIMEIROS BYTES de um objeto sem baixá-lo inteiro, via `Range`.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE EXISTE — E POR QUE SÓ AGORA
+ *
+ * `readCareMediaForValidation` usa `download()`, que traz o objeto INTEIRO para
+ * ler alguns bytes de assinatura. O comentário daquela função já registrava o
+ * custo como aceito para fotos de 5 MB e apontava esta otimização como a saída:
+ *
+ *   "otimizável depois com `Range: bytes=0-11` sobre URL assinada, cujo
+ *    `Content-Range` também devolveria o tamanho total."
+ *
+ * Com vídeo de até 50 MB, "aceito" deixa de valer: seriam 50 MB baixados por
+ * publicação, dentro do fluxo em que o profissional espera em pé durante um
+ * atendimento. Aqui a otimização prevista é implementada.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O TAMANHO VEM DO `Content-Range`, NÃO DO CLIENTE
+ *
+ * A resposta 206 traz `Content-Range: bytes 0-63/12345678` — o número após a
+ * barra é o tamanho TOTAL do objeto, dito pelo Storage. É esse valor que vai
+ * para a checagem de teto e para `CareMedia.sizeBytes`. `file.size` do browser
+ * não participa de nada.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * FAIL CLOSED
+ *
+ * `null` em qualquer imprevisto — servidor ignorou o `Range` e devolveu 200,
+ * `Content-Range` ausente ou malformado, tamanho não numérico, rede fora.
+ * Quem chama trata `null` como "não consegui provar" e RECUSA. Em nenhum
+ * caminho a falha desta função vira aceitação.
+ */
+export async function readCareMediaHeadBytes(params: {
+  path: string
+  requestId: string
+  kind: CareMediaKind
+  bytes: number
+}): Promise<{ header: Uint8Array; sizeBytes: number } | null> {
+  const partes = parseCareMediaPath(params.path)
+  if (!partes || partes.requestId !== params.requestId) return null
+
+  try {
+    const supabase = createCareMediaStorageClient()
+    const bucket = bucketForCareMediaKind(params.kind)
+
+    // URL assinada curta: só o suficiente para o próprio servidor buscar o
+    // trecho agora. Não vai para lugar nenhum além desta função.
+    const { data, error } = await supabase.storage.from(bucket).createSignedUrl(params.path, 60)
+    if (error || !data) return null
+
+    const fim = params.bytes - 1
+    const resposta = await fetch(data.signedUrl, {
+      headers: { Range: `bytes=0-${fim}` },
+    })
+
+    // 206 é o ÚNICO sucesso aceitável. Um 200 significa que o Range foi
+    // ignorado e o corpo é o arquivo inteiro — exatamente o que esta função
+    // existe para evitar. Recusamos e deixamos o chamador decidir o fallback,
+    // em vez de consumir 50 MB silenciosamente.
+    if (resposta.status !== 206) {
+      console.warn("[care-media] range_nao_suportado", { status: resposta.status })
+      return null
+    }
+
+    // `bytes 0-63/12345678` → 12345678
+    const contentRange = resposta.headers.get("content-range")
+    const total = contentRange ? Number(contentRange.split("/")[1]) : NaN
+    if (!Number.isFinite(total) || total <= 0) {
+      console.warn("[care-media] content_range_invalido", {
+        presente: contentRange !== null,
+      })
+      return null
+    }
+
+    const buffer = await resposta.arrayBuffer()
+    return { header: new Uint8Array(buffer), sizeBytes: total }
+  } catch (err) {
+    console.error("[care-media] range_read_failed", { erro: String(err).slice(0, 120) })
+    return null
+  }
+}
+
+/**
  * Remove um objeto do bucket. Best-effort — nunca lança.
  *
  * Usos previstos (R2): descartar arquivo reprovado na validação de magic bytes
@@ -359,13 +492,17 @@ export async function readCareMediaForValidation(params: {
 export async function deleteCareMediaObject(params: {
   path: string
   requestId: string
+  /** Default PHOTO: preserva o comportamento de todo chamador anterior. */
+  kind?: CareMediaKind
 }): Promise<boolean> {
   const partes = parseCareMediaPath(params.path)
   if (!partes || partes.requestId !== params.requestId) return false
 
   try {
     const supabase = createCareMediaStorageClient()
-    const { error } = await supabase.storage.from(CARE_MEDIA_BUCKET).remove([params.path])
+    const { error } = await supabase.storage
+      .from(bucketForCareMediaKind(params.kind ?? "PHOTO"))
+      .remove([params.path])
     return !error
   } catch (err) {
     console.error("[care-media] delete_failed", { erro: String(err).slice(0, 120) })

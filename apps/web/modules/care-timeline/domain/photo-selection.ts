@@ -31,10 +31,20 @@ import {
   CARE_MEDIA_ALLOWED_TYPES,
   CARE_MEDIA_MAX_BYTES,
   CARE_MEDIA_MAX_PER_UPDATE,
+  CARE_VIDEO_ALLOWED_TYPES_FOR_PATH,
+  CARE_VIDEO_MAX_BYTES,
+  CARE_VIDEO_MAX_DURATION_SECONDS,
+  CARE_VIDEO_MAX_PER_UPDATE,
   type CareMediaMimeType,
 } from "../../../lib/storage/care-media-path.ts"
 
-export { CARE_MEDIA_MAX_PER_UPDATE, CARE_MEDIA_MAX_BYTES }
+export {
+  CARE_MEDIA_MAX_PER_UPDATE,
+  CARE_MEDIA_MAX_BYTES,
+  CARE_VIDEO_MAX_BYTES,
+  CARE_VIDEO_MAX_DURATION_SECONDS,
+  CARE_VIDEO_MAX_PER_UPDATE,
+}
 
 /**
  * Estados de UMA foto na seleção.
@@ -73,8 +83,76 @@ export const PHOTO_COPY = {
   rascunhoRecuperado: "Seu texto foi recuperado. Selecione as fotos novamente.",
 } as const
 
+export const VIDEO_COPY = {
+  tipoInvalido: "Este arquivo não parece ser um vídeo MP4 ou MOV válido.",
+  /** WebM merece frase própria: é gravável em alguns Android, mas não toca no iPhone. */
+  webm: "Este formato de vídeo ainda não é compatível. Grave em MP4 ou MOV.",
+  muitoGrande: `Este vídeo é muito grande. O limite é ${Math.round(CARE_VIDEO_MAX_BYTES / (1024 * 1024))} MB.`,
+  muitoLongo: `Este vídeo é muito longo. O limite é ${CARE_VIDEO_MAX_DURATION_SECONDS} segundos.`,
+  /** Sem metadata não dá para provar a duração — e não publicamos no escuro. */
+  duracaoDesconhecida:
+    "Não foi possível ler a duração deste vídeo. Tente gravar novamente ou escolher outro arquivo.",
+  limiteAtingido: `Você já selecionou ${CARE_VIDEO_MAX_PER_UPDATE} vídeo.`,
+  /** Contrato V0: mídia de um tipo só por atualização. */
+  misturaComFoto: "Publique o vídeo sozinho, sem fotos na mesma atualização.",
+  falhaUpload: "Não foi possível enviar este vídeo. Tente novamente.",
+} as const
+
 /** Formatos que existem no mundo real e merecem mensagem específica. */
 const TIPOS_HEIC = ["image/heic", "image/heif"]
+
+/** Containers de vídeo que aparecem em aparelhos reais mas não suportamos. */
+const TIPOS_VIDEO_INCOMPATIVEIS = ["video/webm", "video/x-matroska", "video/3gpp", "video/avi"]
+
+export function isVideoMimeType(tipo: string): boolean {
+  return tipo.toLowerCase().startsWith("video/")
+}
+
+/**
+ * Um vídeo candidato pode entrar na seleção?
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * A DURAÇÃO SÓ EXISTE AQUI — E ISSO É UMA ESCOLHA, NÃO UMA LACUNA
+ *
+ * Este é o ÚNICO lugar do sistema que verifica os 60 segundos. O servidor não
+ * verifica, e o comentário do enum em schema.prisma diz isso explicitamente:
+ * provar duração exigiria parsear a caixa `mvhd` do container, e um arquivo
+ * forjado pode mentir nela. O que o servidor prova é tamanho (do objeto real),
+ * container (magic bytes) e posse.
+ *
+ * Ou seja: 60s é regra de PRODUTO, 50 MB é regra de SEGURANÇA. Quem contornar
+ * o cliente consegue publicar um vídeo mais longo — desde que caiba em 50 MB.
+ * Aceito no V0, registrado, e não disfarçado de garantia.
+ *
+ * `duracaoSegundos` é `null` quando o browser não conseguiu ler a metadata.
+ * Nesse caso RECUSAMOS: publicar sem saber a duração seria aceitar em silêncio
+ * o que a regra existe para limitar.
+ */
+export function validateVideoCandidate(file: {
+  type: string
+  size: number
+  duracaoSegundos: number | null
+}): PhotoValidation {
+  const tipo = file.type.toLowerCase()
+
+  if (TIPOS_VIDEO_INCOMPATIVEIS.includes(tipo)) {
+    return { ok: false, message: VIDEO_COPY.webm }
+  }
+  if (!(CARE_VIDEO_ALLOWED_TYPES_FOR_PATH as string[]).includes(tipo)) {
+    return { ok: false, message: VIDEO_COPY.tipoInvalido }
+  }
+  if (file.size > CARE_VIDEO_MAX_BYTES) {
+    return { ok: false, message: VIDEO_COPY.muitoGrande }
+  }
+  if (file.duracaoSegundos === null || !Number.isFinite(file.duracaoSegundos)) {
+    return { ok: false, message: VIDEO_COPY.duracaoDesconhecida }
+  }
+  if (file.duracaoSegundos > CARE_VIDEO_MAX_DURATION_SECONDS) {
+    return { ok: false, message: VIDEO_COPY.muitoLongo }
+  }
+
+  return { ok: true }
+}
 
 export type PhotoRejection = { ok: false; message: string }
 export type PhotoAcceptance = { ok: true }

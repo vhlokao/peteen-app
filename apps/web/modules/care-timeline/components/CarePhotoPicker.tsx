@@ -24,18 +24,30 @@
  */
 
 import { useCallback, useEffect, useId, useRef, useState } from "react"
-import { AlertCircle, Camera, ImagePlus, Loader2, RotateCcw, X } from "lucide-react"
+import {
+  AlertCircle,
+  Camera,
+  FileVideo,
+  ImagePlus,
+  Loader2,
+  RotateCcw,
+  Video,
+  X,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { requestCareMediaUploadTicketAction } from "../application/actions"
 import { uploadCareMediaToTicket } from "../infrastructure/upload-care-media-client"
 import {
   CARE_MEDIA_MAX_PER_UPDATE,
+  CARE_VIDEO_MAX_DURATION_SECONDS,
   PHOTO_COPY,
+  VIDEO_COPY,
   canAddMorePhotos,
   photoCounterLabel,
   remainingPhotoSlots,
   validatePhotoCandidate,
+  validateVideoCandidate,
   type PhotoSelectionItem,
 } from "../domain/photo-selection"
 import { MEDIA_QUERY_CAPTURA, deveOferecerCameraPrimeiro } from "../domain/camera-capture"
@@ -47,6 +59,57 @@ import { MEDIA_QUERY_CAPTURA, deveOferecerCameraPrimeiro } from "../domain/camer
 export type PhotoUiItem = PhotoSelectionItem & {
   file: File
   previewUrl: string
+  /** Decide o preview (img vs video) e a cota aplicável. */
+  kind: "PHOTO" | "VIDEO"
+}
+
+/**
+ * Lê a duração real do vídeo, do próprio arquivo, antes de qualquer upload.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ESTE É O ÚNICO LUGAR DO SISTEMA QUE CONHECE A DURAÇÃO
+ *
+ * O servidor não valida os 60s — provar isso exigiria parsear a caixa `mvhd`
+ * do container, e um arquivo forjado pode mentir nela (ver o comentário do
+ * enum em schema.prisma). Então esta função não é uma conveniência de UX: é a
+ * ÚNICA aplicação da regra. Se ela falhar, `validateVideoCandidate` recusa —
+ * publicar sem saber a duração seria fingir que o limite existe.
+ *
+ * `preload="metadata"` no elemento temporário: precisamos só do cabeçalho, não
+ * do arquivo. Um vídeo de 50 MB não é baixado para descobrir que tem 90s.
+ *
+ * O timeout existe porque `loadedmetadata` pode simplesmente nunca disparar
+ * (arquivo corrompido, codec que o browser não abre) e a promessa ficaria
+ * pendurada, deixando o botão de publicar travado sem explicação.
+ */
+function lerDuracaoDoVideo(file: File): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const el = document.createElement("video")
+    el.preload = "metadata"
+
+    let resolvido = false
+    const terminar = (valor: number | null) => {
+      if (resolvido) return
+      resolvido = true
+      clearTimeout(timer)
+      // Revoga sempre: a objectURL deste elemento temporário não é a mesma do
+      // preview, e vazá-la aqui somaria um blob por vídeo selecionado.
+      URL.revokeObjectURL(url)
+      el.removeAttribute("src")
+      resolve(valor)
+    }
+
+    const timer = setTimeout(() => terminar(null), 10_000)
+
+    el.onloadedmetadata = () => {
+      const d = el.duration
+      terminar(Number.isFinite(d) && d > 0 ? d : null)
+    }
+    el.onerror = () => terminar(null)
+
+    el.src = url
+  })
 }
 
 type Props = {
@@ -63,11 +126,23 @@ type Props = {
  */
 const ACCEPT_IMAGENS = "image/jpeg,image/png,image/webp"
 
+/**
+ * Aceite do input de vídeo.
+ *
+ * Lista explícita em vez de `video/*`: o genérico deixaria o seletor oferecer
+ * WebM, 3GP e MKV, que o `validateVideoCandidate` recusaria logo depois — pior
+ * experiência que não oferecer. Alguns navegadores mobile ignoram a lista e
+ * mostram tudo mesmo assim; por isso a validação continua sendo a autoridade.
+ */
+const ACCEPT_VIDEOS = "video/mp4,video/quicktime"
+
 export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props) {
   const inputId = useId()
   const cameraInputId = useId()
   const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const videoCameraInputRef = useRef<HTMLInputElement | null>(null)
+  const videoInputRef = useRef<HTMLInputElement | null>(null)
   const [erroSelecao, setErroSelecao] = useState<string | null>(null)
 
   /**
@@ -231,6 +306,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
         errorMessage: null,
         file,
         previewUrl: URL.createObjectURL(file),
+        kind: "PHOTO",
       })
     }
 
@@ -242,6 +318,55 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
     for (const novo of novos) void enviarFoto(novo.id, novo.file)
   }
 
+  /**
+   * Fluxo de VÍDEO — separado de `handleFiles` porque a validação é
+   * assíncrona (precisa ler a duração do arquivo) e a cota é outra.
+   */
+  async function handleVideoFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setErroSelecao(null)
+
+    // Exclusividade do contrato V0: uma atualização carrega OU até 3 fotos OU
+    // 1 vídeo. Não é limitação técnica — é o desenho da galeria, que renderiza
+    // um player de largura cheia para vídeo e uma grade de miniaturas para
+    // foto. Misturar exigiria uma terceira superfície sem ganho claro no V0.
+    if (temFoto) {
+      setErroSelecao(VIDEO_COPY.misturaComFoto)
+      return
+    }
+    if (temVideo) {
+      setErroSelecao(VIDEO_COPY.limiteAtingido)
+      return
+    }
+
+    const file = files[0]!
+    // A duração é lida ANTES de aceitar — ver lerDuracaoDoVideo.
+    const duracaoSegundos = await lerDuracaoDoVideo(file)
+
+    const validacao = validateVideoCandidate({
+      type: file.type,
+      size: file.size,
+      duracaoSegundos,
+    })
+    if (!validacao.ok) {
+      setErroSelecao(validacao.message)
+      return
+    }
+
+    const novo: PhotoUiItem = {
+      id: crypto.randomUUID(),
+      status: "pronta",
+      path: null,
+      errorMessage: null,
+      file,
+      previewUrl: URL.createObjectURL(file),
+      kind: "VIDEO",
+    }
+
+    aplicar([...itens, novo])
+    void enviarFoto(novo.id, novo.file)
+  }
+
   function removerFoto(item: PhotoUiItem) {
     URL.revokeObjectURL(item.previewUrl)
     aplicar(itens.filter((i) => i.id !== item.id))
@@ -250,7 +375,11 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
     // deixaria de ser verdade.
   }
 
-  const podeAdicionar = canAddMorePhotos(itens.length) && !disabled
+  const temVideo = itens.some((i) => i.kind === "VIDEO")
+  const temFoto = itens.some((i) => i.kind === "PHOTO")
+  // Foto e vídeo se excluem — ver handleVideoFiles.
+  const podeAdicionar = canAddMorePhotos(itens.length) && !disabled && !temVideo
+  const podeAdicionarVideo = !temVideo && !temFoto && !disabled
 
   return (
     <div className="flex flex-col gap-2">
@@ -271,13 +400,23 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
               key={item.id}
               className="group relative aspect-square overflow-hidden rounded-xl border border-border/70 bg-muted/30"
             >
-              {/* Preview local — o arquivo ainda pode nem ter subido. */}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={item.previewUrl}
-                alt=""
-                className="size-full object-cover"
-              />
+              {/* Preview local — o arquivo ainda pode nem ter subido.
+                  Vídeo usa <video muted preload="metadata">: mostra o primeiro
+                  frame sem baixar o arquivo e sem tocar áudio. Sem `controls`
+                  aqui de propósito — este é um preview de seleção, não o
+                  player; os controles reais vivem na timeline publicada. */}
+              {item.kind === "VIDEO" ? (
+                <video
+                  src={item.previewUrl}
+                  preload="metadata"
+                  muted
+                  playsInline
+                  className="size-full bg-black object-cover"
+                />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.previewUrl} alt="" className="size-full object-cover" />
+              )}
 
               {/* Véu de estado: só cobre quando há algo a comunicar. */}
               {item.status === "enviando" ? (
@@ -412,6 +551,83 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
           {itens.length === 0 ? "Adicionar foto" : "Adicionar outra foto"}
         </Button>
       )}
+
+      {/* ── VÍDEO ────────────────────────────────────────────────────────────
+          Dois inputs pelo mesmo motivo das fotos: `capture` decide se o
+          navegador oferece a câmera antes da galeria.
+
+          HONESTIDADE SOBRE `capture` EM VÍDEO: no Android Chrome ele costuma
+          abrir a câmera já em modo vídeo; no iOS Safari o comportamento varia
+          por versão e frequentemente abre a bandeja (Câmera / Fototeca /
+          Arquivos). Por isso os DOIS botões existem sempre que a captura é
+          oferecida — nunca prometemos que o primeiro abre a câmera direto. Em
+          desktop `capture` é ignorado e ambos abrem o seletor de arquivos.
+
+          Sem `multiple`: o contrato V0 é 1 vídeo por atualização. */}
+      <input
+        ref={videoCameraInputRef}
+        type="file"
+        accept={ACCEPT_VIDEOS}
+        capture="environment"
+        className="sr-only"
+        disabled={!podeAdicionarVideo}
+        onChange={(e) => {
+          void handleVideoFiles(e.target.files)
+          e.target.value = ""
+        }}
+      />
+      <input
+        ref={videoInputRef}
+        type="file"
+        accept={ACCEPT_VIDEOS}
+        className="sr-only"
+        disabled={!podeAdicionarVideo}
+        onChange={(e) => {
+          void handleVideoFiles(e.target.files)
+          e.target.value = ""
+        }}
+      />
+
+      {podeAdicionarVideo ? (
+        <div className="flex flex-col gap-2 border-t border-border/60 pt-2">
+          <span className="text-xs text-muted-foreground">
+            Ou envie um vídeo de até {CARE_VIDEO_MAX_DURATION_SECONDS} segundos
+            (sem fotos na mesma atualização).
+          </span>
+          {preferirCamera ? (
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => videoCameraInputRef.current?.click()}
+                className="min-h-11 w-full gap-2"
+              >
+                <Video className="size-4" />
+                Gravar vídeo
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => videoInputRef.current?.click()}
+                className="min-h-11 w-full gap-2"
+              >
+                <FileVideo className="size-4" />
+                Escolher vídeo
+              </Button>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => videoInputRef.current?.click()}
+              className="min-h-11 w-full gap-2"
+            >
+              <FileVideo className="size-4" />
+              Adicionar vídeo
+            </Button>
+          )}
+        </div>
+      ) : null}
 
       {erroSelecao ? (
         <p role="alert" className="text-xs text-destructive">

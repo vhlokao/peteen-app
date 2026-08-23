@@ -576,11 +576,29 @@ model CareUpdate {
   @@map("care_updates")
 }
 
-/// V0 aceita apenas foto. VIDEO não existe aqui de propósito: um valor de enum
-/// sem pipeline de validação, transcodificação e limite de duração seria uma
-/// promessa que o código não cumpre. Entra quando houver a fundação, não antes.
+/// PHOTO e VIDEO compartilham a MESMA tabela e o MESMO pipeline lógico:
+/// autorização → ticket com path gerado no servidor → upload direto → validação
+/// por magic bytes → publicação atômica → signed URL de leitura. O que muda por
+/// tipo é apenas o BUCKET físico e o teto de tamanho (ver
+/// `bucketForCareMediaKind` em care-media-bucket.ts).
+///
+/// POR QUE DOIS BUCKETS, E NÃO UM COM TETO MAIOR: `file_size_limit` é por
+/// bucket, não por MIME. Subir `care-media` de 5 MB para 50 MB autorizaria
+/// FOTOS de 50 MB no upload — rejeitadas depois na publicação, mas já ocupando
+/// o bucket e multiplicando por 10 o custo de cada órfã. Com buckets separados,
+/// o `allowed_mime_types` de cada um impede fisicamente vídeo no bucket de foto
+/// e vice-versa, independentemente de qualquer bug de aplicação.
+///
+/// VIDEO entrou quando a fundação passou a existir: detecção de container
+/// ISOBMFF por magic bytes e teto de 50 MB verificado no objeto real. O que NÃO
+/// existe — e por isso não é prometido em lugar nenhum — é garantia
+/// server-side de DURAÇÃO. Os 60s são regra de produto aplicada no cliente; o
+/// servidor prova tamanho, container e posse. Não há coluna `durationSeconds`
+/// justamente porque ela só poderia guardar o que o cliente declarou, repetindo
+/// o erro que a ausência de `validatedAt` evita nesta mesma tabela.
 enum CareMediaType {
   PHOTO
+  VIDEO
 }
 
 /// Mídia de uma atualização de cuidado.

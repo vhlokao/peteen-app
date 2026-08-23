@@ -50,9 +50,9 @@ import {
   type CareMediaUploadTicket,
 } from "@/lib/storage/care-media"
 import {
-  CARE_MEDIA_ALLOWED_TYPES,
+  careMediaKindFromMimeType,
   CARE_MEDIA_MAX_OBJECTS_PER_REQUEST,
-  type CareMediaMimeType,
+  type CareAnyMimeType,
 } from "@/lib/storage/care-media-path"
 
 export type CareMediaAuthorizationResult =
@@ -98,12 +98,18 @@ export async function authorizeCareMediaUpload(input: {
     // (1) sessão + persona profissional
     const { session } = await requireProfessionalContext()
 
-    // Tipo antes de qualquer I/O: barato e recusa HEIC/vídeo na porta.
-    if (!CARE_MEDIA_ALLOWED_TYPES.includes(input.mimeType as CareMediaMimeType)) {
+    // Tipo antes de qualquer I/O: barato e recusa HEIC/WebM na porta.
+    //
+    // `careMediaKindFromMimeType` devolve null para tudo que não está numa das
+    // duas allowlists — é a MESMA função que decide o bucket, então não há como
+    // um tipo ser aceito aqui e não ter destino, nem o contrário.
+    const kind = careMediaKindFromMimeType(input.mimeType)
+    if (!kind) {
       return {
         ok: false,
         reason: "UNSUPPORTED_TYPE",
-        message: "Formato não suportado. Envie uma imagem JPEG, PNG ou WEBP.",
+        message:
+          "Formato não suportado. Envie uma imagem JPEG, PNG ou WEBP, ou um vídeo MP4 ou MOV.",
       }
     }
 
@@ -178,7 +184,11 @@ export async function authorizeCareMediaUpload(input: {
 
     const ticket = await createCareMediaUploadTicket({
       requestId: input.requestId,
-      mimeType: input.mimeType as CareMediaMimeType,
+      mimeType: input.mimeType as CareAnyMimeType,
+      // Decide o bucket. Derivado do MIME já validado acima, nunca recebido
+      // do cliente como campo próprio — um `kind` vindo de fora permitiria
+      // pedir destino de vídeo para um arquivo de imagem.
+      kind,
     })
 
     return { ok: true, ticket }
@@ -259,6 +269,10 @@ export async function authorizeCareMediaRead(input: {
     return createCareMediaReadUrl({
       path: media.storagePath,
       requestId: media.requestId,
+      // Bucket derivado do TIPO PERSISTIDO — que veio dos magic bytes na
+      // publicação. Sem isto, a leitura de um vídeo procuraria o objeto no
+      // bucket de fotos e devolveria `null`.
+      kind: media.type === "VIDEO" ? "VIDEO" : "PHOTO",
     })
   } catch (err) {
     // Mesma razão do upload: redirect/notFound do Next são o auth funcionando,

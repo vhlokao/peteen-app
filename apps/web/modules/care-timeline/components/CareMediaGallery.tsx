@@ -50,6 +50,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import type { CareMediaView } from "../domain/types"
+import { CareVideoPlayer } from "./CareVideoPlayer"
 import { imagemChegouQuebrada } from "../domain/media-display"
 import {
   CARE_MEDIA_THUMBNAIL_PX,
@@ -129,6 +130,17 @@ export function CareMediaGallery({
   const gatilhoRef = useRef<HTMLButtonElement | null>(null)
 
   if (media.length === 0) return null
+
+  // ── VÍDEO tem superfície própria ─────────────────────────────────────────
+  // A grade abaixo é de miniaturas quadradas com lightbox — desenho correto
+  // para até 3 fotos, errado para vídeo: não há miniatura a assinar (a
+  // transformação do Storage é de imagem) e ampliar num Dialog só duplicaria
+  // os controles que o player nativo já traz.
+  //
+  // O contrato V0 é 1 vídeo por atualização, publicado sozinho, então este
+  // ramo é excludente e não precisa compor os dois na mesma tela.
+  const video = media.find((m) => m.type === "VIDEO")
+  if (video) return <CareVideoPlayer media={video} />
 
   function marcarQuebrada(id: string) {
     setQuebradas((atual) => {

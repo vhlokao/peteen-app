@@ -50,8 +50,10 @@ import {
   type CareMediaAuthorizationResult,
 } from "./care-media-authorization"
 import {
+  careMediaKindFromPath,
   careMediaPathBelongsToRequest,
   declaredMimeTypeFromCareMediaPath,
+  CARE_VIDEO_MAX_PER_UPDATE,
 } from "@/lib/storage/care-media-path"
 import {
   createCareMediaDisplayUrl,
@@ -59,12 +61,14 @@ import {
   createCareMediaThumbnailUrl,
   deleteCareMediaObject,
   readCareMediaForValidation,
+  readCareMediaHeadBytes,
 } from "@/lib/storage/care-media"
 import {
   careMediaRejectionMessage,
-  validateCareMediaContent,
+  validateCareAnyMediaContent,
   CARE_MEDIA_SIGNATURE_READ_LENGTH,
 } from "@/lib/storage/care-media-validation"
+import { CARE_VIDEO_SIGNATURE_READ_LENGTH } from "@/lib/storage/care-video-signature"
 
 const DISPUTE_FROZEN_MESSAGE =
   "Esta solicitação está em disputa. A timeline de cuidado ficou congelada e não pode ser alterada."
@@ -170,16 +174,55 @@ async function validateMediaPaths(params: {
 
   for (const path of paths) {
     if (!careMediaPathBelongsToRequest(path, requestId)) {
-      return { ok: false, error: "Uma das fotos não pertence a este atendimento." }
+      return { ok: false, error: "Um dos arquivos não pertence a este atendimento." }
     }
 
-    const objeto = await readCareMediaForValidation({
-      path,
-      requestId,
-      bytes: CARE_MEDIA_SIGNATURE_READ_LENGTH,
-    })
+    // O TIPO vem do PATH, que o servidor gerou — é ele que decide em qual
+    // bucket procurar e qual teto aplicar. O cliente não informa nada disso.
+    const kind = careMediaKindFromPath(path)
+    if (!kind) {
+      return { ok: false, error: "Um dos arquivos não pôde ser verificado." }
+    }
+
+    // ── Leitura do cabeçalho ────────────────────────────────────────────────
+    // VÍDEO usa `Range` (64 bytes) em vez de baixar até 50 MB só para ler a
+    // assinatura. FOTO mantém `download` — 5 MB, caminho já em produção e
+    // testado, sem motivo para mexer.
+    //
+    // FAIL CLOSED: se o Range falhar (servidor ignorou, Content-Range ausente,
+    // rede), caímos para o download completo — que é lento, mas continua
+    // PROVANDO o conteúdo. Em nenhum caminho a falha de leitura vira aceitação;
+    // `objeto` nulo recusa a publicação logo abaixo.
+    let objeto: { header: Uint8Array; sizeBytes: number } | null = null
+
+    if (kind === "VIDEO") {
+      objeto = await readCareMediaHeadBytes({
+        path,
+        requestId,
+        kind,
+        bytes: CARE_VIDEO_SIGNATURE_READ_LENGTH,
+      })
+      if (!objeto) {
+        // Observável: distingue "Range indisponível" de falha de conteúdo.
+        console.warn("[care-media] range_fallback_download", { requestId })
+        objeto = await readCareMediaForValidation({
+          path,
+          requestId,
+          kind,
+          bytes: CARE_VIDEO_SIGNATURE_READ_LENGTH,
+        })
+      }
+    } else {
+      objeto = await readCareMediaForValidation({
+        path,
+        requestId,
+        kind,
+        bytes: CARE_MEDIA_SIGNATURE_READ_LENGTH,
+      })
+    }
+
     if (!objeto) {
-      return { ok: false, error: "Não foi possível confirmar o envio de uma das fotos." }
+      return { ok: false, error: "Não foi possível confirmar o envio de um dos arquivos." }
     }
 
     // O tipo declarado é recuperado da EXTENSÃO do path — que o servidor
@@ -187,26 +230,40 @@ async function validateMediaPaths(params: {
     // segunda fonte para essa declaração, e o cliente não controla nenhuma.
     const declarado = declaredMimeTypeFromCareMediaPath(path)
     if (!declarado) {
-      return { ok: false, error: "Uma das fotos não pôde ser verificada." }
+      return { ok: false, error: "Um dos arquivos não pôde ser verificado." }
     }
 
-    const veredito = validateCareMediaContent({
+    const veredito = validateCareAnyMediaContent({
       declaredMimeType: declarado,
       header: objeto.header,
       sizeBytes: objeto.sizeBytes,
     })
 
     if (!veredito.ok) {
-      // Conteúdo reprovado não pode sobreviver no bucket.
-      await deleteCareMediaObject({ path, requestId })
+      // Conteúdo reprovado não pode sobreviver no bucket — no bucket CERTO.
+      await deleteCareMediaObject({ path, requestId, kind })
       return { ok: false, error: careMediaRejectionMessage(veredito.reason) }
     }
 
     validadas.push({
       storagePath: path,
+      // Do veredito dos magic bytes, nunca do declarado.
+      type: veredito.kind,
       mimeType: veredito.mimeType,
       sizeBytes: veredito.sizeBytes,
     })
+  }
+
+  // ── Cota de VÍDEO: no máximo 1 por atualização ──────────────────────────
+  // Verificada aqui, sobre o resultado JÁ VALIDADO — não sobre o que o cliente
+  // disse ter enviado. O teto de 3 fotos continua sendo o de `CARE_UPDATE_MAX_MEDIA`
+  // acima; este é um limite adicional e independente.
+  const videos = validadas.filter((m) => m.type === "VIDEO").length
+  if (videos > CARE_VIDEO_MAX_PER_UPDATE) {
+    return {
+      ok: false,
+      error: `No máximo ${CARE_VIDEO_MAX_PER_UPDATE} vídeo por atualização.`,
+    }
   }
 
   return { ok: true, media: validadas }
@@ -228,10 +285,31 @@ async function toCareMediaViews(
   // atualização e várias atualizações na timeline, isso era parte do "demora
   // para aparecer" observado, independentemente do tamanho dos arquivos.
   const resultados = await Promise.all(
-    update.media.map(async (m) => {
+    // Retorno anotado: sem isto, o TypeScript estreita `m.type` para o literal
+    // de cada ramo ("VIDEO" num, "PHOTO" no outro) e o array resultante deixa
+    // de ser atribuível a CareMediaView[] — o type predicate do filter abaixo
+    // falha por um detalhe de inferência, não por erro real.
+    update.media.map(async (m): Promise<CareMediaView | null> => {
       const alvo = { path: m.storagePath, requestId: update.requestId }
+
+      // VÍDEO: uma assinatura só, no bucket de vídeo. Miniatura e display
+      // ficam `null` por construção — a transformação do Storage é de imagem,
+      // e pedi-la para um vídeo devolveria URL que não reproduz.
+      if (m.type === "VIDEO") {
+        const signedUrl = await createCareMediaReadUrl({ ...alvo, kind: "VIDEO" })
+        if (!signedUrl) return null
+        return {
+          id: m.id,
+          type: m.type,
+          signedUrl,
+          thumbnailUrl: null,
+          displayUrl: null,
+          mimeType: m.mimeType,
+        }
+      }
+
       const [signedUrl, thumbnailUrl, displayUrl] = await Promise.all([
-        createCareMediaReadUrl(alvo),
+        createCareMediaReadUrl({ ...alvo, kind: "PHOTO" }),
         createCareMediaThumbnailUrl(alvo),
         createCareMediaDisplayUrl(alvo),
       ])

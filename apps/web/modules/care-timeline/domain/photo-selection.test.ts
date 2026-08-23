@@ -22,6 +22,11 @@ import {
   remainingPhotoSlots,
   serializeCareUpdateDraft,
   validatePhotoCandidate,
+  CARE_VIDEO_MAX_BYTES,
+  CARE_VIDEO_MAX_DURATION_SECONDS,
+  isVideoMimeType,
+  validateVideoCandidate,
+  VIDEO_COPY,
   type PhotoSelectionItem,
 } from "./photo-selection.ts"
 
@@ -310,6 +315,97 @@ describe("item 13 — nenhuma copy vaza termo técnico", () => {
 
   it("toda copy termina em frase completa", () => {
     for (const [chave, frase] of Object.entries(PHOTO_COPY)) {
+      assert.ok(frase.length > 0, `${chave} vazia`)
+      assert.match(frase, /[.!?]$/, `${chave} não termina em pontuação: ${frase}`)
+    }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VÍDEO — Care Timeline Video V0
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("validateVideoCandidate", () => {
+  const ok = { type: "video/mp4", size: 10 * 1024 * 1024, duracaoSegundos: 30 }
+
+  it("aceita MP4 e MOV dentro dos limites", () => {
+    assert.equal(validateVideoCandidate(ok).ok, true)
+    assert.equal(validateVideoCandidate({ ...ok, type: "video/quicktime" }).ok, true)
+  })
+
+  it("recusa WebM com mensagem própria — grava em Android, não toca em iPhone", () => {
+    const r = validateVideoCandidate({ ...ok, type: "video/webm" })
+    assert.equal(r.ok, false)
+    assert.equal(r.ok === false && r.message, VIDEO_COPY.webm)
+  })
+
+  it("recusa acima de 50 MB", () => {
+    const r = validateVideoCandidate({ ...ok, size: CARE_VIDEO_MAX_BYTES + 1 })
+    assert.equal(r.ok, false)
+    assert.equal(r.ok === false && r.message, VIDEO_COPY.muitoGrande)
+  })
+
+  it("aceita exatamente no limite de tamanho", () => {
+    assert.equal(validateVideoCandidate({ ...ok, size: CARE_VIDEO_MAX_BYTES }).ok, true)
+  })
+
+  it("recusa acima de 60s", () => {
+    const r = validateVideoCandidate({ ...ok, duracaoSegundos: CARE_VIDEO_MAX_DURATION_SECONDS + 1 })
+    assert.equal(r.ok, false)
+    assert.equal(r.ok === false && r.message, VIDEO_COPY.muitoLongo)
+  })
+
+  it("aceita exatamente no limite de duração", () => {
+    assert.equal(
+      validateVideoCandidate({ ...ok, duracaoSegundos: CARE_VIDEO_MAX_DURATION_SECONDS }).ok,
+      true
+    )
+  })
+
+  it("RECUSA quando a duração não pôde ser lida — nunca publica no escuro", () => {
+    // O servidor não valida duração (ver comentário da função). Se o cliente
+    // também não conseguir, ninguém validou — e aceitar seria fingir que a
+    // regra dos 60s existe.
+    for (const duracao of [null, NaN, Infinity]) {
+      const r = validateVideoCandidate({ ...ok, duracaoSegundos: duracao })
+      assert.equal(r.ok, false, `duração ${duracao} deveria recusar`)
+      assert.equal(r.ok === false && r.message, VIDEO_COPY.duracaoDesconhecida)
+    }
+  })
+
+  it("ordem: tipo antes de tamanho e de duração", () => {
+    // Um WebM de 200 MB e 5 min deve ouvir "formato não compatível" (acionável:
+    // regravar em MP4), não "muito grande" — que levaria a pessoa a comprimir
+    // um arquivo que seria recusado do mesmo jeito.
+    const r = validateVideoCandidate({
+      type: "video/webm",
+      size: CARE_VIDEO_MAX_BYTES * 4,
+      duracaoSegundos: 300,
+    })
+    assert.equal(r.ok === false && r.message, VIDEO_COPY.webm)
+  })
+
+  it("isVideoMimeType distingue os dois mundos", () => {
+    assert.equal(isVideoMimeType("video/mp4"), true)
+    assert.equal(isVideoMimeType("image/jpeg"), false)
+  })
+})
+
+describe("VIDEO_COPY", () => {
+  it("nunca vaza termo técnico", () => {
+    const proibidos = ["bucket", "storagePath", "mime", "signedUrl", "undefined", "null", "ftyp"]
+    for (const [chave, frase] of Object.entries(VIDEO_COPY)) {
+      for (const termo of proibidos) {
+        assert.ok(
+          !frase.toLowerCase().includes(termo.toLowerCase()),
+          `VIDEO_COPY.${chave} contém "${termo}": ${frase}`
+        )
+      }
+    }
+  })
+
+  it("toda copy termina em frase completa", () => {
+    for (const [chave, frase] of Object.entries(VIDEO_COPY)) {
       assert.ok(frase.length > 0, `${chave} vazia`)
       assert.match(frase, /[.!?]$/, `${chave} não termina em pontuação: ${frase}`)
     }

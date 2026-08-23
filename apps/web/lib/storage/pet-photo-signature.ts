@@ -33,8 +33,17 @@ export const SIGNATURE_READ_LENGTH = 12
  */
 const UNINFORMATIVE_DECLARED_TYPES = new Set(["", "application/octet-stream"])
 
-// Brands ISOBMFF que identificam HEIC/HEIF — só para mensagem específica.
-const HEIC_HEIF_BRANDS = new Set([
+/**
+ * Brands ISOBMFF que identificam HEIC/HEIF — aqui, só para mensagem específica.
+ *
+ * EXPORTADO porque o detector de VÍDEO (care-video-signature.ts) precisa da
+ * MESMA lista para o efeito oposto: HEIC e MP4/MOV compartilham a estrutura de
+ * caixa `ftyp`, então um HEIC passaria pela checagem de container de vídeo se
+ * não fosse recusado explicitamente pelo brand. Duas listas separadas
+ * divergiriam no dia em que um brand novo fosse acrescentado a uma só — e o
+ * sintoma seria um HEIC aceito como vídeo.
+ */
+export const HEIC_HEIF_BRANDS = new Set([
   "heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1",
 ])
 

@@ -356,7 +356,11 @@ export async function createCareUpdateAtomic(data: {
           media: data.media.length
             ? {
                 create: data.media.map((m) => ({
-                  type: "PHOTO" as const,
+                  // Vem do veredito dos MAGIC BYTES (ValidatedCareMedia.type),
+                  // não mais fixo em PHOTO. Era literal enquanto vídeo não
+                  // existia; mantê-lo assim gravaria todo vídeo como foto e
+                  // faria a leitura procurá-lo no bucket errado.
+                  type: m.type,
                   storagePath: m.storagePath,
                   mimeType: m.mimeType,
                   sizeBytes: m.sizeBytes,

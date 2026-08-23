@@ -50,7 +50,12 @@ export const CARE_CATEGORY_LABELS: Record<CareUpdateCategory, string> = {
  */
 export type CareMediaView = {
   id: string
-  type: "PHOTO"
+  /**
+   * VIDEO só produz `signedUrl` — `thumbnailUrl` e `displayUrl` são sempre
+   * `null`, porque a transformação do Storage opera apenas em imagem. O player
+   * usa a original com `preload="metadata"`, sem baixar o arquivo inteiro.
+   */
+  type: "PHOTO" | "VIDEO"
   /**
    * URL assinada da ORIGINAL, de vida curta. Nunca persistida no banco.
    * Usada pelo lightbox — a visualização de evidência.
@@ -176,6 +181,11 @@ export type CreateCareUpdateInput = {
 /** Mídia já validada, pronta para persistir. Só o servidor constrói isto. */
 export type ValidatedCareMedia = {
   storagePath: string
+  /**
+   * Derivado dos MAGIC BYTES, nunca do declarado — é o mesmo veredito que
+   * decide o bucket de origem. Persistido em `CareMedia.type`.
+   */
+  type: "PHOTO" | "VIDEO"
   mimeType: string
   sizeBytes: number
 }
@@ -192,7 +202,7 @@ export type ValidatedCareMedia = {
  */
 export type CareMediaInternal = {
   id: string
-  type: "PHOTO"
+  type: "PHOTO" | "VIDEO"
   storagePath: string
   mimeType: string
 }

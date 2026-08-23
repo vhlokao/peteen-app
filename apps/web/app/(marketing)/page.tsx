@@ -649,9 +649,22 @@ export default function HomePage() {
       <footer role="contentinfo" className="bg-[#16244F] px-6 py-12 lg:px-20">
         <div className="mx-auto flex max-w-6xl flex-col gap-8 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <Link href="/" className="mb-3 inline-flex items-center gap-2 text-lg font-bold tracking-tight text-white">
-              <span className="size-2 rounded-full bg-[#E07A5F]" aria-hidden="true" />
-              Peteen
+            {/* Mesmo wordmark oficial claro do header (logo-horizontal-clara —
+                ver docs/BRAND_DOMAIN_PUBLIC_SURFACE.md §3): o footer tem fundo
+                navy sólido (`bg-[#16244F]`, sem a opacidade /85 do header, mas
+                a mesma cor), então a versão clara serve igual. Substitui o
+                mesmo par ponto-decorativo+texto que o header tinha antes desta
+                missão — nunca foi um asset de marca. `h-8`: mesma altura do
+                header, para as duas aparições da marca lerem como a mesma
+                logo em qualquer parte da página. */}
+            <Link href="/" aria-label="Peteen — página inicial" className="mb-3 inline-flex items-center">
+              <Image
+                src="/brand/logo-horizontal-clara.png"
+                alt="Peteen"
+                width={96}
+                height={32}
+                className="h-8 w-auto"
+              />
             </Link>
             <p className="max-w-[280px] text-[13px] leading-relaxed text-white/30">
               Rede de confiança para cuidados pet. Construída atendimento por atendimento, no Brasil.

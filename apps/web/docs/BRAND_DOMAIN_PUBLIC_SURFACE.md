@@ -85,44 +85,71 @@ do corte, senão o login quebra no instante em que o domínio virar.
 
 ### Fonte canônica
 
-`apps/web/public/brand/` — **ainda não existe**. Criar quando os arquivos
-finais chegarem. Ícones que o Next resolve por convenção (favicon, apple-icon,
-`icon`) ficam em `apps/web/app/`, que é onde o framework os procura; o resto
-(logos, OG) em `public/brand/`. Não duplicar entre as duas.
+`apps/web/public/brand/` — assets finais em uso. `apps/web/public/brand/_raw/`
+guarda os arquivos originais fornecidos, antes de qualquer processamento —
+preservados para reprocessar se o material mudar, nunca referenciados
+diretamente pelo código. Ícones que o Next resolve por convenção (favicon,
+apple-icon, `icon`, OG) ficam em `apps/web/app/`, que é onde o framework os
+procura; o resto (logos, ícones do manifest) em `public/brand/`.
 
-### O que existe hoje
+### Estado atual — resolvido em 2026-08-23
 
-| Asset | Estado |
-|---|---|
-| `app/favicon.ico` | **Boilerplate do `create-next-app`** — 25.931 bytes, idêntico ao padrão. Nunca foi trocado |
-| Logo | **Não existe.** Nav e footer usam texto "Peteen" + um ponto laranja (`#E07A5F`) |
-| Ícones PWA | **Não existem** — ver seção 5 |
-| OG image | **Não existe** |
-| `public/*.svg` | `file`, `globe`, `next`, `vercel`, `window` — resíduo do boilerplate, sem uso |
-| `public/images/home/` | 22 MB, 12 arquivos; **8 deles não são referenciados por nada** |
-
-### O que falta você fornecer
-
-| Arquivo | Formato | Dimensões | Para quê |
+| Arquivo | Local | Dimensão | Origem |
 |---|---|---|---|
-| `icon.png` | PNG | **512×512** | PWA + fallback geral |
-| `icon-192.png` | PNG | **192×192** | PWA Android |
-| `icon-maskable.png` | PNG | **512×512**, safe zone central de 80% | Ícone adaptativo Android |
-| `apple-icon.png` | PNG | **180×180**, sem transparência | Tela de Início iOS |
-| `favicon.ico` | ICO | 16/32/48 multi-resolução | Aba do navegador |
-| `opengraph-image.png` | PNG/JPG | **1200×630** | Preview de WhatsApp/redes |
-| `logo-horizontal.svg` | SVG | — | Nav, footer, e-mails |
-| `logo-simbolo.svg` | SVG | quadrado | Usos compactos |
-| `logo-clara.svg` | SVG | — | Sobre fundo escuro (`#16244F`) |
+| `favicon.ico` | `app/` | 16/32/48 multi-res | empacotado à mão (container ICO com PNGs — sem lib nova) a partir do símbolo colorido |
+| `icon.png` | `app/` | 512×512 | símbolo colorido, `_raw/Símbolo isolado = asset 2.png` |
+| `apple-icon.png` | `app/` | 180×180, sem alpha | `_raw/ICONE-180-X-180-IPHOHE.png`, já vinha exato — copiado sem reprocessar |
+| `opengraph-image.png` | `app/` | 1200×630 | composto: fundo `#FAFAF8` + `logo-horizontal.png` centralizado |
+| `icon-192.png` / `icon-512.png` | `public/brand/` | 192×192 / 512×512 | resize do símbolo colorido, referenciados pelo manifest |
+| `icon-maskable.png` | `public/brand/` | 512×512, opaco | ver nota de safe zone abaixo |
+| `logo-horizontal.png` | `public/brand/` | 2172×724 (3:1), transparente | `_raw/Logo completa = asset 1.png`, cópia direta |
+| `logo-simbolo.png` | `public/brand/` | 1266×1243, transparente | `_raw/Símbolo isolado = asset 2.png`, cópia direta |
+| `logo-clara.png` | `public/brand/` | 1235×721, transparente | glifo branco **extraído por chroma-key** de `_raw/fundo azul.png` (fundo navy uniforme removido; nenhum traço novo desenhado) |
 
-**Não faça upscale.** Se só houver um asset pequeno, o correto é gerar os
-tamanhos a partir do vetor, não esticar um PNG.
+**Nota de safe zone do maskable:** o glifo branco de `_raw/fundo azul.png`,
+redimensionado direto para 512×512, tinha **4,77% dos pixels fora da safe zone
+circular** (raio 40%, padrão W3C) — as pontas das duas argolas do símbolo
+seriam cortadas em launchers Android com máscara circular. Corrigido
+reescalando o glifo (fator 0,9064) e recompondo centrado sobre o fundo navy
+antes do resize final; verificado numericamente até **0% fora da zona**
+(~78% do raio, com folga sob o limite de 80%). Não foi um ajuste visual "a
+olho" — cada iteração foi medida pixel a pixel contra o círculo real.
 
-### Cores já usadas no código
+**Limitação registrada, não bloqueante:** em 16px (o menor tamanho de
+favicon), o "nó" central do símbolo — o traço que faz o glifo ser dois elos
+conectados, não um infinito genérico — praticamente desaparece. Em 32px já
+fica nítido. O favicon continua reconhecível por cor e forma geral; só o
+detalhe mais distintivo se perde no menor tamanho.
 
-`#16244F` (azul escuro, nav/footer) · `#E07A5F` (laranja, acento) ·
-`#FAFAF8` (fundo claro, `theme_color`) · `#2C4893` (azul de link) ·
-`#1A1A1A` (texto).
+**`AZUL-COM-BORDA.png`/`BRANCO-COM-BORDA.png`** (primeira leva de arquivos,
+já descartados pelo próprio Vitor) tinham cantos arredondados e sombra
+desenhados dentro da imagem — formato errado para ícone de sistema, que
+aplica a própria máscara por cima. Ficou registrado aqui como o motivo de
+terem sido descartados, não como um asset ainda pendente.
+
+### Ainda sem resolver
+
+| Item | Situação |
+|---|---|
+| SVGs (`logo-horizontal`, `logo-simbolo`) | Só existem como PNG. Funcional (Next `<Image>` lida bem com raster), mas não escala tão bem quanto vetor — **P2** |
+| `logo-clara` do **wordmark completo** (não só o símbolo) | Só o símbolo tem versão branca. Se precisar do nome "peteen" por extenso sobre fundo escuro, falta gerar |
+| `app/favicon.ico` do boilerplate do Next | **Substituído** — não é mais o do `create-next-app` |
+| `public/*.svg` (`file`, `globe`, `next`, `vercel`, `window`) | Resíduo do boilerplate, sem uso — seguem aí, remoção é limpeza P2 |
+| `public/images/home/` | 22 MB, 8 dos 12 arquivos sem referência — P2, não tocado nesta rodada |
+
+### Cores dos assets novos vs. código existente — DECISÃO PENDENTE
+
+Os arquivos entregues usam uma paleta (`#02195C` navy, `#002B97`/`#FB4F36`
+símbolo) visivelmente mais saturada/escura que o que já está espalhado pelo
+código: `#16244F` (nav/footer), `#E07A5F` (acento). **Nenhuma dessas cores no
+código foi alterada nesta missão.** Os novos assets (ícones, OG) usam a
+paleta deles própria isoladamente — não foi feita tentativa de fazer bater
+com o navy/laranja existente, porque isso exigiria decidir qual dos dois
+prevalece, e essa decisão não foi tomada.
+
+Se a paleta nova for a definitiva, falta: atualizar `nav`/`footer` da home
+(`app/(marketing)/page.tsx`), o `theme_color`/`background_color` do
+`manifest.ts`, e a cor de destaque usada em toda a UI.
 
 ---
 
@@ -137,17 +164,17 @@ tamanhos a partir do vetor, não esticar um PNG.
 | `start_url` | `/dashboard` | OK — sem sessão, redireciona para `/login` |
 | `display` | `standalone` | OK |
 | `theme_color` / `background_color` | `#FAFAF8` | OK — tema do piloto é **LIGHT** |
-| `icons` | **ausente** | 🔴 **BLOQUEIA A INSTALAÇÃO** |
+| `icons` | **192, 512 e 512-maskable** | ✅ resolvido em 2026-08-23 |
 
-### Consequência real da ausência de ícones
+### Consequência da ausência de ícones — revertida
 
-Sem `icons` de 192 e 512, o navegador **não oferece instalação** do app. E como
-o iOS só entrega Web Push para aplicações adicionadas à Tela de Início,
-**push em iPhone permanece indisponível** enquanto os ícones não existirem.
-Android e desktop não dependem de instalação e já funcionam.
-
-Isto não é uma limitação a contornar com ícones inventados: um PWA instalado
-com ícone falso é pior que um PWA não instalável.
+Sem `icons` de 192 e 512, o navegador não oferecia instalação do app — e como
+o iOS só entrega Web Push para aplicações adicionadas à Tela de Início, push em
+iPhone ficava indisponível. Com os três ícones publicados (`icon-192.png`,
+`icon-512.png`, `icon-maskable.png`, seção 3), a instalação volta a funcionar.
+**Falta apenas a QA física** confirmar em aparelho real — instalação em si não
+foi testada em hardware, só verificada via `fetch` e inspeção de metadata no
+dev server.
 
 **Nota:** `app/layout.tsx` ainda declara um `themeColor` para
 `prefers-color-scheme: dark` (`#1A1F2E`). O piloto é light-only. Não foi
@@ -172,6 +199,25 @@ Duas camadas, que fazem coisas diferentes e não se substituem:
 - `app/robots.ts` → `Disallow` pede para **não rastrear**
 - `lib/seo/private-area.ts` → `noindex, nofollow` impede de **indexar**,
   aplicado nos layouts das seis áreas privadas
+
+### Pegadinha real do Next 15.5: `openGraph` por segmento SUBSTITUI, não mescla
+
+Descoberta ao publicar a `opengraph-image.png`: o Next injeta a imagem de
+convenção de arquivo automaticamente **só quando o segmento não declara seu
+próprio objeto `openGraph`**. Qualquer página que declare `openGraph: {...}`
+no `metadata` export **substitui inteiramente** o herdado do layout pai —
+inclusive `images` — mesmo sem mencionar `images` no objeto novo. Confirmado
+lendo o código-fonte real de merge do Next
+(`node_modules/next/dist/lib/metadata/resolve-metadata.js`,
+`mergeStaticMetadata`) e comparando `/login` (sem `openGraph` próprio → herda
+a imagem) com `/` antes da correção (com `openGraph` próprio → `og:image`
+ausente do HTML).
+
+**Regra para qualquer página nova que declare `openGraph` customizado:**
+sempre incluir `images: ["/opengraph-image.png"]` (ou a imagem específica da
+página) dentro do objeto — nunca assumir que a herança do layout cobre.
+Corrigido em `app/(marketing)/page.tsx` e `app/p/[professionalId]/page.tsx`,
+as duas páginas que tinham esse gap.
 
 ---
 

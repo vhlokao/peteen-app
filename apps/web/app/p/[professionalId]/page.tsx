@@ -41,6 +41,12 @@ export const metadata: Metadata = {
   // Landing de convite não deve ser indexada: é um link pessoal compartilhado,
   // não uma página de catálogo. O perfil público indexável é outro assunto.
   robots: { index: false, follow: false },
+  // `images` obrigatório aqui pelo mesmo motivo documentado na home
+  // (app/(marketing)/page.tsx): um `openGraph` customizado substitui — nunca
+  // mescla com — o herdado do root layout, e sem esta linha o preview do
+  // WhatsApp ficava sem imagem nenhuma, silenciosamente. Reaproveita a MESMA
+  // imagem genérica do produto — coerente com "o preview é genérico de
+  // propósito" logo acima: nada específico do profissional entra aqui.
   openGraph: {
     type: "website",
     siteName: "Peteen",
@@ -48,6 +54,7 @@ export const metadata: Metadata = {
     title: "Convite — Peteen",
     description:
       "Você recebeu um convite para acompanhar os cuidados do seu pet pela Peteen.",
+    images: ["/opengraph-image.png"],
   },
 }
 

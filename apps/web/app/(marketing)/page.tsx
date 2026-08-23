@@ -16,6 +16,16 @@ export const metadata: Metadata = {
     "Profissionais com histórico real de atendimentos, avaliações de tutores e recomendação de parceiros locais. Grátis para tutores.",
   alternates: { canonical: "/" },
   robots: { index: true, follow: true },
+  // `images` é OBRIGATÓRIO aqui, mesmo self-explanatory que pareça redundante:
+  // o Next NÃO faz deep-merge de `openGraph` entre segmentos — um `openGraph`
+  // customizado no segmento filho SUBSTITUI o do pai por inteiro. Sem esta
+  // linha, a home perdia silenciosamente o og:image herdado do root layout
+  // (app/opengraph-image.png), porque este objeto inteiro tomava o lugar do
+  // herdado antes que a convenção de arquivo tivesse a chance de mesclar —
+  // e como não há um `opengraph-image.png` dentro de app/(marketing)/, nada
+  // reconstituía a imagem depois disso. Comportamento verificado direto no
+  // HTML servido, comparando /login (sem openGraph próprio → herda a imagem)
+  // com / antes desta linha (com openGraph próprio → og:image ausente).
   openGraph: {
     type: "website",
     siteName: "Peteen",
@@ -24,6 +34,7 @@ export const metadata: Metadata = {
     title: "Peteen — Encontre quem cuida do seu pet com confiança",
     description:
       "Profissionais com histórico real de atendimentos, avaliações de tutores e recomendação de parceiros locais.",
+    images: ["/opengraph-image.png"],
   },
 }
 

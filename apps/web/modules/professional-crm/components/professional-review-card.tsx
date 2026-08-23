@@ -2,14 +2,16 @@ import { Star } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 import type { ProfessionalReviewRow } from "../domain/types"
 
+// `Review.createdAt` — instante real do envio da avaliação.
 function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return formatEventInstant(new Date(date), {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(date))
+  })
 }
 
 type ProfessionalReviewCardProps = {

@@ -16,6 +16,7 @@ import { requireAdminOrRedirect } from "@/modules/identity/application/get-sessi
 
 import { calculateTrustScore } from "@/modules/trust-engine/application/calculate-trust-score"
 import { prisma } from "@/lib/prisma/client"
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 import { TRUST_LEVEL_LABELS } from "@/modules/professional/domain/types"
 import { REFERENCE_WEIGHTS, RECURRENCE_SESSION_BONUS } from "@/modules/trust-engine/domain/constants"
 import { Separator } from "@/components/ui/separator"
@@ -42,10 +43,12 @@ function formatValue(n: number): string {
 
 function formatDate(d: Date | null): string {
   if (!d) return "—"
-  return new Intl.DateTimeFormat("pt-BR", {
+  // Fuso explícito: sem ele o painel de auditoria mostraria o relógio do
+  // runtime (UTC na Vercel), não o horário real do evento.
+  return formatEventInstant(new Date(d), {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
-  }).format(new Date(d))
+  })
 }
 
 function Row({ label, value, mono = false }: { label: string; value: React.ReactNode; mono?: boolean }) {
@@ -279,9 +282,9 @@ export default async function TrustDebugPage({ params }: PageProps) {
                     )}
                   </div>
                   <span className="text-muted-foreground">
-                    {new Intl.DateTimeFormat("pt-BR", {
+                    {formatEventInstant(new Date(e.createdAt), {
                       day: "2-digit", month: "2-digit", year: "numeric",
-                    }).format(new Date(e.createdAt))}
+                    })}
                   </span>
                 </div>
                 <span

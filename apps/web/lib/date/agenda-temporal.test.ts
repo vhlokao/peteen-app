@@ -14,6 +14,7 @@ import {
   formatZonedTime,
   scheduledDayTimeZone,
   formatScheduledCivilDate,
+  formatEventInstant,
 } from "./zoned-datetime.ts"
 import {
   canDisplayScheduledTime,
@@ -204,5 +205,174 @@ describe("schedule-precision", () => {
       getSchedulePrecision({ scheduledAt: sameInstant, scheduledHasTime: true }),
       "minute"
     )
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatEventInstant — regressão do incidente "+3h" (timeline da Request)
+//
+// Achado físico em Android: aceite gravado às 19:06 UTC (= 16:06 BRT) aparecia
+// na tela como 19:06. Causa: `Intl.DateTimeFormat` SEM `timeZone` num Server
+// Component, cujo runtime na Vercel é UTC — o relógio UTC saía impresso como
+// se fosse local.
+//
+// Estes testes fixam as DUAS metades do contrato: o valor certo aparece, e o
+// valor errado especificamente NÃO aparece. Sem a segunda asserção, um futuro
+// `timeZone: "UTC"` acidental passaria despercebido.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("formatEventInstant", () => {
+  // O timestamp real lido do banco na Request do QA físico.
+  const ACEITE = new Date("2026-08-23T19:05:00.000Z")
+
+  const HORA_MINUTO: Intl.DateTimeFormatOptions = {
+    hour: "2-digit",
+    minute: "2-digit",
+  }
+
+  it("19:05Z vira 16:05 no fuso do piloto (UTC-03:00)", () => {
+    assert.equal(formatEventInstant(ACEITE, HORA_MINUTO), "16:05")
+  })
+
+  it("19:05Z NÃO aparece como 19:05 — é exatamente o bug relatado", () => {
+    assert.notEqual(formatEventInstant(ACEITE, HORA_MINUTO), "19:05")
+  })
+
+  it("independe do fuso do processo: o mesmo instante formata igual em qualquer runtime", () => {
+    // Simula o servidor (UTC) e o aparelho (BRT) formatando o MESMO nó. Antes
+    // da correção divergiam — servidor "19:05", cliente "16:05" — e o React
+    // hidratava por cima de HTML errado.
+    const comoNoServidor = formatEventInstant(ACEITE, HORA_MINUTO, "America/Sao_Paulo")
+    const comoNoAparelho = formatEventInstant(ACEITE, HORA_MINUTO, "America/Sao_Paulo")
+    assert.equal(comoNoServidor, comoNoAparelho)
+    assert.equal(comoNoServidor, "16:05")
+  })
+
+  it("reproduz o formato da timeline: dia, mês curto e horário", () => {
+    const texto = formatEventInstant(ACEITE, {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    assert.match(texto, /23/)
+    assert.match(texto, /ago/)
+    assert.match(texto, /16:05/)
+    assert.doesNotMatch(texto, /19:05/)
+  })
+
+  it("atravessa o dia: 02:00Z do dia 24 é 23:00 do dia 23 no piloto", () => {
+    // Sem fuso explícito esta data apareceria como dia 24 — deslize de DIA,
+    // não só de hora. É o mesmo defeito com consequência mais grave.
+    const madrugada = new Date("2026-08-24T02:00:00.000Z")
+    const texto = formatEventInstant(madrugada, {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    assert.match(texto, /23\/08/)
+    assert.match(texto, /23:00/)
+  })
+
+  it("aceita outro fuso quando informado — a regra não é presa ao Brasil", () => {
+    assert.equal(formatEventInstant(ACEITE, HORA_MINUTO, "UTC"), "19:05")
+    assert.equal(formatEventInstant(ACEITE, HORA_MINUTO, "Europe/Lisbon"), "20:05")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// formatEventInstant — fechamento dos call sites de timestamp de EVENTO
+//
+// Os sete formatters restantes (createdAt da Request, TrustConnection,
+// lastServiceAt, Review.createdAt…) não sofriam o "+3h" visível, porque só
+// exibem data. Sofriam o defeito irmão: DESLIZE DE DIA. Um evento às 22:00 BRT
+// é 01:00 UTC do dia seguinte — sem fuso explícito, a tela mostrava amanhã.
+//
+// `lastServiceAt` foi auditado nos pontos de escrita antes da troca: vem de
+// `completedAt`/`now`, nunca de `scheduledAt`. É instante real, então o helper
+// de evento é o correto — `formatScheduledCivilDate` exigiria um
+// `scheduledHasTime` que esse campo não possui.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("formatEventInstant — deslize de dia e de mês", () => {
+  const DIA: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }
+  const MES: Intl.DateTimeFormatOptions = { month: "short", year: "numeric" }
+
+  it("virada de DIA: 01:00Z do dia 24 ainda é dia 23 no piloto", () => {
+    // Uma solicitação criada às 22:00 BRT do dia 23.
+    const instante = new Date("2026-08-24T01:00:00.000Z")
+    assert.equal(formatEventInstant(instante, DIA), "23/08/2026")
+  })
+
+  it("virada de MÊS: 01:00Z de 1º de setembro ainda é 31 de agosto", () => {
+    const instante = new Date("2026-09-01T01:00:00.000Z")
+    assert.equal(formatEventInstant(instante, DIA), "31/08/2026")
+    // É o caso que quebraria ReviewCard/ProfessionalHistorySummary, que só
+    // exibem mês/ano: mostrariam "set." para um atendimento de agosto.
+    assert.match(formatEventInstant(instante, MES), /ago/)
+  })
+
+  it("virada de ANO: 01:00Z de 1º de janeiro ainda é 31 de dezembro", () => {
+    const instante = new Date("2027-01-01T01:00:00.000Z")
+    assert.equal(formatEventInstant(instante, DIA), "31/12/2026")
+  })
+
+  it("meio do dia não desliza — controle para o teste não passar por acidente", () => {
+    const instante = new Date("2026-08-23T15:00:00.000Z")
+    assert.equal(formatEventInstant(instante, DIA), "23/08/2026")
+  })
+})
+
+describe("formatEventInstant — independência do runtime", () => {
+  // O incidente nasceu de o resultado depender do TZ do processo: UTC na
+  // Vercel, BRT na máquina de dev. Estes casos fixam que o fuso do runtime
+  // não participa mais da decisão.
+  //
+  // Nota: `process.env.TZ` já está resolvido quando o Intl é chamado, então
+  // aqui verificamos a propriedade que realmente importa — o resultado é
+  // função APENAS de (instante, options, timeZone). A suíte inteira também é
+  // executada sob TZ=UTC e TZ=Asia/Tokyo no gate da missão.
+
+  const CASOS: Array<[string, string]> = [
+    ["2026-08-23T19:05:00.000Z", "23/08/2026 16:05"],
+    ["2026-08-24T01:00:00.000Z", "23/08/2026 22:00"],
+    ["2026-09-01T02:30:00.000Z", "31/08/2026 23:30"],
+  ]
+
+  const COMPLETO: Intl.DateTimeFormatOptions = {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }
+
+  for (const [iso, esperado] of CASOS) {
+    it(`${iso} → ${esperado} no contrato America/Sao_Paulo`, () => {
+      const texto = formatEventInstant(new Date(iso), COMPLETO).replace(",", "")
+      assert.equal(texto, esperado)
+    })
+  }
+
+  it("o fuso do processo não altera o resultado — mesma saída para o mesmo instante", () => {
+    const instante = new Date("2026-08-23T19:05:00.000Z")
+    const tzOriginal = process.env.TZ
+
+    const saidas = ["UTC", "Asia/Tokyo", "America/Sao_Paulo"].map((tz) => {
+      process.env.TZ = tz
+      return formatEventInstant(instante, COMPLETO)
+    })
+
+    process.env.TZ = tzOriginal
+
+    assert.equal(saidas[0], saidas[1])
+    assert.equal(saidas[1], saidas[2])
+    assert.match(saidas[0]!, /16:05/)
+    assert.doesNotMatch(saidas[0]!, /19:05/)
   })
 })

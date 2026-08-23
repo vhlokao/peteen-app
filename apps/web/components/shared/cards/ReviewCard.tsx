@@ -3,6 +3,7 @@ import { Star } from "lucide-react"
 import { SPECIES_LABELS, type Species } from "@/modules/tutor/domain/types"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { Badge } from "@/components/ui/badge"
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 import type { ReviewWithContext } from "@/modules/review/domain/types"
 
 type ReviewCardProps = {
@@ -26,11 +27,14 @@ function StarRating({ rating }: { rating: number }) {
   )
 }
 
+// `Review.createdAt` — instante real. Só mês/ano são exibidos, então o
+// deslize só apareceria na virada de MÊS; o fuso explícito custa o mesmo e
+// mantém o formatter dentro do contrato temporal.
 function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return formatEventInstant(new Date(date), {
     month: "short",
     year: "numeric",
-  }).format(new Date(date))
+  })
 }
 
 export function ReviewCard({ review }: ReviewCardProps) {

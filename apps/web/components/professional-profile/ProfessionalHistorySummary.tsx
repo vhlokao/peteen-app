@@ -6,6 +6,8 @@ import {
   RELATIONSHIP_LEVEL_LABELS,
 } from "@/modules/relationship/domain/constants"
 import type { RelationshipLevel } from "@/modules/relationship/domain/types"
+// `lastServiceAt` deriva de `completedAt` — instante real, não data civil.
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 
 const NAVY_SOFT = "#2C4893"
 const CORAL = "#E07A5F"
@@ -67,9 +69,10 @@ export function ProfessionalHistorySummary({
                 <>
                   {" "}
                   · último atendimento em{" "}
-                  {new Intl.DateTimeFormat("pt-BR", { month: "short", year: "numeric" }).format(
-                    new Date(myRelationship.lastServiceAt)
-                  )}
+                  {formatEventInstant(new Date(myRelationship.lastServiceAt), {
+                    month: "short",
+                    year: "numeric",
+                  })}
                 </>
               )}
             </p>

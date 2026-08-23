@@ -13,14 +13,17 @@ import {
   CONNECTION_TYPE_LABELS,
   SOURCE_TYPE_LABELS,
 } from "@/modules/trust-graph/domain/constants"
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 
 export const metadata: Metadata = { title: "Admin — Rede de Confiança" }
 export const dynamic = "force-dynamic"
 
+// `TrustConnection.createdAt` — instante real. Fuso explícito pelo helper
+// central: sem ele uma conexão criada à noite (BRT) cairia no dia seguinte.
 function formatDate(d: Date): string {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return formatEventInstant(new Date(d), {
     day: "2-digit", month: "2-digit", year: "numeric",
-  }).format(new Date(d))
+  })
 }
 
 type SearchParams = Promise<{

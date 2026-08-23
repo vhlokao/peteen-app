@@ -11,6 +11,7 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 import { CARE_CATEGORY_LABELS, type CareUpdateCategory } from "../domain/types"
 import type {
   AdminAuditEntry,
@@ -42,11 +43,20 @@ function categoryLabel(value: string | undefined): string | undefined {
   return CARE_CATEGORY_LABELS[value as CareUpdateCategory] ?? value
 }
 
+// `toLocaleString` sem `timeZone` seguia o fuso do runtime — UTC na Vercel.
+// Num painel cuja função é reconstruir o que mudou e quando, um instante
+// deslocado é pior que nenhum. O helper central injeta o fuso do piloto.
 function formatIsoDate(value: string | undefined): string | undefined {
   if (!value) return undefined
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return undefined
-  return d.toLocaleString("pt-BR")
+  return formatEventInstant(d, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
 }
 
 /**

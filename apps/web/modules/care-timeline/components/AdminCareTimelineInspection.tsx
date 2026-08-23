@@ -11,6 +11,7 @@
 
 import { CheckCircle2, PencilLine, Trash2, ShieldAlert } from "lucide-react"
 
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 import { CARE_CATEGORY_LABELS } from "../domain/types"
 import type {
   AdminCareTimelineInspection as AdminCareTimelineInspectionData,
@@ -18,14 +19,17 @@ import type {
   AdminCareUpdateStatus,
 } from "../domain/admin-types"
 
+// Fuso explícito pelo helper central — sem ele o horário sai no fuso do
+// runtime (UTC na Vercel) e a inspeção do backoffice mostraria um instante
+// deslocado justamente onde se investiga o que aconteceu e quando.
 function formatDateTime(date: Date): string {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return formatEventInstant(new Date(date), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(date))
+  })
 }
 
 const STATUS_CONFIG: Record<

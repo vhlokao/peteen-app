@@ -1,5 +1,6 @@
 import { CheckCircle2, Circle, XCircle, Clock } from "lucide-react"
 
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 import type {
   RequestStatus,
 } from "@/modules/service-request/domain/types"
@@ -36,13 +37,16 @@ type TimelineStep = {
   auditEventId?: string
 }
 
+// Fuso explícito via helper central: este é um Server Component, e o runtime
+// da Vercel é UTC. Formatar sem `timeZone` imprimia o relógio UTC como se
+// fosse local (+3h no piloto). Ver lib/date/zoned-datetime.ts.
 function formatDateTime(date: Date): string {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return formatEventInstant(new Date(date), {
     day: "2-digit",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(date))
+  })
 }
 
 function buildSteps(request: {

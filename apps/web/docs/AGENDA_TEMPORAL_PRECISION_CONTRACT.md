@@ -36,6 +36,29 @@ date-only → UTC                para preservar o dia gravado
 timed     → America/Sao_Paulo  para representar o horário local real
 ```
 
+## Timestamps de EVENTO — regra irmã
+
+`scheduledAt` é ambíguo e depende de `scheduledHasTime`. Timestamps de **evento**
+(`createdAt`, `acceptedAt`, `startedAt`, `completedAt`, `occurredAt`, `AuditLog`)
+não têm essa ambiguidade: são sempre instantes reais. Formatá-los exige o mesmo
+cuidado com fuso, mas **não** exige o flag de precisão.
+
+Usar `formatEventInstant(instant, options)` de `lib/date/zoned-datetime.ts`.
+O `timeZone` é injetado pelo helper — o chamador não consegue esquecê-lo.
+
+**Incidente que originou a regra (23/08/2026, Android físico):** a timeline
+"Etapas do atendimento" formatava com `Intl.DateTimeFormat("pt-BR", {...})` sem
+`timeZone`, dentro de um **Server Component**. O runtime da Vercel é UTC, então
+o relógio UTC saía impresso como se fosse local — um aceite às 16:06 BRT
+aparecia como 19:06. Exatamente +3h, para todos os usuários.
+
+**Por que fuso fixo e não o do aparelho:** Server Component não conhece o fuso
+do browser — nenhum código do cliente rodou quando o HTML é gerado. Formatar
+pelo aparelho exigiria mover a renderização para o cliente, e servidor e browser
+produziriam strings diferentes para o mesmo nó (hydration mismatch em toda tela
+com horário). O mesmo defeito já existia, latente, na Care Timeline: Client
+Component é renderizado no servidor também, e o SSR saía em UTC.
+
 ## Fonte única — não duplicar
 
 Usar sempre os helpers centrais. **Não** criar formatação local paralela em componentes.
@@ -45,6 +68,7 @@ Usar sempre os helpers centrais. **Não** criar formatação local paralela em c
   - `formatScheduledCivilDate(instant, scheduledHasTime, options)` → dia civil em pt-BR.
   - `formatZonedTime(instant, timeZone?)` → horário de parede.
   - `zonedCivilDateTimeToInstant(date, time, timeZone?)` → civil → instante UTC (criação).
+  - `formatEventInstant(instant, options, timeZone?)` → timestamp de evento (ver seção acima).
 - `modules/service-request/domain/schedule-precision.ts`
   - `getSchedulePrecision`, `canDisplayScheduledTime`, `canDisplayEndTime`.
 

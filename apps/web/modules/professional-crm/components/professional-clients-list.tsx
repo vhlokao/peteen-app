@@ -6,14 +6,23 @@ import { RELATIONSHIP_LEVEL_ICONS } from "@/modules/relationship/domain/constant
 import type { RelationshipLevel } from "@/modules/relationship/domain/types"
 import type { ProfessionalClientRow } from "../domain/types"
 import { cardInteractiveClasses } from "@/components/ui/card"
+import { formatEventInstant } from "@/lib/date/zoned-datetime"
 
+/**
+ * `lastServiceAt` — INSTANTE REAL, apesar do nome sugerir data.
+ *
+ * Auditado nos pontos de escrita: vem sempre de `completedAt` do atendimento
+ * ou do `now` da conclusão (relationship/infrastructure/repository.ts,
+ * relationship-history/infrastructure/queries.ts). NUNCA de `scheduledAt` —
+ * por isso `formatEventInstant`, e não o helper de precisão de agendamento.
+ */
 function formatDate(date: Date | null): string {
   if (!date) return "—"
-  return new Intl.DateTimeFormat("pt-BR", {
+  return formatEventInstant(new Date(date), {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(date))
+  })
 }
 
 /**

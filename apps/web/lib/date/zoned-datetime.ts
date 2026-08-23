@@ -145,6 +145,52 @@ export function formatScheduledCivilDate(
   }).format(instant)
 }
 
+/**
+ * Instante de EVENTO (createdAt, acceptedAt, startedAt, completedAt,
+ * occurredAt…) formatado em pt-BR, no fuso do piloto.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE ESTE HELPER EXISTE, SEPARADO DE formatScheduledCivilDate
+ *
+ * `scheduledAt` é ambíguo por natureza: pode ser data civil histórica
+ * (date-only) ou instante real, e só `scheduledHasTime` desempata — por isso
+ * aquele helper exige o flag. Um timestamp de evento não tem essa ambiguidade:
+ * é sempre o instante em que algo aconteceu. Reaproveitar o helper de
+ * agendamento aqui obrigaria a inventar um `scheduledHasTime` para dados que
+ * não têm o conceito.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O INCIDENTE QUE ORIGINOU ISTO
+ *
+ * `RequestTimeline` formatava com `Intl.DateTimeFormat("pt-BR", {...})` SEM
+ * `timeZone`. Sem o campo, o Intl usa o fuso do RUNTIME — e o componente é
+ * Server Component, renderizado na Vercel, onde o runtime é UTC. O resultado
+ * era o relógio UTC impresso como se fosse local: um aceite às 16:06 BRT
+ * aparecia como 19:06, exatamente +3h, no aparelho do usuário.
+ *
+ * O `timeZone` é injetado AQUI, nunca pelo chamador, para que esquecê-lo deixe
+ * de ser possível — foi o esquecimento, e não a conversão, que quebrou.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE FUSO FIXO E NÃO O FUSO DO APARELHO
+ *
+ * Server Component não tem acesso ao fuso do browser: no instante em que o HTML
+ * é gerado, nenhum código do cliente rodou. Formatar pelo aparelho exigiria
+ * mover a renderização para o cliente, e aí servidor e browser produziriam
+ * strings diferentes para o MESMO nó — hydration mismatch garantido em toda
+ * tela com horário. O fuso fixo faz servidor e cliente concordarem.
+ *
+ * `CIVIL_DAY_TIME_ZONE` é a mesma constante que o resto do contrato temporal já
+ * usa; expansão geográfica troca um valor só, num lugar só.
+ */
+export function formatEventInstant(
+  instant: Date,
+  options: Intl.DateTimeFormatOptions,
+  timeZone: string = CIVIL_DAY_TIME_ZONE
+): string {
+  return new Intl.DateTimeFormat("pt-BR", { ...options, timeZone }).format(instant)
+}
+
 /** Horário de parede "HH:mm" de um instante, no fuso informado. */
 export function formatZonedTime(
   instant: Date,

@@ -12,7 +12,7 @@ import { getReviewForRequestAction } from "@/modules/review/application/actions"
 import { getMyRelationshipWithProfessional } from "@/modules/relationship/application/actions"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { SPECIES_LABELS } from "@/modules/tutor/domain/types"
-import { formatScheduledCivilDate, formatZonedTime } from "@/lib/date/zoned-datetime"
+import { formatScheduledCivilDate, formatZonedTime, formatEventInstant } from "@/lib/date/zoned-datetime"
 import { RequestTimeline } from "@/components/requests/RequestTimeline"
 import { ReviewForm } from "@/components/reviews/ReviewForm"
 import { TutorRequestActions } from "@/modules/tutor-portal/components/tutor-request-actions"
@@ -82,12 +82,20 @@ function formatScheduledWithTime(date: Date | null, scheduledHasTime: boolean): 
   return `${dia} às ${formatZonedTime(new Date(date))}`
 }
 
+/**
+ * `createdAt` da solicitação — INSTANTE REAL, não data civil.
+ *
+ * Por isso `formatEventInstant` e não `formatScheduledCivilDate`: aqui não
+ * existe `scheduledHasTime` a consultar, o valor sempre representa o momento
+ * em que o pedido foi enviado. Sem fuso explícito, um pedido criado às 22:00
+ * BRT (01:00 UTC do dia seguinte) apareceria com a data do dia errado.
+ */
 function formatDateShort(date: Date): string {
-  return new Intl.DateTimeFormat("pt-BR", {
+  return formatEventInstant(new Date(date), {
     day: "2-digit",
     month: "short",
     year: "numeric",
-  }).format(new Date(date))
+  })
 }
 
 /**

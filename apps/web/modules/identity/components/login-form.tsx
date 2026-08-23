@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -192,8 +193,16 @@ export function LoginForm({ errorCode, next }: LoginFormProps) {
           <div className="absolute -left-10 -bottom-[70px] size-[180px] rounded-full bg-[#E07A5F]/20" />
           <PawPrint className="absolute left-[52px] top-16 size-9 text-white/50" />
           <div className="absolute inset-x-9 bottom-9">
-            <span className="grid size-[52px] place-items-center rounded-2xl bg-white text-2xl font-extrabold text-[#1D2F6F] shadow-lg">
-              P
+            {/* Símbolo oficial da marca (logo-simbolo — ver
+                docs/BRAND_DOMAIN_PUBLIC_SURFACE.md §3), substituindo a letra
+                "P" genérica que ocupava este badge. Mantém o mesmo container
+                branco/sombra: o fundo aqui dentro é branco, então a versão
+                COLORIDA do símbolo (não a clara) é a que tem contraste —
+                mesma lógica já aplicada no TopBar autenticado, que também
+                está sobre claro. `alt=""`: decorativo dentro de um card cujo
+                significado já é dado pelo "Bem-vindo ao Peteen" ao lado. */}
+            <span className="grid size-[52px] place-items-center rounded-2xl bg-white shadow-lg">
+              <Image src="/brand/logo-simbolo.png" alt="" width={36} height={35} className="size-9" />
             </span>
             <h1 className="mt-[18px] text-[26px] font-extrabold leading-tight tracking-tight text-white">
               Bem-vindo ao Peteen

@@ -16,8 +16,22 @@
  *
  * Esta função é só a perna do meio. Ela não decide nada:
  *   - quem pode enviar  → authorizeCareMediaUpload (servidor)
- *   - onde grava        → o path vem do ticket, gerado no servidor
+ *   - onde grava        → bucket E path vêm do ticket, gerados no servidor
  *   - se o byte presta  → validateMediaPaths (servidor, magic bytes)
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * "ONDE GRAVA" INCLUI O BUCKET — LIÇÃO DO PRIMEIRO UPLOAD REAL DE VÍDEO
+ *
+ * Este arquivo já dizia que o destino vem do servidor, mas completava o
+ * endereço com uma constante local, `care-media`. Com só foto no sistema a
+ * constante acertava por coincidência. No primeiro vídeo real o servidor
+ * assinou para `care-media-video`, o cliente apresentou o token em
+ * `care-media`, e o Storage respondeu `Invalid signature` (400) — nenhum byte
+ * gravado, nenhum órfão, e uma mensagem de erro que não dizia o que houve.
+ *
+ * O bucket agora vem do ticket, junto com o path. Não há fallback: um ticket
+ * sem bucket é um ticket que não sabemos honrar, e adivinhar o destino é
+ * justamente o que quebrou.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * O DETALHE QUE JÁ QUEBROU EM PRODUÇÃO NESTE PROJETO
@@ -31,7 +45,6 @@
  */
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client"
-import { CARE_MEDIA_BUCKET_NAME } from "../domain/care-media-bucket"
 
 export type UploadOutcome =
   | { ok: true; path: string }
@@ -46,11 +59,20 @@ export type UploadOutcome =
  */
 export async function uploadCareMediaToTicket(params: {
   file: File
-  ticket: { path: string; token: string }
+  ticket: { bucket: string; path: string; token: string }
   mimeTypeAutorizado: string
   mensagemDeFalha: string
+  /** Só para log — separa foto de vídeo no diagnóstico. Nunca vai à tela. */
+  kind?: "PHOTO" | "VIDEO"
 }): Promise<UploadOutcome> {
-  const { file, ticket, mimeTypeAutorizado, mensagemDeFalha } = params
+  const { file, ticket, mimeTypeAutorizado, mensagemDeFalha, kind } = params
+
+  // FAIL CLOSED: sem bucket não há destino conhecido. Cair para `care-media`
+  // aqui reintroduziria o bug — silenciosamente, e só para vídeo.
+  if (!ticket.bucket) {
+    console.error("[care-media] upload_sem_bucket", { kind: kind ?? "?" })
+    return { ok: false, message: mensagemDeFalha }
+  }
 
   try {
     const bytes = await file.arrayBuffer()
@@ -58,15 +80,18 @@ export async function uploadCareMediaToTicket(params: {
 
     const supabase = createSupabaseBrowserClient()
     const { error } = await supabase.storage
-      .from(CARE_MEDIA_BUCKET_NAME)
+      .from(ticket.bucket)
       .uploadToSignedUrl(ticket.path, ticket.token, corpo, {
         contentType: mimeTypeAutorizado,
       })
 
     if (error) {
-      // O erro do Storage pode conter path e detalhes de infraestrutura —
-      // fica no console para diagnóstico, nunca na tela.
+      // `kind` e `bucket` são o que faltava para diagnosticar o incidente do
+      // primeiro vídeo em segundos. `token`, `signedUrl` e `path` ficam FORA:
+      // o token é credencial de escrita, e o path identifica a request.
       console.error("[care-media] upload_failed", {
+        kind: kind ?? "?",
+        bucket: ticket.bucket,
         erro: String(error.message ?? error).slice(0, 120),
       })
       return { ok: false, message: mensagemDeFalha }
@@ -74,7 +99,11 @@ export async function uploadCareMediaToTicket(params: {
 
     return { ok: true, path: ticket.path }
   } catch (err) {
-    console.error("[care-media] upload_threw", { erro: String(err).slice(0, 120) })
+    console.error("[care-media] upload_threw", {
+      kind: kind ?? "?",
+      bucket: ticket.bucket,
+      erro: String(err).slice(0, 120),
+    })
     return { ok: false, message: mensagemDeFalha }
   }
 }

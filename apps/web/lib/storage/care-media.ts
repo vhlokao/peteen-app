@@ -171,6 +171,25 @@ export async function countCareMediaObjectsForRequest(
 }
 
 export type CareMediaUploadTicket = {
+  /**
+   * Bucket de destino, resolvido no SERVIDOR por `bucketForCareMediaKind`.
+   *
+   * ───────────────────────────────────────────────────────────────────────────
+   * O INCIDENTE QUE ESTE CAMPO EXISTE PARA IMPEDIR
+   *
+   * O ticket carregava só `path`, e o cliente completava o destino com uma
+   * constante — `care-media`, o bucket de foto. Enquanto só havia foto, a
+   * constante acertava por coincidência. No primeiro upload real de vídeo o
+   * servidor assinou para `care-media-video` e o cliente apresentou o token em
+   * `care-media`: como a assinatura do Supabase cobre o bucket, a resposta foi
+   * `Invalid signature` (400) e NENHUM byte chegou ao Storage.
+   *
+   * O bucket é tão parte do destino quanto o path. Ficar de fora do ticket
+   * fazia o cliente escolher metade de um endereço que o protocolo diz que ele
+   * nunca escolhe. Com o campo aqui, um tipo de mídia novo não tem como
+   * reintroduzir a mesma classe de erro.
+   */
+  bucket: string
   /** Path relativo ao bucket. Necessário no protocolo: o cliente precisa dele
    *  para chamar uploadToSignedUrl e para devolvê-lo na publicação (R2), onde
    *  é RE-VALIDADO contra a request antes de virar linha. */
@@ -207,11 +226,14 @@ export async function createCareMediaUploadTicket(params: {
   })
 
   const supabase = createCareMediaStorageClient()
+  // Resolvido UMA vez e devolvido no ticket: assinar num bucket e devolver
+  // outro é exatamente o bug que o campo `bucket` existe para impedir.
+  const bucket = bucketForCareMediaKind(params.kind)
   // Sem `upsert`: o default (false) faz o Storage recusar um path já ocupado.
   // Como o path carrega um UUID novo a cada emissão, isso também impede que
   // uma URL reutilizada sobrescreva um arquivo já publicado.
   const { data, error } = await supabase.storage
-    .from(bucketForCareMediaKind(params.kind))
+    .from(bucket)
     .createSignedUploadUrl(path)
 
   if (error || !data) {
@@ -222,7 +244,7 @@ export async function createCareMediaUploadTicket(params: {
     throw new Error(CARE_MEDIA_STORAGE_FAILURE_MESSAGE)
   }
 
-  return { path, signedUrl: data.signedUrl, token: data.token }
+  return { bucket, path, signedUrl: data.signedUrl, token: data.token }
 }
 
 /**

@@ -44,6 +44,7 @@ import {
   PHOTO_COPY,
   VIDEO_COPY,
   canAddMorePhotos,
+  copyDeFalhaUpload,
   photoCounterLabel,
   remainingPhotoSlots,
   validatePhotoCandidate,
@@ -239,7 +240,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
    * legítimo e não pode corromper o item errado.
    */
   const enviarFoto = useCallback(
-    async (itemId: string, file: File) => {
+    async (itemId: string, file: File, kind: "PHOTO" | "VIDEO") => {
       const marcar = (patch: Partial<PhotoUiItem>) => {
         aplicar(itensRef.current.map((i) => (i.id === itemId ? { ...i, ...patch } : i)))
       }
@@ -258,11 +259,16 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
         return
       }
 
+      // A copy segue o TIPO do item, não o nome da função: este caminho é
+      // compartilhado por foto e vídeo, e no primeiro upload real de vídeo o
+      // profissional leu "não foi possível enviar esta foto" depois de gravar
+      // um vídeo. A copy de vídeo já existia — só não era escolhida.
       const upload = await uploadCareMediaToTicket({
         file,
         ticket: ticketResult.ticket,
         mimeTypeAutorizado: file.type,
-        mensagemDeFalha: PHOTO_COPY.falhaUpload,
+        mensagemDeFalha: copyDeFalhaUpload(kind),
+        kind,
       })
 
       if (!upload.ok) {
@@ -315,7 +321,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
     aplicar([...itens, ...novos])
     // Upload começa imediatamente: quando a pessoa termina de escrever, as
     // fotos já estão no bucket e publicar é instantâneo.
-    for (const novo of novos) void enviarFoto(novo.id, novo.file)
+    for (const novo of novos) void enviarFoto(novo.id, novo.file, "PHOTO")
   }
 
   /**
@@ -364,7 +370,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
     }
 
     aplicar([...itens, novo])
-    void enviarFoto(novo.id, novo.file)
+    void enviarFoto(novo.id, novo.file, "VIDEO")
   }
 
   function removerFoto(item: PhotoUiItem) {
@@ -431,7 +437,7 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
                   <AlertCircle className="size-5 text-destructive" aria-hidden />
                   <button
                     type="button"
-                    onClick={() => void enviarFoto(item.id, item.file)}
+                    onClick={() => void enviarFoto(item.id, item.file, item.kind)}
                     disabled={disabled}
                     aria-label="Tentar enviar esta foto novamente"
                     className="flex min-h-11 items-center gap-1 rounded-lg bg-background/90 px-2 text-xs font-medium text-foreground"
@@ -470,7 +476,9 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
             .filter((i) => i.status === "erro")
             .map((i) => (
               <li key={i.id} className="text-xs text-destructive">
-                {i.errorMessage ?? PHOTO_COPY.falhaUpload}
+                {/* Fallback também por tipo: um vídeo sem mensagem própria
+                    não pode herdar a frase de foto. */}
+                {i.errorMessage ?? copyDeFalhaUpload(i.kind)}
               </li>
             ))}
         </ul>

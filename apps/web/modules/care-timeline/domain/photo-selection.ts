@@ -98,6 +98,21 @@ export const VIDEO_COPY = {
   falhaUpload: "Não foi possível enviar este vídeo. Tente novamente.",
 } as const
 
+/**
+ * Copy de falha de upload correspondente ao tipo de mídia.
+ *
+ * Existe porque o caminho de upload é COMPARTILHADO entre foto e vídeo, e a
+ * mensagem estava fixada na de foto: no primeiro upload real de vídeo, o
+ * profissional gravou um vídeo e leu "não foi possível enviar esta foto". As
+ * duas copies já existiam; faltava escolher entre elas.
+ *
+ * Função, e não um `Record` inline no componente, para que a regra "vídeo
+ * nunca fala 'foto'" possa ser testada sem montar React.
+ */
+export function copyDeFalhaUpload(kind: "PHOTO" | "VIDEO"): string {
+  return kind === "VIDEO" ? VIDEO_COPY.falhaUpload : PHOTO_COPY.falhaUpload
+}
+
 /** Formatos que existem no mundo real e merecem mensagem específica. */
 const TIPOS_HEIC = ["image/heic", "image/heif"]
 

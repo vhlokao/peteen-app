@@ -52,10 +52,21 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { preconnect } from "react-dom"
 import { Play, RotateCcw, Video, VideoOff } from "lucide-react"
 
 import type { CareMediaView } from "../domain/types"
 import { proporcaoAberta, proporcaoFechada } from "../domain/media-aspect"
+import { supabaseStorageOrigin } from "@/lib/storage/storage-origin"
+
+/**
+ * Origem do Storage, resolvida uma vez por módulo.
+ *
+ * Fora do componente de propósito: o valor vem de env inlinada no build e não
+ * muda entre renders, então recalcular por instância só gastaria trabalho numa
+ * timeline com várias atualizações.
+ */
+const ORIGEM_STORAGE = supabaseStorageOrigin()
 
 /**
  * Teto de altura do player aberto.
@@ -111,6 +122,24 @@ function liberarReproducao(elemento: HTMLVideoElement) {
 type Estado = "fechado" | "carregando" | "tocando" | "erro"
 
 export function CareVideoPlayer({ media }: { media: CareMediaView }) {
+  /**
+   * Antecipa DNS + TCP + TLS com o Storage — medido em ~480 ms de economia no
+   * primeiro vídeo que o tutor abre (ver lib/storage/storage-origin.ts).
+   *
+   * Declarado AQUI, e não no topo da timeline, porque este componente só existe
+   * quando a atualização tem vídeo. Uma timeline só de fotos nunca monta o
+   * player, então nunca emite o hint — a condição "só quando há vídeo" sai da
+   * estrutura, sem precisar de uma checagem que alguém possa esquecer de
+   * atualizar depois.
+   *
+   * Chamadas repetidas são inofensivas: `preconnect` do react-dom deduplica por
+   * href, então N atualizações com vídeo produzem UM hint.
+   *
+   * Não requisita o arquivo e não baixa byte nenhum — o card fechado continua
+   * sem `<video>`, sem `src` e sem tráfego de mídia.
+   */
+  if (ORIGEM_STORAGE) preconnect(ORIGEM_STORAGE)
+
   const [estado, setEstado] = useState<Estado>("fechado")
   /**
    * Proporção do card FECHADO — do banco, sem tocar no arquivo. Vertical vira
@@ -235,10 +264,25 @@ export function CareVideoPlayer({ media }: { media: CareMediaView }) {
         key={tentativa}
         ref={videoRef}
         src={media.signedUrl}
-        // `metadata`, não `auto`: mesmo depois do clique, o arquivo é buscado
-        // conforme toca. Um vídeo de 50 MB não precisa estar inteiro em
-        // memória para começar.
-        preload="metadata"
+        // `auto` AQUI é seguro, e é medido — não uma suposição.
+        //
+        // Este elemento só existe depois do gesto: a pessoa tocou em
+        // "Reproduzir" e está esperando. A partir desse ponto, segurar o
+        // browser não protege ninguém, só atrasa.
+        //
+        // Comparação com arquivos reais, bytes não cacheados:
+        //   preload="metadata" .... T4 = 443 ms
+        //   preload="auto" ........ T4 = 266 ms
+        //
+        // E sem custo de tráfego: nos dois modos o buffer no primeiro frame é
+        // o mesmo (~2,3 MB) e, poucos segundos depois, ambos já baixaram ~99%
+        // do arquivo — porque os vídeos deste produto duram 7-9 s e o browser
+        // termina de puxá-los de qualquer jeito. `auto` muda a largada, não o
+        // volume.
+        //
+        // O contrato de rede segue intacto onde importa: ANTES do clique não
+        // existe `<video>` nenhum, então não há preload de espécie alguma.
+        preload="auto"
         controls
         // `autoPlay` aqui NÃO é autoplay de timeline: este elemento só existe
         // porque a pessoa tocou em "Reproduzir". Sem ele, o clique abriria um

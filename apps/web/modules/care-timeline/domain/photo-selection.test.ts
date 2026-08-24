@@ -24,6 +24,7 @@ import {
   validatePhotoCandidate,
   CARE_VIDEO_MAX_BYTES,
   CARE_VIDEO_MAX_DURATION_SECONDS,
+  CARE_VIDEO_MAX_MB,
   isVideoMimeType,
   validateVideoCandidate,
   VIDEO_COPY,
@@ -409,5 +410,57 @@ describe("VIDEO_COPY", () => {
       assert.ok(frase.length > 0, `${chave} vazia`)
       assert.match(frase, /[.!?]$/, `${chave} não termina em pontuação: ${frase}`)
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Limites anunciados — os DOIS, porque os dois valem
+//
+// Medição dos vídeos reais deste piloto: ~2,1 MB por segundo gravado (17,9
+// Mbps, H.264, 1080x1920). Nesse bitrate, 50 MB acabam por volta de 23 s.
+// Anunciar só "60 segundos" prometeria algo que a maioria dos aparelhos não
+// entrega, e a recusa chegaria como surpresa depois de a pessoa já ter
+// gravado. A copy passa a citar os dois tetos; reduzir a duração é decisão de
+// produto separada, pendente de QA com aparelhos de bitrates diferentes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("CARE_VIDEO_MAX_MB", () => {
+  it("deriva do limite em bytes, não é número escrito à mão", () => {
+    assert.equal(CARE_VIDEO_MAX_MB, Math.round(CARE_VIDEO_MAX_BYTES / (1024 * 1024)))
+  })
+
+  it("vale 50 com o limite atual", () => {
+    assert.equal(CARE_VIDEO_MAX_MB, 50)
+  })
+
+  it("a mensagem de recusa por tamanho usa a constante", () => {
+    assert.match(VIDEO_COPY.muitoGrande, new RegExp(`${CARE_VIDEO_MAX_MB} MB`))
+  })
+
+  it("os dois limites são independentes — um vídeo precisa passar em AMBOS", () => {
+    // 30 s no bitrate real (~2,1 MB/s) dá ~64 MB: dentro da duração, fora do
+    // tamanho. É este caso que a copy de duração sozinha escondia.
+    const trintaSegundosNoBitrateReal = Math.round(30 * 2.12 * 1024 * 1024)
+    const veredito = validateVideoCandidate({
+      type: "video/mp4",
+      size: trintaSegundosNoBitrateReal,
+      duracaoSegundos: 30,
+    })
+    assert.equal(veredito.ok, false, "30 s cabe na duração mas estoura o tamanho")
+    if (!veredito.ok) {
+      assert.equal(veredito.message, VIDEO_COPY.muitoGrande)
+      assert.doesNotMatch(veredito.message, /segundos/, "a recusa precisa falar de TAMANHO")
+    }
+  })
+
+  it("um vídeo curto o bastante passa nos dois", () => {
+    const vinteSegundos = Math.round(20 * 2.12 * 1024 * 1024)
+    assert.ok(vinteSegundos < CARE_VIDEO_MAX_BYTES)
+    const veredito = validateVideoCandidate({
+      type: "video/mp4",
+      size: vinteSegundos,
+      duracaoSegundos: 20,
+    })
+    assert.equal(veredito.ok, true)
   })
 })

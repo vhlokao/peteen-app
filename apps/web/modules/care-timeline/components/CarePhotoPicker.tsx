@@ -41,6 +41,7 @@ import { uploadCareMediaToTicket } from "../infrastructure/upload-care-media-cli
 import {
   CARE_MEDIA_MAX_PER_UPDATE,
   CARE_VIDEO_MAX_DURATION_SECONDS,
+  CARE_VIDEO_MAX_MB,
   PHOTO_COPY,
   VIDEO_COPY,
   canAddMorePhotos,
@@ -635,9 +636,15 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
 
       {podeAdicionarVideo ? (
         <div className="flex flex-col gap-2 border-t border-border/60 pt-2">
+          {/* Os DOIS limites, porque os dois valem — e o de tamanho é o que
+              costuma cortar primeiro. Medição dos vídeos reais deste piloto:
+              ~2,1 MB por segundo gravado, o que faz 50 MB acabarem por volta
+              de 23 s. Anunciar só "60 segundos" prometeria algo que a maioria
+              dos aparelhos não entrega, e a recusa chegaria como surpresa
+              depois de a pessoa já ter gravado. */}
           <span className="text-xs text-muted-foreground">
             Ou envie um vídeo de até {CARE_VIDEO_MAX_DURATION_SECONDS} segundos
-            (sem fotos na mesma atualização).
+            e {CARE_VIDEO_MAX_MB} MB (sem fotos na mesma atualização).
           </span>
           {preferirCamera ? (
             <div className="flex flex-col gap-2">

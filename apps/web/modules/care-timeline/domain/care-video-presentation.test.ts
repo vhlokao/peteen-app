@@ -84,6 +84,67 @@ describe("CareVideoPlayer — estado fechado não gera trabalho de rede", () => 
   it("o estado inicial é 'fechado'", () => {
     assert.match(codigo, /useState<Estado>\("fechado"\)/)
   })
+
+  it("o preconnect não requisita o arquivo nem toca na signed URL", () => {
+    // `preconnect` abre DNS/TCP/TLS e para. Se algum dia virar `preload` de
+    // recurso ou receber `media.signedUrl`, o card fechado passaria a gerar
+    // tráfego de mídia — exatamente o que a V0.1 removeu.
+    assert.doesNotMatch(codigo, /preconnect\([^)]*signedUrl/)
+    assert.doesNotMatch(codigo, /preload\(\s*media\./)
+    assert.doesNotMatch(codigo, /prefetch\(\s*media\./)
+    assert.match(codigo, /preconnect\(ORIGEM_STORAGE\)/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preconnect — antecipa a conexão, nunca o arquivo
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("CareVideoPlayer — preconnect com o Storage", () => {
+  it("usa a API do react-dom, que deduplica por href", () => {
+    // N atualizações com vídeo produzem UM hint: a dedupe é do react-dom, não
+    // uma flag nossa que precisaria de estado compartilhado.
+    assert.match(codigo, /import \{ preconnect \} from "react-dom"/)
+  })
+
+  it("a origem é derivada da configuração, nunca escrita à mão", () => {
+    assert.match(codigo, /supabaseStorageOrigin\(\)/)
+    assert.doesNotMatch(
+      codigo,
+      /supabase\.co/,
+      "host fixo no código apontaria para o projeto errado em outro ambiente"
+    )
+  })
+
+  it("só emite o hint quando a origem existe", () => {
+    // Sem env válida, passar `undefined` ao browser viraria erro de console
+    // para todo usuário — perder o preconnect custa só latência.
+    assert.match(codigo, /if \(ORIGEM_STORAGE\) preconnect\(/)
+  })
+
+  it("resolve a origem UMA vez, fora do componente", () => {
+    const posConst = codigo.indexOf("const ORIGEM_STORAGE")
+    const posComponente = codigo.indexOf("export function CareVideoPlayer")
+    assert.ok(posConst !== -1 && posConst < posComponente,
+      "recalcular por instância gastaria trabalho em toda atualização da lista")
+  })
+
+  it("o hint vive no player — timeline sem vídeo nunca o emite", () => {
+    // A condição "só quando há vídeo" é estrutural: CareMediaGallery só monta
+    // CareVideoPlayer quando existe mídia de vídeo. Nenhuma checagem separada
+    // para alguém esquecer de atualizar.
+    const galeria = readFileSync(
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        "../components/CareMediaGallery.tsx"
+      ),
+      "utf8"
+    )
+    assert.match(galeria, /const video = media\.find\(\(m\) => m\.type === "VIDEO"\)/)
+    assert.match(galeria, /if \(video\) return <CareVideoPlayer/)
+    // E a galeria em si não antecipa nada por conta própria.
+    assert.doesNotMatch(semComentarios(galeria), /preconnect|prefetchDNS/)
+  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -91,13 +152,12 @@ describe("CareVideoPlayer — estado fechado não gera trabalho de rede", () => 
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("CareVideoPlayer — player ativo", () => {
-  it("preload é metadata, nunca auto", () => {
-    assert.match(codigo, /preload="metadata"/)
-    assert.doesNotMatch(
-      codigo,
-      /preload="auto"/,
-      "auto baixaria o arquivo inteiro adiantado"
-    )
+  it("usa preload='auto' — o elemento só existe depois do gesto", () => {
+    // Medido com arquivos reais e bytes não cacheados: T4 cai de 443 ms para
+    // 266 ms, e o buffer no primeiro frame é o mesmo nos dois modos (~2,3 MB).
+    // `auto` é seguro AQUI porque este `<video>` não existe antes do clique —
+    // a proteção de rede está na ausência do elemento, não no atributo.
+    assert.match(codigo, /preload="auto"/)
   })
 
   it("tem controls nativos", () => {

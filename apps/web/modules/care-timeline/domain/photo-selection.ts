@@ -69,6 +69,19 @@ export type PhotoSelectionItem = {
 // Copy — humana, sem jargão. Ver item 13 da missão.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Teto de tamanho do vídeo em MB, para uso em texto.
+ *
+ * Derivado do limite em bytes, não escrito à mão: um "50" digitado na copy
+ * continuaria dizendo 50 depois de alguém mudar `CARE_VIDEO_MAX_BYTES`, e uma
+ * mensagem de limite que mente sobre o limite é pior que nenhuma.
+ *
+ * Existe como constante porque DUAS superfícies precisam do número — a
+ * mensagem de recusa e o aviso de limites no seletor — e a aritmética não deve
+ * ser repetida em nenhuma delas.
+ */
+export const CARE_VIDEO_MAX_MB = Math.round(CARE_VIDEO_MAX_BYTES / (1024 * 1024))
+
 export const PHOTO_COPY = {
   tipoInvalido: "Esta foto não parece ser uma imagem válida.",
   /** HEIC/HEIF merece frase própria: é o padrão do iPhone e a pessoa não tem culpa. */
@@ -87,7 +100,7 @@ export const VIDEO_COPY = {
   tipoInvalido: "Este arquivo não parece ser um vídeo MP4 ou MOV válido.",
   /** WebM merece frase própria: é gravável em alguns Android, mas não toca no iPhone. */
   webm: "Este formato de vídeo ainda não é compatível. Grave em MP4 ou MOV.",
-  muitoGrande: `Este vídeo é muito grande. O limite é ${Math.round(CARE_VIDEO_MAX_BYTES / (1024 * 1024))} MB.`,
+  muitoGrande: `Este vídeo é muito grande. O limite é ${CARE_VIDEO_MAX_MB} MB.`,
   muitoLongo: `Este vídeo é muito longo. O limite é ${CARE_VIDEO_MAX_DURATION_SECONDS} segundos.`,
   /** Sem metadata não dá para provar a duração — e não publicamos no escuro. */
   duracaoDesconhecida:

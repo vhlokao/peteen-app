@@ -211,6 +211,22 @@ export function CareUpdateForm({
           content: trimmed,
           occurredAt: occurredAtIso,
           mediaPaths: prontidao.paths,
+          // Hint visual, só para vídeo e só quando a leitura de metadata deu
+          // certo. O servidor associa por path e ignora qualquer entrada que
+          // não esteja em `mediaPaths` — daí ser seguro montar aqui.
+          mediaDimensions: fotos
+            .filter(
+              (f): f is typeof f & { path: string; displayWidth: number; displayHeight: number } =>
+                f.kind === "VIDEO" &&
+                typeof f.path === "string" &&
+                typeof f.displayWidth === "number" &&
+                typeof f.displayHeight === "number"
+            )
+            .map((f) => ({
+              path: f.path,
+              width: f.displayWidth,
+              height: f.displayHeight,
+            })),
           idempotencyKey: obterChaveDeIntencao(),
         })
 

@@ -625,15 +625,38 @@ enum CareMediaType {
 /// URL persistida: toda leitura passa por uma URL assinada de curta duração,
 /// emitida na hora e só depois de a autorização completa passar.
 model CareMedia {
-  id           String        @id @default(cuid())
-  careUpdateId String
-  type         CareMediaType @default(PHOTO)
+  id            String        @id @default(cuid())
+  careUpdateId  String
+  type          CareMediaType @default(PHOTO)
   /// requests/<requestId>/<uuid>.<ext> — gerado no servidor, nunca aceito do cliente.
-  storagePath  String        @unique
+  storagePath   String        @unique
   /// MIME REAL, detectado por magic bytes — não o declarado pelo cliente.
-  mimeType     String
-  sizeBytes    Int
-  createdAt    DateTime      @default(now())
+  mimeType      String
+  sizeBytes     Int
+  /// Dimensões de EXIBIÇÃO, em pixels — o tamanho com que a mídia deve ser
+  /// APRESENTADA, não a geometria bruta do container.
+  ///
+  /// Vêm de `video.videoWidth`/`videoHeight` no cliente, DEPOIS de o browser
+  /// aplicar a matriz de rotação do arquivo. A distinção é concreta e não
+  /// teórica: os vídeos verticais de celular deste piloto trazem `tkhd`
+  /// 1920x1080 com matriz de 90°. Ler o container no servidor devolveria
+  /// "horizontal" para um vídeo que a pessoa gravou e assiste em pé — por isso
+  /// a fonte é o browser, que já resolveu a rotação, e por isso o nome é
+  /// `display*`.
+  ///
+  /// NÃO SÃO DADO DE SEGURANÇA. São informados pelo cliente e servem apenas
+  /// para aspect ratio e orientação do layout. O servidor só checa sanidade
+  /// (inteiro, 0 < n <= 10000) e grava NULL se qualquer uma falhar — nunca
+  /// recusa uma publicação válida por metadata visual ruim. Autorização,
+  /// posse, MIME real, tamanho e validação de conteúdo continuam derivados no
+  /// servidor e não olham para estes campos.
+  ///
+  /// Nullable porque mídia anterior à V0.2 não tem, e porque PHOTO não usa:
+  /// a foto já tem miniatura e grade próprias, e preencher ali seria plumbing
+  /// sem benefício. NULL cai no fallback portrait-first da timeline.
+  displayWidth  Int?
+  displayHeight Int?
+  createdAt     DateTime      @default(now())
 
   careUpdate CareUpdate @relation(fields: [careUpdateId], references: [id])
 

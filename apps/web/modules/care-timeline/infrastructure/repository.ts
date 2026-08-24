@@ -31,9 +31,14 @@ import {
 
 type CareMediaRow = {
   id: string
-  type: string
+  // Era `string`, e foi essa frouxidão que obrigou o `as "PHOTO"` mais abaixo
+  // — um cast que virou mentira quando VIDEO entrou no enum. O union real
+  // dispensa o cast e faz o compilador cobrar qualquer tipo novo.
+  type: "PHOTO" | "VIDEO"
   storagePath: string
   mimeType: string
+  displayWidth: number | null
+  displayHeight: number | null
 }
 
 type CareUpdateRow = {
@@ -64,14 +69,24 @@ const MEDIA_SELECT = {
   type: true,
   storagePath: true,
   mimeType: true,
+  // Dimensões de exibição viajam junto com a mídia para que o card fechado
+  // conheça a orientação sem tocar no arquivo.
+  displayWidth: true,
+  displayHeight: true,
 } satisfies Prisma.CareMediaSelect
 
 function toInternalMedia(rows: CareMediaRow[] | undefined): CareMediaInternal[] {
   return (rows ?? []).map((m) => ({
     id: m.id,
-    type: m.type as "PHOTO",
+    // O cast para "PHOTO" era resquício de quando o enum só tinha esse valor:
+    // afirmava ao compilador algo que deixou de ser verdade quando VIDEO
+    // entrou. `m.type` já é o union correto — deixar o cast mascararia
+    // justamente o tipo que decide bucket e player.
+    type: m.type,
     storagePath: m.storagePath,
     mimeType: m.mimeType,
+    displayWidth: m.displayWidth,
+    displayHeight: m.displayHeight,
   }))
 }
 
@@ -364,6 +379,10 @@ export async function createCareUpdateAtomic(data: {
                   storagePath: m.storagePath,
                   mimeType: m.mimeType,
                   sizeBytes: m.sizeBytes,
+                  // Já normalizados no domínio: null quando ausentes ou
+                  // implausíveis. Nunca bloqueiam a publicação.
+                  displayWidth: m.displayWidth,
+                  displayHeight: m.displayHeight,
                 })),
               }
             : undefined,

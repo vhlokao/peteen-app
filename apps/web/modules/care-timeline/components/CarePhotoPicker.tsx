@@ -62,6 +62,12 @@ export type PhotoUiItem = PhotoSelectionItem & {
   previewUrl: string
   /** Decide o preview (img vs video) e a cota aplicável. */
   kind: "PHOTO" | "VIDEO"
+  /**
+   * Dimensões de exibição do vídeo, lidas na seleção. Só VIDEO preenche;
+   * PHOTO fica `null` porque não usa. Viajam junto até a publicação.
+   */
+  displayWidth?: number | null
+  displayHeight?: number | null
 }
 
 /**
@@ -83,14 +89,29 @@ export type PhotoUiItem = PhotoSelectionItem & {
  * (arquivo corrompido, codec que o browser não abre) e a promessa ficaria
  * pendurada, deixando o botão de publicar travado sem explicação.
  */
-function lerDuracaoDoVideo(file: File): Promise<number | null> {
+type MetadataDoVideo = {
+  duracaoSegundos: number | null
+  /**
+   * Dimensões de EXIBIÇÃO — com a rotação do arquivo JÁ aplicada pelo browser.
+   *
+   * Isto não é detalhe: os vídeos verticais de celular deste piloto trazem
+   * `tkhd` 1920x1080 com matriz de rotação de 90°. Ler o container no servidor
+   * devolveria "horizontal" para um vídeo que a pessoa gravou em pé. O browser
+   * já resolveu essa conta — `videoWidth/videoHeight` são o valor certo, e é
+   * por isso que a fonte da orientação é aqui e não o parser do servidor.
+   */
+  displayWidth: number | null
+  displayHeight: number | null
+}
+
+function lerMetadataDoVideo(file: File): Promise<MetadataDoVideo> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file)
     const el = document.createElement("video")
     el.preload = "metadata"
 
     let resolvido = false
-    const terminar = (valor: number | null) => {
+    const terminar = (valor: MetadataDoVideo) => {
       if (resolvido) return
       resolvido = true
       clearTimeout(timer)
@@ -101,13 +122,25 @@ function lerDuracaoDoVideo(file: File): Promise<number | null> {
       resolve(valor)
     }
 
-    const timer = setTimeout(() => terminar(null), 10_000)
+    const VAZIO: MetadataDoVideo = {
+      duracaoSegundos: null,
+      displayWidth: null,
+      displayHeight: null,
+    }
+
+    const timer = setTimeout(() => terminar(VAZIO), 10_000)
 
     el.onloadedmetadata = () => {
       const d = el.duration
-      terminar(Number.isFinite(d) && d > 0 ? d : null)
+      // Mesmo evento, mesmo elemento: as dimensões saem de graça junto com a
+      // duração. Nenhum elemento extra, nenhuma leitura adicional do arquivo.
+      terminar({
+        duracaoSegundos: Number.isFinite(d) && d > 0 ? d : null,
+        displayWidth: el.videoWidth > 0 ? el.videoWidth : null,
+        displayHeight: el.videoHeight > 0 ? el.videoHeight : null,
+      })
     }
-    el.onerror = () => terminar(null)
+    el.onerror = () => terminar(VAZIO)
 
     el.src = url
   })
@@ -346,13 +379,13 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
     }
 
     const file = files[0]!
-    // A duração é lida ANTES de aceitar — ver lerDuracaoDoVideo.
-    const duracaoSegundos = await lerDuracaoDoVideo(file)
+    // Duração e dimensões saem da MESMA leitura — ver lerMetadataDoVideo.
+    const meta = await lerMetadataDoVideo(file)
 
     const validacao = validateVideoCandidate({
       type: file.type,
       size: file.size,
-      duracaoSegundos,
+      duracaoSegundos: meta.duracaoSegundos,
     })
     if (!validacao.ok) {
       setErroSelecao(validacao.message)
@@ -367,6 +400,10 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
       file,
       previewUrl: URL.createObjectURL(file),
       kind: "VIDEO",
+      // Guardadas no item para acompanharem o path até a publicação. Ausência
+      // não impede nada: o card cai no fallback portrait-first.
+      displayWidth: meta.displayWidth,
+      displayHeight: meta.displayHeight,
     }
 
     aplicar([...itens, novo])

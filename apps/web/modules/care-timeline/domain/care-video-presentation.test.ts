@@ -120,9 +120,47 @@ describe("CareVideoPlayer — player ativo", () => {
     assert.match(codigo, /ALTURA_MAXIMA\s*=\s*"60vh"/)
   })
 
+  it("o card fechado tem teto MENOR que o aberto — abrir precisa crescer", () => {
+    assert.match(codigo, /ALTURA_MAXIMA_FECHADA\s*=\s*"50vh"/)
+    assert.match(codigo, /maxHeight:\s*ALTURA_MAXIMA_FECHADA/)
+  })
+
   it("adota a proporção real do arquivo depois de ler os metadados", () => {
     assert.match(codigo, /onLoadedMetadata/)
     assert.match(codigo, /videoWidth\s*\/\s*el\.videoHeight/)
+  })
+
+  it("já abre na proporção persistida, sem esperar metadata", () => {
+    // Sem isto o vídeo abriria na forma do card e saltaria ao carregar.
+    assert.match(codigo, /useState<number \| null>\(\(\)\s*=>\s*\n?\s*proporcaoAberta\(/)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Portrait-first — a forma vem do banco, não do arquivo
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("CareVideoPlayer — orientação portrait-first", () => {
+  it("a proporção fechada vem do domínio, não de constante local", () => {
+    assert.match(codigo, /proporcaoFechada\(media\.displayWidth,\s*media\.displayHeight\)/)
+  })
+
+  it("não sobrou constante fixa de 16/9 no componente", () => {
+    // O contrato "todo card é 16/9" era a causa do card deitado abrindo em pé.
+    assert.doesNotMatch(codigo, /PROPORCAO_FECHADA\s*=\s*16\s*\/\s*9/)
+  })
+
+  it("o card fechado usa a proporção resolvida", () => {
+    const inicio = codigo.indexOf('if (estado === "fechado")')
+    const fim = codigo.indexOf('if (estado === "erro")')
+    const fechado = codigo.slice(inicio, fim)
+    assert.match(fechado, /aspectRatio:\s*String\(proporcaoDoCard\)/)
+  })
+
+  it("card fechado é centralizado — max-height encolhe a largura de um vertical", () => {
+    const inicio = codigo.indexOf('if (estado === "fechado")')
+    const fim = codigo.indexOf('if (estado === "erro")')
+    assert.match(codigo.slice(inicio, fim), /mx-auto/)
   })
 })
 

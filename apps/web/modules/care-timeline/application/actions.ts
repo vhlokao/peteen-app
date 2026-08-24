@@ -36,6 +36,7 @@ import {
   type CreateCareUpdateInput,
   type ValidatedCareMedia,
 } from "../domain/types"
+import { normalizarDimensoes } from "../domain/media-aspect"
 import { resolveEffectiveOccurredAt } from "../domain/occurred-at"
 import {
   createCareUpdateAtomic,
@@ -157,8 +158,22 @@ type MediaValidationOutcome =
 async function validateMediaPaths(params: {
   requestId: string
   paths: string[]
+  /**
+   * Hints visuais por path. NÃO cria mídia e NÃO confere posse: o laço abaixo
+   * itera sobre `paths` — que passou por posse e magic bytes — e apenas
+   * CONSULTA este mapa. Um path presente só aqui nunca é alcançado, então
+   * inventar entradas não produz `CareMedia` nem toca em autorização.
+   */
+  dimensions?: Array<{ path: string; width: number; height: number }>
 }): Promise<MediaValidationOutcome> {
-  const { requestId, paths } = params
+  const { requestId, paths, dimensions } = params
+
+  // Mapa só para consulta. Duplicatas: a última vence — irrelevante, já que o
+  // pior efeito possível é um card com a forma errada.
+  const dimensoesPorPath = new Map<string, { width: number; height: number }>()
+  for (const d of dimensions ?? []) {
+    dimensoesPorPath.set(d.path, { width: d.width, height: d.height })
+  }
 
   if (paths.length > CARE_UPDATE_MAX_MEDIA) {
     return { ok: false, error: `No máximo ${CARE_UPDATE_MAX_MEDIA} fotos por atualização.` }
@@ -245,12 +260,23 @@ async function validateMediaPaths(params: {
       return { ok: false, error: careMediaRejectionMessage(veredito.reason) }
     }
 
+    // Hint visual: só para VIDEO, e só se passar a sanidade. FOTO fica null
+    // por decisão — já tem miniatura e grade próprias, e preencher aqui seria
+    // plumbing sem benefício.
+    const hint = dimensoesPorPath.get(path)
+    const dims =
+      veredito.kind === "VIDEO" && hint
+        ? normalizarDimensoes(hint.width, hint.height)
+        : null
+
     validadas.push({
       storagePath: path,
       // Do veredito dos magic bytes, nunca do declarado.
       type: veredito.kind,
       mimeType: veredito.mimeType,
       sizeBytes: veredito.sizeBytes,
+      displayWidth: dims?.displayWidth ?? null,
+      displayHeight: dims?.displayHeight ?? null,
     })
   }
 
@@ -305,6 +331,11 @@ async function toCareMediaViews(
           thumbnailUrl: null,
           displayUrl: null,
           mimeType: m.mimeType,
+          // Levados ao cliente para que o card FECHADO já tenha a orientação
+          // certa — sem isto, saber a forma exigiria montar o vídeo, que é
+          // exatamente o que a V0.1 removeu.
+          displayWidth: m.displayWidth,
+          displayHeight: m.displayHeight,
         }
       }
 
@@ -318,7 +349,17 @@ async function toCareMediaViews(
       // continua aparecendo: cada `null` só faz a superfície correspondente
       // cair para a original (pesada, nunca ausente).
       if (!signedUrl) return null
-      return { id: m.id, type: m.type, signedUrl, thumbnailUrl, displayUrl, mimeType: m.mimeType }
+      // PHOTO não usa dimensões: a grade e a miniatura já resolvem o layout.
+      return {
+        id: m.id,
+        type: m.type,
+        signedUrl,
+        thumbnailUrl,
+        displayUrl,
+        mimeType: m.mimeType,
+        displayWidth: null,
+        displayHeight: null,
+      }
     })
   )
   return resultados.filter((v): v is CareMediaView => v !== null)
@@ -417,6 +458,7 @@ export async function publishCareUpdateAction(
     const validacao = await validateMediaPaths({
       requestId: parsed.data.requestId,
       paths: parsed.data.mediaPaths,
+      dimensions: parsed.data.mediaDimensions,
     })
     if (!validacao.ok) {
       return { success: false, error: validacao.error }

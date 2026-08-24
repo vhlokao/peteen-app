@@ -78,6 +78,14 @@ export type CareMediaView = {
   displayUrl: string | null
   /** Só o necessário para o browser renderizar. */
   mimeType: string
+  /**
+   * Forma do card ANTES de qualquer request. É isto que permite ao card
+   * fechado ter a orientação certa sem montar `<video>`: o contrato de rede da
+   * V0.1 (zero request antes do clique) depende de a proporção vir daqui, do
+   * banco, e não de sondar o arquivo. `null` cai no fallback portrait-first.
+   */
+  displayWidth: number | null
+  displayHeight: number | null
 }
 
 /**
@@ -156,6 +164,29 @@ export const CreateCareUpdateSchema = z.object({
     .optional()
     .default([]),
   /**
+   * Dimensões de EXIBIÇÃO por path — hint visual, não fonte de verdade.
+   *
+   * Opcional por dois motivos: PHOTO não envia (não usa), e uma aba aberta
+   * durante o deploy continua publicando sem o campo — cai no fallback
+   * portrait-first em vez de quebrar.
+   *
+   * SEGURANÇA: este array NÃO cria mídia e NÃO confere posse. Um path que
+   * apareça só aqui, sem estar em `mediaPaths`, é ignorado — quem decide o que
+   * vira `CareMedia` continua sendo o pipeline canônico de validação, que
+   * confere posse da request e os magic bytes do objeto. O pior que um cliente
+   * mentindo consegue é um card com a forma errada.
+   */
+  mediaDimensions: z
+    .array(
+      z.object({
+        path: z.string().min(1),
+        width: z.number(),
+        height: z.number(),
+      })
+    )
+    .max(CARE_UPDATE_MAX_MEDIA)
+    .optional(),
+  /**
    * Identidade da INTENÇÃO de publicar, gerada pelo cliente.
    * UUID v4 exigido: formato validado no servidor para que a chave não vire um
    * campo de texto livre gravado no banco.
@@ -175,6 +206,8 @@ export type CreateCareUpdateInput = {
   content: string
   occurredAt: string
   mediaPaths?: string[]
+  /** Hint visual por path — ver CreateCareUpdateSchema.mediaDimensions. */
+  mediaDimensions?: Array<{ path: string; width: number; height: number }>
   idempotencyKey: string
 }
 
@@ -188,6 +221,13 @@ export type ValidatedCareMedia = {
   type: "PHOTO" | "VIDEO"
   mimeType: string
   sizeBytes: number
+  /**
+   * Dimensões de EXIBIÇÃO — hint do cliente, já filtrado pela sanidade do
+   * domínio (`normalizarDimensoes`). `null` quando ausente ou implausível.
+   * Não participa de nenhuma decisão de segurança; ver schema.prisma.
+   */
+  displayWidth: number | null
+  displayHeight: number | null
 }
 
 /**
@@ -205,6 +245,8 @@ export type CareMediaInternal = {
   type: "PHOTO" | "VIDEO"
   storagePath: string
   mimeType: string
+  displayWidth: number | null
+  displayHeight: number | null
 }
 
 /** O que o repositório devolve: tudo do DTO, mas com mídia em forma interna. */

@@ -55,13 +55,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Play, RotateCcw, Video, VideoOff } from "lucide-react"
 
 import type { CareMediaView } from "../domain/types"
-
-/**
- * Proporção do card fechado. 16/9 porque é a forma que melhor sugere "vídeo"
- * sem ocupar altura demais numa lista — e porque, fechada, a proporção é uma
- * convenção visual, não uma descrição do arquivo.
- */
-const PROPORCAO_FECHADA = 16 / 9
+import { proporcaoAberta, proporcaoFechada } from "../domain/media-aspect"
 
 /**
  * Teto de altura do player aberto.
@@ -72,6 +66,18 @@ const PROPORCAO_FECHADA = 16 / 9
  * Acima disso, um vídeo vertical vira tela cheia sem ter pedido.
  */
 const ALTURA_MAXIMA = "60vh"
+
+/**
+ * Teto do card FECHADO — menor que o do player.
+ *
+ * Um card 4:5 numa coluna de 390px daria ~448px de altura. Com várias
+ * atualizações, cada vídeo não aberto empurraria o resto do Diário para longe.
+ * 50vh mantém o card claramente vertical e ainda deixa o próximo item à vista.
+ *
+ * Ser MENOR que `ALTURA_MAXIMA` também é o que faz tocar play parecer o
+ * conteúdo crescendo: fechado cabe em 50vh, aberto pode ir a 60vh.
+ */
+const ALTURA_MAXIMA_FECHADA = "50vh"
 
 /**
  * Só um vídeo toca por vez.
@@ -106,8 +112,19 @@ type Estado = "fechado" | "carregando" | "tocando" | "erro"
 
 export function CareVideoPlayer({ media }: { media: CareMediaView }) {
   const [estado, setEstado] = useState<Estado>("fechado")
-  /** Proporção real, conhecida só depois que o elemento lê o cabeçalho. */
-  const [proporcao, setProporcao] = useState<number | null>(null)
+  /**
+   * Proporção do card FECHADO — do banco, sem tocar no arquivo. Vertical vira
+   * 4:5, horizontal 16:9, quadrado 1:1, desconhecido 4:5 (portrait-first).
+   */
+  const proporcaoDoCard = proporcaoFechada(media.displayWidth, media.displayHeight)
+  /**
+   * Proporção do player ABERTO. Começa na real persistida (quando existe), o
+   * que faz o vídeo abrir já na forma certa; `onLoadedMetadata` confirma
+   * depois, e corrige caso o hint do cliente estivesse errado.
+   */
+  const [proporcao, setProporcao] = useState<number | null>(() =>
+    proporcaoAberta(media.displayWidth, media.displayHeight)
+  )
   /**
    * Muda a cada tentativa. Serve de `key` do <video>: remontar o elemento é o
    * que efetivamente refaz a requisição — trocar só o estado deixaria o mesmo
@@ -130,10 +147,12 @@ export function CareVideoPlayer({ media }: { media: CareMediaView }) {
   }, [])
 
   const tentarNovamente = useCallback(() => {
-    setProporcao(null)
+    // Volta ao hint persistido, não a `null`: uma nova tentativa não deve
+    // perder a orientação que já conhecíamos antes do erro.
+    setProporcao(proporcaoAberta(media.displayWidth, media.displayHeight))
     setTentativa((n) => n + 1)
     setEstado("carregando")
-  }, [])
+  }, [media.displayWidth, media.displayHeight])
 
   // ───────────────────────────────────────────────────────────────────────────
   // FECHADO — nenhum <video> no DOM, nenhuma request
@@ -148,8 +167,11 @@ export function CareVideoPlayer({ media }: { media: CareMediaView }) {
           // encontrasse só "▶" não teria como saber o que seria reproduzido —
           // e o ícone está marcado como decorativo justamente por isso.
           aria-label="Reproduzir vídeo do atendimento"
-          style={{ aspectRatio: String(PROPORCAO_FECHADA) }}
-          className="group relative flex w-full items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          style={{ aspectRatio: String(proporcaoDoCard), maxHeight: ALTURA_MAXIMA_FECHADA }}
+          // `mx-auto` pela mesma razão do player aberto: com `max-height`
+          // cortando um card vertical, a largura encolhe junto e sem
+          // centralizar o bloco encostaria na margem esquerda.
+          className="group relative mx-auto flex w-full items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <span className="flex flex-col items-center gap-2">
             {/* O círculo é o alvo visual do play; o <button> inteiro é a área
@@ -205,7 +227,7 @@ export function CareVideoPlayer({ media }: { media: CareMediaView }) {
       // simétrica e o vídeo lê como parte da coluna, não como algo desalinhado.
       className="relative mx-auto mt-2 overflow-hidden rounded-lg border border-border/70 bg-black"
       style={{
-        aspectRatio: String(proporcao ?? PROPORCAO_FECHADA),
+        aspectRatio: String(proporcao ?? proporcaoDoCard),
         maxHeight: ALTURA_MAXIMA,
       }}
     >

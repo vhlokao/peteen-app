@@ -13,16 +13,12 @@ import {
   getVerificationMetrics,
   getVerificationRequests,
   getVerificationRequestById,
-  createVerificationRequestRecord,
-  applyPartnerVerificationPending,
   applyPartnerVerificationApproved,
   applyPartnerVerificationRejected,
   applyProfessionalVerificationApproved,
   approveVerificationRequestRecord,
   rejectVerificationRequestRecord,
   getPartnerSlug,
-  findPendingVerificationRequest,
-  isProfessionalVerified,
   closeAllPendingVerificationRequestsForEntity,
   hasApprovedVerificationRequest,
   isEntityVerificationSuspended,
@@ -33,6 +29,7 @@ import {
   applyPartnerVerificationReactivated,
 } from "../infrastructure/repository"
 import { prepareVerificationQueue } from "./prepare-queue"
+import { requestProfessionalVerification } from "./request-verification"
 import { updateProfessionalTrust } from "@/modules/trust-engine/application/update-professional-trust"
 import { prisma } from "@/lib/prisma/client"
 import type {
@@ -122,76 +119,7 @@ export async function getAdminVerificationsAction(
   return getVerificationRequests(filters)
 }
 
-export async function requestVerificationAction(input: {
-  entityType: VerificationEntityType
-  entityId: string
-  notes?: string
-}): Promise<ActionResult<{ requestId: string }>> {
-  try {
-    const request = await createVerificationRequestRecord(input)
 
-    if (input.entityType === "PARTNER") {
-      await applyPartnerVerificationPending(input.entityId)
-    }
-
-    const systemAdminId = await findSystemAdminId()
-    if (systemAdminId) {
-      await createAdminAudit({
-        adminId:    systemAdminId,
-        action:     "verification.requested",
-        entityType: input.entityType,
-        entityId:   input.entityId,
-        metadata:   {
-          requestId: request.id,
-          notes:     input.notes ?? null,
-          source:    "verification_engine",
-        },
-      }).catch(() => {})
-    }
-
-    revalidatePath("/admin/verifications")
-    revalidatePath("/admin/badges")
-    revalidatePath("/professional/metricas")
-    return { ok: true, data: { requestId: request.id } }
-  } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : "Erro ao solicitar verificação",
-    }
-  }
-}
-
-export async function requestProfessionalVerificationAction(
-  professionalId: string,
-  notes?: string
-): Promise<ActionResult<{ requestId: string }>> {
-  if (await isProfessionalVerified(professionalId)) {
-    return {
-      ok:    false,
-      error: "Este perfil já está verificado.",
-      code:  "already_verified",
-    }
-  }
-
-  if (await hasApprovedVerificationRequest("PROFESSIONAL", professionalId)) {
-    return {
-      ok:    false,
-      error: "Verificação suspensa ou encerrada — solicite reativação ao admin.",
-      code:  "already_verified",
-    }
-  }
-
-  const existing = await findPendingVerificationRequest("PROFESSIONAL", professionalId)
-  if (existing) {
-    return { ok: true, data: { requestId: existing.id } }
-  }
-
-  return requestVerificationAction({
-    entityType: "PROFESSIONAL",
-    entityId: professionalId,
-    notes,
-  })
-}
 
 export async function approveVerificationAction(
   requestId: string
@@ -445,14 +373,6 @@ export async function reactivateVerificationAction(input: {
   }
 }
 
-async function findSystemAdminId(): Promise<string | null> {
-  const { prisma } = await import("@/lib/prisma/client")
-  const admin = await prisma.adminProfile.findFirst({
-    select: { userId: true },
-    orderBy: { createdAt: "asc" },
-  })
-  return admin?.userId ?? null
-}
 
 export async function requestMyProfessionalVerificationAction(): Promise<
   ActionResult<{ requestId: string }>
@@ -479,7 +399,7 @@ export async function requestMyProfessionalVerificationAction(): Promise<
         code:  "already_verified",
       }
     }
-    return requestProfessionalVerificationAction(pro.id)
+    return requestProfessionalVerification(pro.id)
   } catch (err) {
     return {
       ok: false,

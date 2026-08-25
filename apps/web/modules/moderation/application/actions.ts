@@ -194,15 +194,3 @@ export async function setVerifiedProfileAction(
     return { success: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
-
-// ── Sistema interno (sem guard admin — chamado por rate limiter) ───────────────
-
-export async function createSystemFlagAction(
-  input: Omit<CreateFlagInput, "source">
-): Promise<void> {
-  try {
-    await createFlag({ ...input, source: "SYSTEM" })
-  } catch {
-    // Flag do sistema falha silenciosamente — não quebra o fluxo principal
-  }
-}

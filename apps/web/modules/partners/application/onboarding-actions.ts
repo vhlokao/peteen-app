@@ -12,7 +12,7 @@ import { revalidatePath } from "next/cache"
 import { createTrustConnection } from "@/modules/trust-graph/infrastructure/repository"
 import { TRUST_CONNECTION_WEIGHTS } from "@/modules/trust-graph/domain/constants"
 import { recordPartnerAudit } from "./partner-audit"
-import { requestVerificationAction } from "@/modules/verification/application/actions"
+import { requestVerification } from "@/modules/verification/application/request-verification"
 import { ensurePartnerVerificationRequest } from "@/modules/verification/infrastructure/repository"
 import {
   createPartnerOnboarding,
@@ -93,7 +93,7 @@ export async function savePartnerOnboardingTrustAction(
           .filter(Boolean)
           .join(" · ") || undefined
 
-      const verificationResult = await requestVerificationAction({
+      const verificationResult = await requestVerification({
         entityType: "PARTNER",
         entityId:   partner.id,
         notes,

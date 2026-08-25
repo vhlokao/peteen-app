@@ -180,10 +180,7 @@ export default async function ProfessionalHomePage() {
           )}
 
           <div className="lg:hidden">
-            <ProfessionalQuickActions
-              professionalId={profile.id}
-              professionalName={profile.displayName}
-            />
+            <ProfessionalQuickActions professionalId={profile.id} />
           </div>
 
           {/* Confiança ANTES de clientes/métricas/atividade no mobile.
@@ -229,10 +226,7 @@ export default async function ProfessionalHomePage() {
 
         <div className="flex flex-col gap-5">
           <div className="hidden lg:block">
-            <ProfessionalQuickActions
-              professionalId={profile.id}
-              professionalName={profile.displayName}
-            />
+            <ProfessionalQuickActions professionalId={profile.id} />
           </div>
 
           {/* Par do bloco `lg:hidden` na coluna esquerda — o mesmo card, uma

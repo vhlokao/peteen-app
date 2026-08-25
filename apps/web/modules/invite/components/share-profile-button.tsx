@@ -15,14 +15,12 @@ import { useShareProfile } from "./use-share-profile"
  */
 export function ShareProfileButton({
   professionalId,
-  professionalName,
   className,
 }: {
   professionalId: string
-  professionalName: string
   className?: string
 }) {
-  const { copiado, compartilhar } = useShareProfile(professionalId, professionalName)
+  const { copiado, compartilhar } = useShareProfile(professionalId)
 
   return (
     <Button

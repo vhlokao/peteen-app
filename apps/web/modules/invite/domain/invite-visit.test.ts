@@ -15,7 +15,7 @@ import {
   OPEN_SEMANTICS,
   UNIQUE_VISITS_LABEL,
   buildInviteLandingPath,
-  buildShareMessage,
+  INVITE_SHARE_MESSAGE,
   conversionRate,
   countFunnel,
   generateVisitorKey,
@@ -259,16 +259,24 @@ describe("link e mensagem de compartilhamento", () => {
     assert.equal(buildInviteLandingPath("pro-123"), "/p/pro-123")
   })
 
-  it("mensagem é curta, em primeira pessoa e contém o link", () => {
-    const msg = buildShareMessage("João", "https://peteen.app/p/pro-123")
-    assert.ok(msg.includes("https://peteen.app/p/pro-123"))
-    assert.ok(msg.length < 200, "mensagem de WhatsApp precisa ser curta")
+  it("mensagem NÃO contém o link — o compartilhamento passa a URL em campo separado", () => {
+    // A regressão que este teste tranca: enquanto a mensagem embutia a URL e o
+    // chamador ainda a passava no campo `url` de navigator.share(), o WhatsApp
+    // concatenava os dois campos e o profissional compartilhava o link DUAS
+    // VEZES na conversa. Confirmado em teste físico, não deduzido.
+    assert.ok(!/https?:\/\//.test(INVITE_SHARE_MESSAGE), "mensagem não pode conter URL")
+    assert.ok(!INVITE_SHARE_MESSAGE.includes("peteen.app"))
+    assert.ok(!INVITE_SHARE_MESSAGE.includes("/p/"))
+  })
+
+  it("mensagem é curta e em primeira pessoa", () => {
+    assert.ok(INVITE_SHARE_MESSAGE.length < 200, "mensagem de WhatsApp precisa ser curta")
+    assert.ok(/meu perfil/i.test(INVITE_SHARE_MESSAGE))
   })
 
   it("mensagem NÃO expõe id interno solto nem soa como anúncio corporativo", () => {
-    const msg = buildShareMessage("João", "https://peteen.app/p/pro-123")
-    assert.ok(!/\bprofessionalId\b/i.test(msg))
-    assert.ok(!/promoção|desconto|imperdível/i.test(msg))
+    assert.ok(!/professionalId/i.test(INVITE_SHARE_MESSAGE))
+    assert.ok(!/promoção|desconto|imperdível/i.test(INVITE_SHARE_MESSAGE))
   })
 })
 

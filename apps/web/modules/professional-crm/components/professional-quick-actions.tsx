@@ -30,10 +30,8 @@ const ACTIONS: { label: string; href: string; icon: LucideIcon }[] = [
  */
 export function ProfessionalQuickActions({
   professionalId,
-  professionalName,
 }: {
   professionalId: string
-  professionalName: string
 }) {
   return (
     <section>
@@ -53,10 +51,7 @@ export function ProfessionalQuickActions({
             <span className="text-sm font-medium text-foreground">{label}</span>
           </Link>
         ))}
-        <ShareProfileAction
-          professionalId={professionalId}
-          professionalName={professionalName}
-        />
+        <ShareProfileAction professionalId={professionalId} />
       </div>
     </section>
   )

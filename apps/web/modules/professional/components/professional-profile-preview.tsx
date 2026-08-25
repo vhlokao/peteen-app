@@ -87,7 +87,6 @@ export function ProfessionalProfilePreview({ profile }: { profile: ProfessionalP
       <div className="relative mt-4">
         <ShareProfileButton
           professionalId={profile.id}
-          professionalName={profile.displayName}
           className="w-full border-white/25 bg-white/[.12] text-white hover:bg-white/20 hover:text-white"
         />
       </div>

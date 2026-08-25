@@ -28,12 +28,10 @@ const NAVY = "#1D2F6F"
  */
 export function ShareProfileAction({
   professionalId,
-  professionalName,
 }: {
   professionalId: string
-  professionalName: string
 }) {
-  const { copiado, compartilhar } = useShareProfile(professionalId, professionalName)
+  const { copiado, compartilhar } = useShareProfile(professionalId)
 
   return (
     <button

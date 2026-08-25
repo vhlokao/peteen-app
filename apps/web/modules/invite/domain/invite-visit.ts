@@ -243,7 +243,23 @@ export function buildInviteLandingPath(professionalId: string): string {
  * Mensagem sugerida ao compartilhar. Curta, em primeira pessoa e sem tom de
  * anúncio — quem recebe precisa reconhecer a pessoa que enviou, não a
  * plataforma.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * NÃO CONTÉM O LINK — E ISSO É O PONTO
+ *
+ * Antes a mensagem terminava com a própria URL, e o chamador ainda passava
+ * essa mesma URL no campo `url` de `navigator.share()`. O WhatsApp concatena
+ * `text` e `url`, então o profissional compartilhava o link DUAS VEZES —
+ * confirmado em teste físico.
+ *
+ * A Web Share API separa os dois campos de propósito: `text` é o corpo, `url`
+ * é o link, e é o `url` que permite ao destino montar prévia. Quem escreve a
+ * mensagem não deve embutir o endereço; quem compartilha passa os dois campos
+ * separados. Mesma divisão que `ShareButton` (perfil público) já usava.
+ *
+ * Constante e não função porque o texto é fixo: é em primeira pessoa ("meu
+ * perfil"), então não interpola nome, e não interpola mais a URL. A versão
+ * anterior recebia `professionalName` sem nunca usá-lo.
  */
-export function buildShareMessage(professionalName: string, url: string): string {
-  return `Oi! Este é meu perfil na Peteen. Por aqui você cadastra seu pet e pode solicitar um atendimento comigo.\n\n${url}`
-}
+export const INVITE_SHARE_MESSAGE =
+  "Oi! Este é meu perfil na Peteen. Por aqui você cadastra seu pet e pode solicitar um atendimento comigo."

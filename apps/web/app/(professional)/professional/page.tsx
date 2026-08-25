@@ -180,8 +180,28 @@ export default async function ProfessionalHomePage() {
           )}
 
           <div className="lg:hidden">
-            <ProfessionalQuickActions />
+            <ProfessionalQuickActions
+              professionalId={profile.id}
+              professionalName={profile.displayName}
+            />
           </div>
+
+          {/* Confiança ANTES de clientes/métricas/atividade no mobile.
+              A coluna da direita só existe a partir de `lg`; abaixo disso o
+              grid vira uma coluna só e a ordem do DOM é a ordem da tela — com
+              o card na direita, ele caía depois de métricas e atividade
+              recente, ou seja, "como está minha confiança?" ficava atrás de
+              números secundários. Renderizado aqui, aparece logo após as ações
+              rápidas. Em `lg` o bloco é ocultado e reaparece na direita, onde
+              a diagramação de duas colunas já funcionava. */}
+          {trustSummary && (
+            <div className="lg:hidden">
+              <ProfessionalTrustOverview
+                trustScore={trustSummary.trustScore}
+                trustLevel={profile.trustLevel}
+              />
+            </div>
+          )}
 
           <ProfessionalClientsSummary
             uniqueClients={stats.uniqueClients}
@@ -209,20 +229,24 @@ export default async function ProfessionalHomePage() {
 
         <div className="flex flex-col gap-5">
           <div className="hidden lg:block">
-            <ProfessionalQuickActions />
+            <ProfessionalQuickActions
+              professionalId={profile.id}
+              professionalName={profile.displayName}
+            />
           </div>
 
+          {/* Par do bloco `lg:hidden` na coluna esquerda — o mesmo card, uma
+              única instância visível por vez. */}
           {trustSummary && (
-            <ProfessionalTrustOverview
-              trustScore={trustSummary.trustScore}
-              trustLevel={profile.trustLevel}
-            />
+            <div className="hidden lg:block">
+              <ProfessionalTrustOverview
+                trustScore={trustSummary.trustScore}
+                trustLevel={profile.trustLevel}
+              />
+            </div>
           )}
 
-          <ProfessionalPublicProfileCTA
-            professionalId={profile.id}
-            professionalName={profile.displayName}
-          />
+          <ProfessionalPublicProfileCTA professionalId={profile.id} />
         </div>
       </div>
     </div>

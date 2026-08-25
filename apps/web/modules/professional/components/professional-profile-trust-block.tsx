@@ -12,7 +12,11 @@ const TRUST_LEVEL_CONTEXT: Record<TrustLevel, string> = {
   INITIAL: "Sua confiança está em construção. Conclua atendimentos e receba avaliações para evoluir.",
   BUILDING: "Você já está construindo uma reputação sólida na rede.",
   ESTABLISHED: "Seu perfil já é reconhecido como confiável pelos tutores.",
-  TRUSTED: "Você está entre os profissionais de destaque da rede.",
+  // Sem "destaque": a palavra lê como posição patrocinada, e o Ranking não
+  // considera plano nem pagamento. Mesma decisão já tomada em
+  // professional-trust-overview.tsx (Home) e em TRUST_LEVEL_LABELS — esta era
+  // a última superfície que ainda divergia.
+  TRUSTED: "Sua reputação reflete um histórico consistente de bons atendimentos.",
   ELITE: "Você alcançou o nível mais alto de confiança da rede Peteen.",
 }
 
@@ -46,19 +50,27 @@ export function ProfessionalProfileTrustBlock({
           <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Confiança
           </p>
-          <p className="mt-0.5 flex items-baseline gap-2">
-            <span className="text-lg font-semibold text-foreground">
-              {TRUST_LEVEL_LABELS[trustLevel]}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Índice {summary.trustScore.toFixed(1)}
-            </span>
+          {/* Linha inteira para a faixa, como na Home: lado a lado com o
+              número, a 320px os dois quebravam e apareciam com peso visual
+              igual — sendo que a faixa é a leitura principal. */}
+          <p className="mt-0.5 text-lg font-semibold leading-tight text-foreground">
+            {TRUST_LEVEL_LABELS[trustLevel]}
           </p>
         </div>
       </div>
 
       <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
         {TRUST_LEVEL_CONTEXT[trustLevel]}
+      </p>
+
+      {/* Mesmo formato da Home — inteiro e COM escala. Antes eram "67.0" aqui
+          e "67 de 100" lá: o mesmo profissional via dois números diferentes
+          para a mesma coisa, e "67.0" sozinho não responde "isso é bom?". */}
+      <p className="mt-2 text-sm text-muted-foreground">
+        Índice de confiança:{" "}
+        <span className="font-semibold tabular-nums text-foreground">
+          {summary.trustScore.toFixed(0)} de 100
+        </span>
       </p>
 
       <div className="mt-4 grid grid-cols-3 gap-2 border-t border-border/70 pt-4">

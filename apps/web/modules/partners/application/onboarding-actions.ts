@@ -12,6 +12,11 @@ import { revalidatePath } from "next/cache"
 import { createTrustConnection } from "@/modules/trust-graph/infrastructure/repository"
 import { TRUST_CONNECTION_WEIGHTS } from "@/modules/trust-graph/domain/constants"
 import { recordPartnerAudit } from "./partner-audit"
+import {
+  emitirSessaoOnboarding,
+  lerSessaoOnboarding,
+  ONBOARDING_SESSAO_INVALIDA,
+} from "./onboarding-session"
 import { requestVerification } from "@/modules/verification/application/request-verification"
 import { ensurePartnerVerificationRequest } from "@/modules/verification/infrastructure/repository"
 import {
@@ -52,6 +57,15 @@ export async function savePartnerOnboardingBusinessAction(
 
     const partner = await createPartnerOnboarding(input)
 
+    // A capability nasce AQUI e só aqui: este é o único ponto em que o servidor
+    // acabou de criar o Partner e portanto sabe, sem depender do cliente, de
+    // quem é a sessão. Todas as etapas seguintes derivam o parceiro deste
+    // cookie — nenhuma volta a aceitar um id como autoridade.
+    const emitida = await emitirSessaoOnboarding(partner.id)
+    if (!emitida) {
+      return { ok: false, error: ONBOARDING_SESSAO_INVALIDA }
+    }
+
     await recordPartnerAudit("partner.onboarding_started", partner.id, {
       category:     partner.category,
       businessName: partner.businessName,
@@ -66,12 +80,21 @@ export async function savePartnerOnboardingBusinessAction(
   }
 }
 
+/**
+ * O `partnerId` do parâmetro foi REMOVIDO do contrato.
+ *
+ * Mantê-lo "por compatibilidade" e apenas ignorá-lo deixaria no código uma
+ * pergunta permanente — "este id é usado ou não?" — que só se responde lendo o
+ * corpo inteiro. Tirando o parâmetro, a resposta vira impossível de errar.
+ */
 export async function updatePartnerOnboardingBusinessAction(
-  partnerId: string,
   input: PartnerOnboardingBusinessInput
 ): Promise<ActionResult<{ partnerId: string }>> {
   try {
-    const partner = await updatePartnerOnboardingBusiness(partnerId, input)
+    const sessao = await lerSessaoOnboarding()
+    if (!sessao.ok) return { ok: false, error: ONBOARDING_SESSAO_INVALIDA }
+
+    const partner = await updatePartnerOnboardingBusiness(sessao.partnerId, input)
     return { ok: true, data: { partnerId: partner.id } }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Erro ao atualizar" }
@@ -82,7 +105,16 @@ export async function savePartnerOnboardingTrustAction(
   input: PartnerOnboardingTrustInput
 ): Promise<ActionResult<void>> {
   try {
-    const partner = await updatePartnerOnboardingTrust(input)
+    const sessao = await lerSessaoOnboarding()
+    if (!sessao.ok) return { ok: false, error: ONBOARDING_SESSAO_INVALIDA }
+
+    // `input.partnerId` continua no tipo (o formulário ainda o envia), mas
+    // perdeu toda autoridade: o alvo é sobrescrito pelo id da capability. É por
+    // aqui que a verificação de PARTNER era alcançável com id alheio.
+    const partner = await updatePartnerOnboardingTrust({
+      ...input,
+      partnerId: sessao.partnerId,
+    })
 
     if (input.requestVerification) {
       const notes =
@@ -123,11 +155,13 @@ export async function savePartnerOnboardingTrustAction(
 }
 
 export async function savePartnerOnboardingRecommendationsAction(
-  partnerId: string,
   professionalIds: string[]
 ): Promise<ActionResult<{ connectionsCreated: number }>> {
   try {
-    const partner = await getPartnerById(partnerId)
+    const sessao = await lerSessaoOnboarding()
+    if (!sessao.ok) return { ok: false, error: ONBOARDING_SESSAO_INVALIDA }
+
+    const partner = await getPartnerById(sessao.partnerId)
     if (!partner) return { ok: false, error: "Parceiro não encontrado." }
     if (partner.onboardingStatus === "COMPLETED") {
       return { ok: false, error: "Onboarding já concluído." }
@@ -175,13 +209,16 @@ export async function savePartnerOnboardingRecommendationsAction(
   }
 }
 
-export async function completePartnerOnboardingAction(
-  partnerId: string
-): Promise<ActionResult<PartnerOnboardingCompleteResult>> {
+export async function completePartnerOnboardingAction(): Promise<
+  ActionResult<PartnerOnboardingCompleteResult>
+> {
   try {
-    const partner = await completePartnerOnboarding(partnerId)
+    const sessao = await lerSessaoOnboarding()
+    if (!sessao.ok) return { ok: false, error: ONBOARDING_SESSAO_INVALIDA }
 
-    const result = await getPartnerOnboardingResult(partnerId)
+    const partner = await completePartnerOnboarding(sessao.partnerId)
+
+    const result = await getPartnerOnboardingResult(sessao.partnerId)
 
     await recordPartnerAudit("partner.onboarding_completed", partner.id, {
       businessName:        partner.businessName,
@@ -201,14 +238,30 @@ export async function completePartnerOnboardingAction(
   }
 }
 
-export async function getPartnerOperationalMetricsAction(
-  partnerId: string
-): Promise<PartnerOperationalMetrics | null> {
-  return getPartnerOperationalMetrics(partnerId)
+/**
+ * Leitura protegida pela MESMA capability das mutações.
+ *
+ * Métricas operacionais de um parceiro não são "menos graves" por serem
+ * leitura — eram o pior item da lista original, porque expunham o desempenho
+ * de um negócio a qualquer um que soubesse o id.
+ */
+export async function getPartnerOperationalMetricsAction(): Promise<PartnerOperationalMetrics | null> {
+  const sessao = await lerSessaoOnboarding()
+  if (!sessao.ok) return null
+  return getPartnerOperationalMetrics(sessao.partnerId)
 }
 
-export async function getPartnerOnboardingResumeAction(partnerId: string) {
-  const partner = await getPartnerById(partnerId)
+/**
+ * Retomada do onboarding — o parceiro vem da capability, não da URL.
+ *
+ * É isto que faz "retomar" significar "voltar ao SEU cadastro" em vez de
+ * "abrir o cadastro de quem eu souber o id".
+ */
+export async function getPartnerOnboardingResumeAction() {
+  const sessao = await lerSessaoOnboarding()
+  if (!sessao.ok) return null
+
+  const partner = await getPartnerById(sessao.partnerId)
   if (!partner || partner.onboardingStatus === "COMPLETED") return null
   return partner
 }

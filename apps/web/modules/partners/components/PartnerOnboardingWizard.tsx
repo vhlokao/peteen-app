@@ -98,7 +98,7 @@ export function PartnerOnboardingWizard() {
       }
 
       const res = partnerId
-        ? await updatePartnerOnboardingBusinessAction(partnerId, payload)
+        ? await updatePartnerOnboardingBusinessAction(payload)
         : await savePartnerOnboardingBusinessAction(payload)
 
       if (res.ok) {
@@ -141,7 +141,6 @@ export function PartnerOnboardingWizard() {
 
     startTransition(async () => {
       const recRes = await savePartnerOnboardingRecommendationsAction(
-        partnerId,
         selectedProIds
       )
       if (!recRes.ok) {
@@ -149,7 +148,7 @@ export function PartnerOnboardingWizard() {
         return
       }
 
-      const completeRes = await completePartnerOnboardingAction(partnerId)
+      const completeRes = await completePartnerOnboardingAction()
       if (completeRes.ok) {
         setResult(completeRes.data)
         setStep(4)

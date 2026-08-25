@@ -34,7 +34,8 @@
     "test:temporal": "node --experimental-strip-types --test lib/prisma/pg-timestamp-utc.test.ts",
     "test:backoffice": "node --experimental-strip-types --test modules/backoffice/domain/push-observability.test.ts modules/backoffice/domain/request-timeline.test.ts",
     "test:legal": "node --experimental-strip-types --test modules/legal/domain/legal-documents.test.ts",
-    "test:authz": "node --experimental-strip-types --test modules/verification/application/server-action-surface.test.ts"
+    "test:authz": "node --experimental-strip-types --test modules/verification/application/server-action-surface.test.ts",
+    "test:partner-capability": "node --experimental-strip-types --test modules/partners/domain/onboarding-capability.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

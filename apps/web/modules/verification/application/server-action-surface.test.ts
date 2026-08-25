@@ -170,7 +170,10 @@ function acoesDe(relativo: string): Array<{ nome: string; corpo: string }> {
     const corpo: string[] = []
     for (let j = i; j < linhas.length; j++) {
       corpo.push(linhas[j]!)
-      if (j > i && linhas[j] === "}") break
+      // `.trimEnd()` obrigatório: o repositório usa CRLF, então a linha de
+      // fechamento é `"}\r"`. Sem isto o corpo de uma action absorve as
+      // seguintes, e a varredura acusa guard que pertence a outra função.
+      if (j > i && linhas[j]!.trimEnd() === "}") break
     }
     out.push({ nome: m[1]!, corpo: corpo.join("\n") })
   }
@@ -199,16 +202,18 @@ describe("varredura — toda Server Action destes módulos verifica quem chama",
 // Dívida conhecida — o funil público de Partner
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("partners/onboarding — dívida registrada, ainda aberta", () => {
-  it("as actions públicas de onboarding seguem aceitando partnerId do cliente", () => {
-    // Este teste NÃO afirma que está correto — afirma que o estado é o
-    // conhecido e reportado. O onboarding de parceiro é público por desenho
-    // ("sem login de parceiro"), então não há sessão de onde derivar posse; a
-    // correção exige uma capability assinada, que precisa de um segredo que o
-    // projeto ainda não tem. Se alguém fechar isso, este teste falha e força a
-    // atualização do registro da dívida.
+describe("partners/onboarding — dívida FECHADA", () => {
+  it("nenhuma action pública recebe mais partnerId do cliente", () => {
+    // A versão anterior deste teste registrava a dívida em aberto e falhava
+    // quando ela fosse fechada — o que é exatamente o que aconteceu. Agora
+    // fixa o estado oposto: o parceiro vem da capability assinada, e voltar a
+    // aceitar um id por parâmetro reprova aqui.
+    //
+    // A cobertura profunda (assinatura, A→B, adulteração, expiração) vive em
+    // modules/partners/domain/onboarding-capability.test.ts.
     const src = ler("modules/partners/application/onboarding-actions.ts")
-    assert.match(src, /completePartnerOnboardingAction\(\s*\n?\s*partnerId: string/)
+    assert.doesNotMatch(src, /completePartnerOnboardingAction\(\s*\n?\s*partnerId: string/)
+    assert.match(src, /lerSessaoOnboarding\(\)/)
   })
 
   it("o onboarding usa a função INTERNA de verificação, não um endpoint", () => {

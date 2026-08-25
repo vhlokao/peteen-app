@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { classifyRoute, requiresSession } from "@/modules/identity/domain/route-access";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -20,42 +21,6 @@ import { NextResponse } from "next/server";
  *   - getSession() NÃO é usado aqui pois lê apenas o cookie sem validação server-side
  */
 
-/** Prefixos de rotas que exigem sessão válida */
-const PROTECTED_PREFIXES = [
-  "/me",
-  "/tutor",
-  "/professional",
-  "/admin",
-  // Rotas da Fase 4.3+ (criadas nas próximas etapas)
-  "/discover",
-  "/requests",
-  "/pets",
-  "/profile",
-  "/onboarding",
-  "/dashboard",
-];
-
-/** Portal parceiro — prefixo exato evita colidir com /partners (público) */
-function isPartnerPortalRoute(pathname: string): boolean {
-  return pathname === "/partner" || pathname.startsWith("/partner/");
-}
-
-/** Rotas completamente públicas — nunca redirecionar para login */
-const PUBLIC_PATHS = new Set(["/", "/login", "/sobre", "/como-funciona", "/termos", "/privacidade"]);
-
-/**
- * Prefixos de rotas de infraestrutura e de superfícies públicas por
- * definição — sempre permitir.
- *
- * `/p/` é a landing de convite do profissional. Ela PRECISA abrir sem sessão:
- * o público-alvo é justamente quem ainda não tem conta, e uma parede de login
- * antes de qualquer contexto ("quem é essa pessoa que me convidou?") mata a
- * hipótese que o canal existe para testar. É deliberadamente uma rota NOVA e
- * enxuta, não `/discover/[id]` tornado público: o Discovery continua
- * autenticado, e a landing carrega só identidade + confiança pública +
- * serviços ativos + CTA.
- */
-const INFRA_PREFIXES = ["/auth/", "/api/", "/p/"];
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -90,18 +55,21 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
-  // ── Rotas de infraestrutura — sempre permitir ──────────────────────────
-  if (INFRA_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+  // ── Rotas de infraestrutura — sempre permitir, sem mais nenhuma regra ──
+  // Só `infra` sai por aqui. Uma rota PÚBLICA (como /login) continua
+  // atravessando o resto: é abaixo que mora o redirect de quem já está
+  // autenticado e abriu /login.
+  if (classifyRoute(pathname) === "infra") {
     return supabaseResponse;
   }
 
-  // ── Verificar se a rota precisa de autenticação ───────────────────────
-  const isProtectedRoute =
-    isPartnerPortalRoute(pathname) ||
-    PROTECTED_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-
-  // Usuário não autenticado tentando acessar rota protegida
-  if (isProtectedRoute && !user) {
+  // ── A rota exige sessão? ───────────────────────────────────────────────
+  // A regra (infra → exceções públicas exatas → prefixos protegidos, nessa
+  // ordem) vive em modules/identity/domain/route-access.ts, como função pura.
+  // Aqui não pode ser testada: middleware roda no Edge e recebe NextRequest.
+  // Lá, cada caso — inclusive os NÃO-casos, que são os que seguram o contrato
+  // — é uma asserção.
+  if (requiresSession(pathname) && !user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     // Preservar destino original para redirect pós-login (via ?next=).

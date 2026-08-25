@@ -116,14 +116,45 @@ export default async function InviteLandingPage({ params }: PageProps) {
   const isTutor = ctx.authenticated && ctx.user.roles.includes("TUTOR")
   const landingPath = buildInviteLandingPath(professionalId)
 
-  // Tutor logado vai direto ao fluxo que já existe. Quem não é (visitante ou
-  // usuário sem persona de tutor) passa pelo login levando o destino no
-  // `next`, que é preservado por magic link, senha e Google — ver
-  // signInWithGoogle e o callback.
+  /**
+   * ESTA PÁGINA É A ÂNCORA DO CONVITE — ela re-decide o próximo passo a cada
+   * visita, em vez de tentar pré-calcular a jornada inteira.
+   *
+   * O `next` aponta sempre de volta para cá justamente por isso: quem chega
+   * pelo link pode estar em três estados diferentes, e cada etapa concluída
+   * traz a pessoa de volta para ser reavaliada. É um caminho que se corrige
+   * sozinho, em vez de uma sequência que quebra quando alguém entra pelo meio.
+   *
+   * ─────────────────────────────────────────────────────────────────────────
+   * O DEAD-END QUE ISTO FECHA
+   *
+   * Antes havia só dois ramos: tutor → Discovery, todo o resto → `/login`.
+   * O "resto" incluía quem JÁ ESTAVA AUTENTICADO mas ainda não tinha persona
+   * de tutor — exatamente quem acabou de criar conta pelo convite. E o
+   * middleware, ao ver um usuário logado indo para `/login`, redireciona para
+   * `/dashboard` APAGANDO o `next` (searchParams.delete("next")). O convite
+   * morria ali: `/dashboard` mandava para `/onboarding`, que não propaga
+   * contexto, e a pessoa terminava no Discovery genérico tendo que reencontrar
+   * sozinha quem a convidou — o cenário que o canal existe para evitar.
+   *
+   * Mandar direto para `/onboarding/tutor` evita o `/login` (e portanto o
+   * strip do middleware) e entra num fluxo que JÁ carrega `next` até o fim
+   * (ver modules/invite/domain/onboarding-next.ts).
+   */
+  const precisaCriarPersonaDeTutor =
+    ctx.authenticated && !isTutor && ctx.user.primaryRole === null
+
   const ctaHref = isTutor
     ? `/discover/${professionalId}`
-    : `/login?next=${encodeURIComponent(landingPath)}`
-  const ctaLabel = isTutor ? "Solicitar atendimento" : "Continuar com este profissional"
+    : precisaCriarPersonaDeTutor
+      ? `/onboarding/tutor?next=${encodeURIComponent(landingPath)}`
+      : `/login?next=${encodeURIComponent(landingPath)}`
+
+  const ctaLabel = isTutor
+    ? "Solicitar atendimento"
+    : precisaCriarPersonaDeTutor
+      ? "Criar minha conta de tutor"
+      : "Continuar com este profissional"
 
   return (
     <main className="mx-auto w-full max-w-md px-4 py-8 pb-12">

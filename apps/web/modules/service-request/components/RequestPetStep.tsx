@@ -28,6 +28,12 @@ type RequestPetStepProps = {
   selectedPetId: string
   onSelect: (petId: string) => void
   error?: string
+  /**
+   * Para onde voltar depois de cadastrar o primeiro pet. Sem isto, quem chega
+   * sem pet é mandado para a lista de pets e precisa reencontrar sozinho o
+   * profissional que estava prestes a contratar.
+   */
+  professionalId?: string
 }
 
 /**
@@ -35,8 +41,21 @@ type RequestPetStepProps = {
  * Nenhum dado inventado: idade é calculada a partir de birthDate real,
  * quando existir; se não existir, o campo simplesmente não aparece.
  */
-export function RequestPetStep({ pets, selectedPetId, onSelect, error }: RequestPetStepProps) {
+export function RequestPetStep({
+  pets,
+  selectedPetId,
+  onSelect,
+  error,
+  professionalId,
+}: RequestPetStepProps) {
   if (pets.length === 0) {
+    // Leva o contexto junto: o cadastro do pet é um DESVIO no meio de "quero
+    // contratar esta pessoa", não um destino. `/me/pets/new` valida este
+    // `next` com a mesma regra do login (só caminho interno).
+    const hrefNovoPet = professionalId
+      ? `/me/pets/new?next=${encodeURIComponent(`/discover/${professionalId}`)}`
+      : "/me/pets/new"
+
     return (
       <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border px-4 py-8 text-center">
         <span className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
@@ -48,7 +67,7 @@ export function RequestPetStep({ pets, selectedPetId, onSelect, error }: Request
             Cadastre um pet para poder solicitar um atendimento.
           </p>
         </div>
-        <Link href="/me/pets/new" className={buttonVariants({ size: "sm" })}>
+        <Link href={hrefNovoPet} className={buttonVariants({ size: "sm" })}>
           Adicionar pet
         </Link>
       </div>

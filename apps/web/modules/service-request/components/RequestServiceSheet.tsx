@@ -293,6 +293,7 @@ export function RequestServiceSheet({ professional, pets }: RequestServiceSheetP
                 selectedPetId={values.petId}
                 onSelect={(id) => setValue("petId", id, { shouldValidate: true })}
                 error={errors.petId?.message}
+                professionalId={professional.id}
               />
             )}
 

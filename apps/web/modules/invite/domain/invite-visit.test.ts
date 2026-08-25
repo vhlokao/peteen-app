@@ -6,6 +6,9 @@
 
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import * as dominio from "./invite-visit.ts"
 import {
@@ -340,5 +343,73 @@ describe("resolveOnboardingDestination — fim do onboarding", () => {
   it("next hostil NUNCA vira destino — cai no padrão", () => {
     assert.equal(resolveOnboardingDestination("https://evil.com"), "/discover")
     assert.equal(resolveOnboardingDestination("//evil.com"), "/discover")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Continuidade do convite — os dois pontos onde o contexto morria
+//
+// Verificação estrutural (lê o fonte das rotas), pelo mesmo motivo já usado em
+// care-video-presentation.test.ts: o que precisa ser garantido aqui é a
+// AUSÊNCIA de um dead-end, e isso vive na decisão de para onde cada tela manda
+// a pessoa — não em uma função pura que se possa chamar isoladamente.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const RAIZ = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..")
+
+function fonte(relativo: string): string {
+  return readFileSync(path.join(RAIZ, relativo), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "")
+}
+
+describe("landing /p/[id] — autenticado sem persona não cai em /login", () => {
+  const landing = fonte("app/p/[professionalId]/page.tsx")
+
+  it("tem um ramo para quem já autenticou mas ainda não é tutor", () => {
+    // Sem este ramo a pessoa ia para /login, o middleware via um usuário
+    // logado, redirecionava para /dashboard APAGANDO o next, e o convite
+    // morria no Discovery genérico.
+    assert.match(landing, /primaryRole === null/)
+  })
+
+  it("esse ramo manda para o onboarding do tutor, não para /login", () => {
+    assert.match(landing, /\/onboarding\/tutor\?next=/)
+  })
+
+  it("o next levado é a própria landing — ela reavalia o estado a cada volta", () => {
+    assert.match(landing, /encodeURIComponent\(landingPath\)/)
+  })
+
+  it("tutor com persona continua indo direto ao fluxo de solicitação", () => {
+    assert.match(landing, /`\/discover\/\$\{professionalId\}`/)
+  })
+})
+
+describe("cadastro de pet — volta ao profissional em vez da lista", () => {
+  const rotaNovoPet = fonte("app/(tutor)/me/pets/new/page.tsx")
+  const passoPet = fonte("modules/service-request/components/RequestPetStep.tsx")
+
+  it("a rota de novo pet aceita next e o valida com a MESMA regra do login", () => {
+    assert.match(rotaNovoPet, /parseNextParam\(rawNext\)/)
+  })
+
+  it("sem next, o destino continua sendo a lista de pets", () => {
+    assert.match(rotaNovoPet, /parseNextParam\(rawNext\) \?\? "\/me\/pets"/)
+  })
+
+  it("o formulário usa esse destino, não um caminho fixo", () => {
+    assert.match(rotaNovoPet, /redirectTo=\{destinoAposSalvar\}/)
+    assert.doesNotMatch(rotaNovoPet, /redirectTo="\/me\/pets"/)
+  })
+
+  it("o passo de pet vazio leva o profissional no link", () => {
+    assert.match(passoPet, /\/me\/pets\/new\?next=/)
+    assert.match(passoPet, /\/discover\/\$\{professionalId\}/)
+  })
+
+  it("sem professionalId o link continua funcionando, só sem contexto", () => {
+    // Este passo também é usado fora do convite; não pode quebrar lá.
+    assert.match(passoPet, /: "\/me\/pets\/new"/)
   })
 })

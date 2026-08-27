@@ -41,9 +41,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const profile = await getPartnerPublicProfileAction(slug)
 
+  // Mesmo padrão de /termos e /privacidade: canonical explícito, não deixado
+  // para o Next inferir da URL requisitada. Sem isto, qualquer variação da
+  // mesma URL (query string de tracking, barra final) seria vista como
+  // página distinta por um crawler — o slug já é a chave estável do perfil.
   if (!profile) return { title: "Parceiro" }
 
-  return { title: profile.businessName }
+  return { title: profile.businessName, alternates: { canonical: `/partners/${slug}` } }
 
 }
 

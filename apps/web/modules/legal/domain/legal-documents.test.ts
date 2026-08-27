@@ -78,6 +78,32 @@ describe("estrutura", () => {
       assert.ok(ids.includes(obrigatorio), `pauta perdeu: ${obrigatorio}`)
     }
   })
+
+  it("termos cobre a pauta mínima do produto real", () => {
+    // Mesma trava da privacidade, para os temas específicos do PRODUTO — não
+    // de um marketplace genérico. "care-timeline" e "trust" existem porque a
+    // auditoria BRAND/DOMAIN/LEGAL encontrou os dois ausentes: o esqueleto
+    // cobria pagamento e avaliação, mas nada nomeava o Diário de cuidado nem
+    // o Índice de Confiança — os dois elementos que mais diferenciam a
+    // Peteen de um marketplace comum, e por isso os que mais precisam de
+    // cláusula própria.
+    const ids = TERMOS_DE_USO.secoes.map((s) => s.id)
+    for (const obrigatorio of [
+      "papel-da-peteen",
+      "obrigacoes-tutor",
+      "obrigacoes-profissional",
+      "agendamento",
+      "care-timeline",
+      "avaliacoes",
+      "trust",
+      "conduta",
+      "responsabilidade",
+      "suspensao",
+      "contato",
+    ]) {
+      assert.ok(ids.includes(obrigatorio), `pauta perdeu: ${obrigatorio}`)
+    }
+  })
 })
 
 describe("links", () => {

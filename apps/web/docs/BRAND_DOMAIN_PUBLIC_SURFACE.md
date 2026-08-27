@@ -32,6 +32,23 @@ Links de convite **não usam a variável**: `share-profile-button.tsx` monta a U
 com `window.location.origin`, então já acompanha qualquer domínio
 automaticamente, sem código específico de plataforma.
 
+### Falha explícita quando a variável falta — corrigido em auditoria posterior
+
+`buildMagicLinkRedirectUrl` (usada por magic link e Google OAuth, os dois
+únicos consumidores) montava `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
+sem checar a env antes. Se a variável faltasse num ambiente novo do Vercel, o
+resultado era a STRING literal `"undefined/auth/callback"`, passada ao
+Supabase sem erro nenhum na hora — login quebraria em produção sem log, sem
+500, só um redirect para lugar nenhum. `lib/env.ts` mantém a variável
+`.optional()` de propósito (seu `parse()` roda no carregamento do módulo;
+exigi-la lá derrubaria a aplicação inteira). A correção ficou onde a
+variável é CONSUMIDA: `baseAuthCallbackUrl()` agora lança um erro claro se
+`NEXT_PUBLIC_APP_URL` estiver ausente, e `signInWithMagicLink` captura essa
+falha e devolve o mesmo formato tipado que já usa para erros do Supabase —
+nunca deixa o throw virar 500 genérico. `signInWithGoogle` já lançava para
+erros do Supabase; o throw da env ausente segue o mesmo contrato existente,
+sem mudança adicional. Ver `modules/identity/infrastructure/auth-callback-url.test.ts`.
+
 ---
 
 ## 2. Checklist de troca de domínio
@@ -190,9 +207,10 @@ registrar como P2.
 | `/` | sim | **sim** — única do produto |
 | `/termos`, `/privacidade` | sim | só quando o texto for o vigente (automático) |
 | `/p/[professionalId]` | sim | **não** — link pessoal, `noindex` |
-| `/partners/[slug]` | sim | sim |
+| `/partners/[slug]` | sim | sim — canonical explícito desde a auditoria de 2026-08-27 |
+| `/onboarding/partner` | sim — corrigido em missão posterior (funil público de Partner) | **não** — funil pessoal, herda `noindex` do layout de `/onboarding` |
 | `/login`, `/auth/*` | sim | **não** |
-| `/onboarding`, `/dashboard`, `/tutor/*`, `/professional/*`, `/partner/*`, `/admin/*` | não | **não** |
+| `/onboarding` (demais: tutor, professional), `/dashboard`, `/tutor/*`, `/professional/*`, `/partner/*`, `/admin/*` | não | **não** |
 
 Duas camadas, que fazem coisas diferentes e não se substituem:
 
@@ -277,7 +295,58 @@ VAPID **não muda** com o domínio: as chaves não são ligadas à origem. O
 
 ---
 
-## 8. Política de atualização
+## 8. Cabeçalhos de segurança
+
+`next.config.ts` → `headers()`. Aplicados a `/:path*` — toda rota, sem
+subconjunto esquecido.
+
+| Cabeçalho | Valor | Por quê |
+|---|---|---|
+| `X-Content-Type-Options` | `nosniff` | impede o navegador de reinterpretar o content-type declarado |
+| `X-Frame-Options` | `DENY` | nenhum `<iframe>` em uso no produto (auditado); bloquear enquadramento por terceiros não quebra nada |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | não vaza path/query (pode conter id de request) para destinos externos |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | nenhum destes é usado hoje; documentado em vez de depender do padrão do navegador |
+
+### `camera=()` verificado contra o Care Timeline antes de publicar
+
+O produto TEM fluxo real de câmera (Care Timeline). Antes de publicar o
+header, foi preciso provar que `camera=()` não quebra esse fluxo — não supor.
+
+O mecanismo real é `<input type="file" capture="environment">`
+(`CarePhotoPicker.tsx`), nunca `getUserMedia`/`MediaDevices`. Comprovado ao
+vivo no browser, com o header já ativo no documento:
+`document.featurePolicy.allowsFeature("camera")` → `false`;
+`getUserMedia({video:true})` → bloqueado (`NotAllowedError`), confirmando que
+a policy tem efeito real sobre a API que ela governa; no MESMO documento, um
+`<input capture="environment">` criado fielmente ao que o React emite
+permaneceu intacto, não-`disabled`, `.click()` sem exceção. A Permissions
+Policy `camera` é definida pela spec em torno da Media Capture and Streams
+API — nunca em torno de `<input capture>`, que é resolvido pelo
+navegador/SO fora do alcance de qualquer feature policy, em qualquer
+plataforma (Android, iOS/PWA, desktop).
+
+Tripwire em `modules/seo/public-surface.test.ts`: varre o repositório por
+`getUserMedia`/`MediaDevices`/`MediaRecorder`/`navigator.geolocation`. Se
+algum fluxo novo introduzir uma dessas APIs, o teste falha imediatamente —
+força revisitar esta seção antes de descobrir em produção que
+câmera/microfone/localização pararam de funcionar.
+
+### Deliberadamente FORA — CSP
+
+Nenhum `Content-Security-Policy`. Definir um exige listar toda origem externa
+legítima (Supabase, PostHog, Google Maps, imagem de avatar/logo de parceiro)
+e testar cada fluxo que carrega recurso de fora — uma entrada esquecida
+quebra a aplicação silenciosamente para quem usa aquele recurso. **P1
+pré-piloto, não implementado**: exige levantamento de origens + teste
+dedicado antes de qualquer tentativa.
+
+Nenhum HSTS explícito: a Vercel já aplica `Strict-Transport-Security` na
+borda para todo domínio (próprio e customizado); declarar de novo aqui seria
+redundante, não mais seguro.
+
+---
+
+## 9. Política de atualização
 
 - Trocou domínio → atualizar a seção 1 e rodar o checklist da seção 2
 - Chegaram assets → criar `public/brand/`, atualizar a seção 3, preencher
@@ -286,3 +355,5 @@ VAPID **não muda** com o domínio: as chaves não são ligadas à origem. O
   `modules/legal/domain/legal-documents.ts`; o aviso de pendência e o
   `noindex` somem sozinhos
 - Nova rota pública → decidir indexação e registrar na tabela da seção 5
+- CSP for implementado → registrar aqui as origens permitidas e o teste que
+  cobre cada uma

@@ -8,8 +8,38 @@ import { isSafeRedirectPath } from "../domain/safe-redirect";
 const EMAIL_RATE_LIMIT_MESSAGE =
   "Não conseguimos enviar um novo acesso agora porque o limite temporário de e-mails foi atingido. Aguarde alguns minutos e tente novamente.";
 
+const AUTH_MISCONFIGURED_MESSAGE =
+  "Login temporariamente indisponível. Nossa equipe já foi avisada.";
+
+/**
+ * `NEXT_PUBLIC_APP_URL` é `.optional()` em `lib/env.ts` DE PROPÓSITO — aquele
+ * schema faz `parse()` no carregamento do módulo, então exigir a variável lá
+ * derrubaria a aplicação INTEIRA (toda tela, não só login) sempre que ela
+ * faltasse num ambiente novo. Ver o comentário de `ONBOARDING_SIGNING_SECRET`
+ * no mesmo arquivo — mesmo raciocínio.
+ *
+ * Isso empurra a responsabilidade de verificar para quem CONSOME a variável.
+ * Antes desta função, o consumo era `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`
+ * sem checagem: se a env estivesse ausente, o resultado era literalmente a
+ * STRING `"undefined/auth/callback"` — passada ao Supabase como
+ * `redirectTo`/`emailRedirectTo` sem erro nenhum na hora. Login (magic link E
+ * Google, que passam pelos dois pela mesma função) ficaria quebrado em
+ * produção, sem log, sem 500, só um redirect que não leva a lugar nenhum —
+ * o tipo exato de falha silenciosa que esta auditoria existe para eliminar.
+ */
+function baseAuthCallbackUrl(): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL;
+  if (!base) {
+    throw new Error(
+      "NEXT_PUBLIC_APP_URL ausente — auth callback não pode ser construído. " +
+        "Verificar a variável no ambiente do Vercel (ver docs/BRAND_DOMAIN_PUBLIC_SURFACE.md)."
+    );
+  }
+  return `${base}/auth/callback`;
+}
+
 function buildMagicLinkRedirectUrl(next?: string): string {
-  const base = `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`;
+  const base = baseAuthCallbackUrl();
   if (isSafeRedirectPath(next)) {
     return `${base}?next=${encodeURIComponent(next)}`;
   }
@@ -33,10 +63,26 @@ export async function signInWithMagicLink(
 ): Promise<{ success: true } | { success: false; error: string }> {
   const supabase = await createSupabaseServerClient();
 
+  // `buildMagicLinkRedirectUrl` pode lançar (env ausente) — capturado aqui, e
+  // não deixado escapar, pelo MESMO motivo já documentado acima para os erros
+  // do Supabase: um throw não-tratado numa Server Action vira 500 genérico
+  // sem orientação. Config ausente e Supabase rejeitando são duas causas
+  // diferentes; o log distingue as duas, a mensagem ao usuário não precisa.
+  let redirectTo: string;
+  try {
+    redirectTo = buildMagicLinkRedirectUrl(next);
+  } catch (err) {
+    console.error(
+      "[auth] signInWithMagicLink: configuração ausente —",
+      err instanceof Error ? err.message : err
+    );
+    return { success: false, error: AUTH_MISCONFIGURED_MESSAGE };
+  }
+
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: buildMagicLinkRedirectUrl(next),
+      emailRedirectTo: redirectTo,
     },
   });
 

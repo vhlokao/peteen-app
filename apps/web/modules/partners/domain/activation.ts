@@ -38,10 +38,23 @@ export function computeActivationScore(input: ActivationInput): number {
   return Math.min(100, score)
 }
 
+/**
+ * Rótulo QUALITATIVO do score — nunca a porcentagem de novo.
+ *
+ * Os três consumidores (wizard, admin, perfil público) renderizam
+ * `{score}% ({label})`, então devolver porcentagem aqui produzia "80% (80%)".
+ * Pior: os limiares eram 30/50/80 enquanto `computeActivationScore` só produz
+ * múltiplos de 20 — um score de 40 caía no bucket ">= 30" e a tela dizia
+ * "40% (30%)", divergindo do número ao lado dela.
+ *
+ * Os cortes agora coincidem com os degraus que o cálculo realmente atinge
+ * (0, 20, 40, 60, 80, 100). A REGRA não mudou: computeActivationScore está
+ * intocado — o que mudou é como o mesmo número é lido em voz alta.
+ */
 export function activationScoreLabel(score: number): string {
-  if (score >= 100) return "100%"
-  if (score >= 80) return "80%"
-  if (score >= 50) return "50%"
-  if (score >= 30) return "30%"
+  if (score >= 100) return "Perfil completo"
+  if (score >= 80) return "Quase completo"
+  if (score >= 60) return "Bom começo"
+  if (score >= 40) return "Em construção"
   return "Iniciando"
 }

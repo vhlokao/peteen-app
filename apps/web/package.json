@@ -36,7 +36,8 @@
     "test:legal": "node --experimental-strip-types --test modules/legal/domain/legal-documents.test.ts",
     "test:authz": "node --experimental-strip-types --test modules/verification/application/server-action-surface.test.ts",
     "test:partner-capability": "node --experimental-strip-types --test modules/partners/domain/onboarding-capability.test.ts",
-    "test:routing": "node --experimental-strip-types --test modules/identity/domain/route-access.test.ts"
+    "test:routing": "node --experimental-strip-types --test modules/identity/domain/route-access.test.ts",
+    "test:partner-discovery": "node --experimental-strip-types --test modules/partners/infrastructure/professional-search-city.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

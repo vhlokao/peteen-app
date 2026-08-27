@@ -4,6 +4,7 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
+import { normalizeCityName } from "@/modules/location"
 import {
   SERVICE_TYPE_LABELS,
   type ServiceType,
@@ -475,7 +476,15 @@ export async function searchProfessionalsForPartnerRecommendation(
   filters: { name?: string; city?: string }
 ): Promise<ProfessionalSearchResult[]> {
   const name = filters.name?.trim()
-  const city = filters.city?.trim()
+  const cidadeBruta = filters.city?.trim()
+
+  // Mesma normalização de getProfessionalsForOnboarding, pelo mesmo motivo:
+  // `mode: "insensitive"` ignora caixa mas NÃO ignora acento, e a cidade pode
+  // chegar digitada à mão neste campo. As duas superfícies que buscam
+  // profissional para o Partner precisam concordar sobre o que "Carapicuiba"
+  // significa — se divergirem, a mesma busca dá resultados diferentes
+  // dependendo de o parceiro estar no onboarding ou no portal.
+  const city = cidadeBruta ? (normalizeCityName(cidadeBruta) ?? cidadeBruta) : undefined
 
   if (!name && !city) return []
 

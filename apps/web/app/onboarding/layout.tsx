@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 
 import { PRIVATE_AREA_METADATA } from "@/lib/seo/private-area";
@@ -16,7 +17,7 @@ export const metadata: Metadata = PRIVATE_AREA_METADATA;
  *   - Sem distrações de navegação
  *
  * Estrutura:
- *   - Header fixo simples com logo
+ *   - Header fixo simples com o wordmark oficial
  *   - Conteúdo centralizado, max-w-md (mobile-first)
  */
 export default function OnboardingLayout({ children }: { children: ReactNode }) {
@@ -25,14 +26,23 @@ export default function OnboardingLayout({ children }: { children: ReactNode }) 
       {/* Header simples — só logo, sem navegação */}
       <header className="safe-top sticky top-0 z-10 border-b border-border/60 bg-background/90 backdrop-blur-sm">
         <div className="mx-auto flex h-[var(--header-height)] max-w-[var(--content-max-width)] items-center px-[var(--page-padding-x)]">
-          <Link
-            href="/"
-            className="flex items-center gap-2 font-heading text-base font-semibold text-foreground"
-          >
-            <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary text-xs text-primary-foreground">
-              P
-            </span>
-            Peteen
+          {/* Wordmark oficial, versão para fundo CLARO — este header é
+              `bg-background/90`, exatamente como o do app (ver
+              components/layout/top-bar.tsx, que carrega a mesma imagem nas
+              mesmas dimensões). Antes havia aqui o quadrado "P" + texto que o
+              top-bar já tinha aposentado ao adotar o wordmark: quem vinha do
+              site público para o onboarding via a marca TROCAR no meio do
+              caminho. Mesmo asset, sem cópia — a logo definitiva, quando o
+              fundador fechar, entra em /public/brand e chega aqui de graça. */}
+          <Link href="/" aria-label="Peteen — página inicial" className="flex items-center">
+            <Image
+              src="/brand/logo-horizontal.png"
+              alt="Peteen"
+              width={96}
+              height={32}
+              priority
+              className="h-6 w-auto sm:h-7"
+            />
           </Link>
         </div>
       </header>

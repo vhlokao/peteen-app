@@ -36,3 +36,15 @@ export const PARTNER_VERIFICATION_STATUS_LABELS: Record<PartnerVerificationStatu
   PENDING_VERIFICATION:  "Verificação pendente",
   VERIFIED:              "Verificado",
 }
+
+/**
+ * Mensagem única para qualquer falha da BUSCA de profissionais — rede, banco,
+ * pooler. Nunca carrega detalhe técnico: o parceiro precisa saber que pode
+ * tentar de novo, não em que camada quebrou.
+ *
+ * Vive aqui, e não junto da action, porque o arquivo da action é
+ * `"use server"` — e nele TODO export precisa ser função async. Exportar uma
+ * string de lá quebra o build (e só o build: typecheck e lint passam).
+ */
+export const BUSCA_PROFISSIONAIS_INDISPONIVEL =
+  "Não foi possível buscar profissionais agora."

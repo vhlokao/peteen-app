@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache"
 
 import { createTrustConnection } from "@/modules/trust-graph/infrastructure/repository"
 import { TRUST_CONNECTION_WEIGHTS } from "@/modules/trust-graph/domain/constants"
+import { BUSCA_PROFISSIONAIS_INDISPONIVEL } from "../domain/constants"
 import { recordPartnerAudit } from "./partner-audit"
 import {
   emitirSessaoOnboarding,
@@ -41,10 +42,29 @@ type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string }
 
+/**
+ * Profissionais para a etapa Recomendações.
+ *
+ * Devolve `ActionResult` e não um array cru porque array não sabe dizer
+ * "falhou". O repository devolvia `[]` no `catch`, e a tela então anunciava
+ * "Nenhum profissional encontrado em X" para um timeout de banco — afirmando
+ * ao parceiro que a cidade dele está vazia quando ninguém chegou a olhar.
+ *
+ * Aqui as duas situações passam a ter formas diferentes:
+ *   { ok: true,  data: [] }  → a busca rodou e a cidade não tem ninguém
+ *   { ok: false, error }     → a busca não rodou; nada foi provado sobre a cidade
+ */
 export async function getProfessionalsForOnboardingAction(
   city?: string
-): Promise<ProfessionalOnboardingOption[]> {
-  return getProfessionalsForOnboarding(city)
+): Promise<ActionResult<ProfessionalOnboardingOption[]>> {
+  try {
+    const data = await getProfessionalsForOnboarding(city)
+    return { ok: true, data }
+  } catch (err) {
+    // Log no servidor com o detalhe real; para o cliente, só a mensagem humana.
+    console.error("[getProfessionalsForOnboardingAction]", err)
+    return { ok: false, error: BUSCA_PROFISSIONAIS_INDISPONIVEL }
+  }
 }
 
 export async function savePartnerOnboardingBusinessAction(

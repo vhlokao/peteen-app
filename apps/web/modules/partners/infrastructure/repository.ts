@@ -4,7 +4,7 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
-import { normalizeLocationInput } from "@/modules/location"
+import { normalizeCityName, normalizeLocationInput } from "@/modules/location"
 import { computeActivationScore } from "../domain/activation"
 import type {
   Partner,
@@ -341,38 +341,78 @@ export async function getPartnerDashboardMetrics(): Promise<PartnerDashboardMetr
   }
 }
 
+/**
+ * Profissionais oferecidos na etapa Recomendações do onboarding de Partner.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE A CIDADE É NORMALIZADA ANTES DA CONSULTA
+ *
+ * `mode: "insensitive"` do Prisma vira `ILIKE`: ignora CAIXA, não ignora
+ * ACENTO. Medido no banco real — `ILIKE 'Carapicuíba'` devolve 6 profissionais,
+ * `ILIKE 'Carapicuiba'` devolve 0. O acento decide sozinho entre a lista cheia
+ * e a lista vazia.
+ *
+ * Isso ficou invisível porque escrita e leitura tratavam a cidade de formas
+ * diferentes. `createPartner` passa por `normalizeLocationInput`, que restaura
+ * a grafia canônica pelo dicionário KNOWN_LOCATIONS — quem digita "carapicuiba"
+ * fica gravado como "Carapicuíba". Mas o wizard consulta com o TEXTO CRU do
+ * formulário, que nunca passou por lá. O banco tem a digital disso: existe um
+ * parceiro chamado "Pet Shop central carapicuiba" (sem acento) cuja coluna
+ * `city` é "Carapicuíba" (com acento).
+ *
+ * O funil de Partner é a única jornada com cidade em texto livre — Tutor e
+ * Profissional usam `<select>` de KNOWN_LOCATIONS e só conseguem produzir a
+ * grafia canônica. Por isso o defeito só aparecia aqui.
+ *
+ * Aplicar o MESMO normalizador da escrita faz os dois lados convergirem, sem
+ * SQL cru, sem `unaccent` e sem mexer em índice.
+ *
+ * LIMITE CONHECIDO: `normalizeCityName` só restaura acento de cidades que
+ * constam em KNOWN_LOCATIONS. Uma cidade fora do dicionário digitada sem
+ * acento continua não encontrando. As 8 cidades da operação estão lá; cobrir
+ * o caso geral exigiria comparação sem acento no banco, que é outra decisão.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE NÃO EXISTE MAIS `catch { return [] }`
+ *
+ * Devolver lista vazia em caso de falha tornava "não há profissionais" e "a
+ * busca quebrou" *indistinguíveis* — para a tela e para quem fosse investigar.
+ * Quem chama precisa saber a diferença para não dizer ao parceiro que a cidade
+ * dele está vazia quando o que houve foi um timeout. O erro sobe; a decisão de
+ * como contá-lo é da camada de cima.
+ */
 export async function getProfessionalsForOnboarding(
   city?: string
 ): Promise<ProfessionalOnboardingOption[]> {
-  try {
-    const rows = await prisma.professionalProfile.findMany({
-      where: {
-        deletedAt: null,
-        ...(city?.trim()
-          ? { city: { equals: city.trim(), mode: "insensitive" } }
-          : {}),
-      },
-      select: {
-        id: true,
-        displayName: true,
-        city: true,
-        trustScore: true,
-        serviceTypes: true,
-      },
-      orderBy: [{ trustScore: "desc" }, { displayName: "asc" }],
-      take: 50,
-    })
+  const cidadeBruta = city?.trim()
+  // `?? cidadeBruta`: normalizeCityName devolve null só para vazio, mas se um
+  // dia mudar, o filtro cai para o texto original em vez de sumir — perder o
+  // filtro devolveria profissionais de todo lugar sem ninguém pedir.
+  const cidade = cidadeBruta ? (normalizeCityName(cidadeBruta) ?? cidadeBruta) : undefined
 
-    return rows.map((r) => ({
-      id:           r.id,
-      displayName:  r.displayName,
-      city:         r.city,
-      trustScore:   r.trustScore,
-      serviceTypes: r.serviceTypes,
-    }))
-  } catch {
-    return []
-  }
+  const rows = await prisma.professionalProfile.findMany({
+    where: {
+      deletedAt: null,
+      ...(cidade ? { city: { equals: cidade, mode: "insensitive" } } : {}),
+    },
+    select: {
+      id: true,
+      displayName: true,
+      city: true,
+      trustScore: true,
+      serviceTypes: true,
+    },
+    orderBy: [{ trustScore: "desc" }, { displayName: "asc" }],
+    take: 50,
+  })
+
+  return rows.map((r) => ({
+    id:           r.id,
+    displayName:  r.displayName,
+    city:         r.city,
+    trustScore:   r.trustScore,
+    serviceTypes: r.serviceTypes,
+  }))
 }
 
 // ── Escrita ───────────────────────────────────────────────────────────────────

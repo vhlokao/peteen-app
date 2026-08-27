@@ -1,3 +1,4 @@
+import Link from "next/link"
 import { format } from "date-fns"
 import { ptBR } from "date-fns/locale"
 import { Info, ShieldAlert } from "lucide-react"
@@ -137,12 +138,18 @@ export default async function AdminDisputesPage({ searchParams }: Props) {
                   {d.serviceLabel}
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className="font-mono text-xs text-neutral-500"
+                  {/* Investigar uma disputa hoje exige a Care Timeline, a mídia
+                      e o AuditLog da Request — tudo isso já vive em
+                      /admin/requests/[requestId], mas esta célula era texto
+                      puro: o operador tinha que copiar o id e navegar à mão.
+                      O link fecha o ciclo sem duplicar nenhum dado aqui. */}
+                  <Link
+                    href={`/admin/requests/${d.requestId}`}
+                    className="font-mono text-xs text-primary underline-offset-2 hover:underline"
                     title={d.requestId}
                   >
                     #{formatShortId(d.requestId)}
-                  </span>
+                  </Link>
                 </td>
                 <td className="max-w-[180px] px-4 py-3 text-xs text-neutral-700 dark:text-neutral-300">
                   <span className="line-clamp-2" title={d.reason}>

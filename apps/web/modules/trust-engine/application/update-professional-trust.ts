@@ -1,4 +1,4 @@
-"use server"
+import "server-only"
 
 /**
  * módulo: trust-engine
@@ -10,6 +10,27 @@
  *   - Review criada (createReviewAction)
  *   - Atendimento concluído (completeServiceRequestAction)
  *   - TrustEvent relevante criado
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE `server-only` E NÃO `"use server"`
+ *
+ * Este arquivo começava com `"use server"`. Em Next.js isso transforma TODO
+ * export num endpoint RPC — e esta função recebe `professionalId` por parâmetro
+ * e escreve `trustScore`/`trustLevel` no perfil. Ou seja: existia uma segunda
+ * porta, sem fechadura, para a mesma mutação que `recalculateSingleTrustAction`
+ * protege com `assertAdmin()`.
+ *
+ * Ela nunca foi um entrypoint público: os 12 call sites são todos internos
+ * (review, conclusão de request, verification, recomendação de partner,
+ * backoffice) e cada um já autoriza no seu próprio fluxo. A correção portanto
+ * não é adicionar guard aqui dentro — é TIRAR da superfície RPC, que é o mesmo
+ * padrão aplicado em modules/verification/application/request-verification.ts.
+ *
+ * `server-only` faz o build quebrar se algum Client Component importar isto,
+ * o que impede a exposição de voltar por descuido.
+ *
+ * CONTRATO: esta função NÃO autentica. Quem chama é responsável por ter
+ * autorizado a operação antes.
  *
  * Design:
  *   - Falha silenciosa: erros são logados mas NÃO propagados para quem chamou.

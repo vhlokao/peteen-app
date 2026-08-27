@@ -17,7 +17,14 @@ import { revalidatePath } from "next/cache"
 
 import { getAuthContext } from "@/modules/identity/application/get-session"
 import { updateProfessionalTrust } from "@/modules/trust-engine/application/update-professional-trust"
+import { randomUUID } from "node:crypto"
 import { recalculateAllTrustScores } from "@/modules/trust-engine/application/recalculate-all-trust-scores"
+import {
+  getProfessionalTrustSnapshot,
+  recordTrustBatchAudit,
+  recordTrustRecalculationAudit,
+  TRUST_RECALC_SINGLE,
+} from "../infrastructure/audit"
 import type { RecalculateReport } from "@/modules/trust-engine/application/recalculate-all-trust-scores"
 
 import {
@@ -57,11 +64,21 @@ import type {
 
 // ── Guard interno ─────────────────────────────────────────────────────────────
 
-async function assertAdmin(): Promise<void> {
+/**
+ * Guard admin — devolve o id do admin.
+ *
+ * Passou a devolver `string` (era `void`) porque a auditoria de recalculação
+ * de Trust precisa do ator. É a mesma assinatura que moderation, trust-graph e
+ * growth-engine já usam, então isto converge com o que existe em vez de criar
+ * uma quarta variante do mesmo guard. Chamadas que só querem o efeito de
+ * barreira seguem escrevendo `await assertAdmin()` e ignorando o retorno.
+ */
+async function assertAdmin(): Promise<string> {
   const ctx = await getAuthContext()
   if (!ctx.authenticated || !ctx.user.roles.includes("ADMIN")) {
     redirect("/dashboard")
   }
+  return ctx.user.id
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
@@ -131,9 +148,27 @@ export async function getAdminRelationshipsAction(
 export async function recalculateSingleTrustAction(
   professionalId: string
 ): Promise<{ success: boolean; error?: string }> {
-  await assertAdmin()
+  const adminId = await assertAdmin()
   try {
+    // Snapshot ANTES da mutação: depois dela o valor anterior não existe mais
+    // em lugar nenhum, e é justamente o "de quanto para quanto" que torna a
+    // operação explicável depois.
+    const antes = await getProfessionalTrustSnapshot(professionalId)
+
     await updateProfessionalTrust(professionalId)
+
+    const depois = await getProfessionalTrustSnapshot(professionalId)
+
+    // Auditoria só DEPOIS da mutação concluir — registrar antes afirmaria um
+    // sucesso que ainda podia falhar.
+    await recordTrustRecalculationAudit({
+      adminId,
+      professionalId,
+      action: TRUST_RECALC_SINGLE,
+      before: antes,
+      after:  depois,
+    })
+
     revalidatePath("/admin/trust")
     revalidatePath("/admin/professionals")
     return { success: true }
@@ -148,9 +183,22 @@ export async function recalculateSingleTrustAction(
 export async function recalculateAllTrustAction(): Promise<
   { success: boolean; report?: RecalculateReport; error?: string }
 > {
-  await assertAdmin()
+  const adminId = await assertAdmin()
   try {
     const report = await recalculateAllTrustScores()
+
+    // Uma linha de auditoria por profissional efetivamente atualizado, todas
+    // marcadas com o mesmo `loteId`. Ver o comentário de
+    // backoffice/infrastructure/audit.ts: o AuditLog não comporta uma linha de
+    // resumo sem entityId inventado, então a quantidade processada é a
+    // contagem das linhas do lote — um número derivado do que aconteceu, não
+    // um número que alguém escreveu.
+    await recordTrustBatchAudit({
+      adminId,
+      loteId: randomUUID(),
+      detalhes: report.details,
+    })
+
     revalidatePath("/admin/trust")
     revalidatePath("/admin/professionals")
     return { success: true, report }

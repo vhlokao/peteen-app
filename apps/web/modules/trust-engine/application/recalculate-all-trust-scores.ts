@@ -1,4 +1,4 @@
-"use server"
+import "server-only"
 
 /**
  * módulo: trust-engine
@@ -10,6 +10,18 @@
  *   - Profissionais criados antes do hook updateProfessionalTrust existir
  *   - Ajustes nos pesos do Trust Engine (RANK_WEIGHTS ou RECURRENCE_SESSION_BONUS)
  *   - Qualquer drift entre trustScore no banco e o calculado em tempo real
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE `server-only` E NÃO `"use server"`
+ *
+ * Mesma correção de update-professional-trust.ts, e aqui o alcance era maior:
+ * como `"use server"`, esta função era um endpoint que qualquer chamador podia
+ * invocar SEM ARGUMENTO para percorrer a tabela inteira de profissionais,
+ * recalculando e gravando um a um. Amplificação de carga sem autenticação.
+ *
+ * O único call site é `recalculateAllTrustAction`, que já exige `assertAdmin()`.
+ *
+ * CONTRATO: esta função NÃO autentica. Quem chama é responsável por autorizar.
  *
  * Design:
  *   - Processa sequencialmente para não sobrecarregar o banco

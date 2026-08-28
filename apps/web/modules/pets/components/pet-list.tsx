@@ -12,6 +12,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { buildOptimizedImageUrl } from "@/lib/storage/optimized-image-url"
 import {
   SPECIES_EMOJI,
   SPECIES_LABELS,
@@ -33,7 +34,7 @@ export function PetCard({ pet }: PetCardProps) {
       <div className="flex items-center gap-4 p-4">
         <Avatar size="lg" className="size-12">
           {pet.avatarUrl ? (
-            <AvatarImage src={pet.avatarUrl} alt={pet.name} />
+            <AvatarImage src={buildOptimizedImageUrl(pet.avatarUrl, 96)!} alt={pet.name} />
           ) : null}
           <AvatarFallback className="text-lg">
             {SPECIES_EMOJI[pet.species]}

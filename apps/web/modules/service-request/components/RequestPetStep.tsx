@@ -3,6 +3,7 @@ import { PawPrint } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { buttonVariants } from "@/components/ui/button"
+import { buildOptimizedImageUrl } from "@/lib/storage/optimized-image-url"
 import { SPECIES_EMOJI, SPECIES_LABELS, type PetData } from "@/modules/tutor/domain/types"
 import { cn } from "@/lib/utils"
 
@@ -93,7 +94,9 @@ export function RequestPetStep({
               )}
             >
               <Avatar className="size-14 shrink-0 rounded-xl">
-                {pet.avatarUrl && <AvatarImage src={pet.avatarUrl} alt={pet.name} />}
+                {pet.avatarUrl && (
+                  <AvatarImage src={buildOptimizedImageUrl(pet.avatarUrl, 128)!} alt={pet.name} />
+                )}
                 <AvatarFallback className="rounded-xl bg-primary/10 text-lg">
                   {SPECIES_EMOJI[pet.species]}
                 </AvatarFallback>

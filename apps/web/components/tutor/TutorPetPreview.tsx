@@ -2,6 +2,7 @@ import Link from "next/link"
 import { Plus } from "lucide-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { buildOptimizedImageUrl } from "@/lib/storage/optimized-image-url"
 import { SPECIES_EMOJI, SPECIES_LABELS, type Species } from "@/modules/tutor/domain/types"
 
 const NAVY_SOFT = "#2C4893"
@@ -24,7 +25,10 @@ export function TutorPetPreview({ id, name, species, breed, avatarUrl }: TutorPe
       className="flex w-28 shrink-0 flex-col items-center gap-2 rounded-[18px] border border-border bg-card p-3.5 text-center"
     >
       <Avatar className="size-[46px]" style={isCat ? { background: "#FBEDE8" } : { background: "#E8EEF6" }}>
-        {avatarUrl && <AvatarImage src={avatarUrl} alt={name} />}
+        {/* 96px = 2x o box de 46px, para nitidez em tela retina sem baixar o
+            arquivo original (pode chegar a 5MB sem redimensionamento no
+            upload — ver lib/storage/optimized-image-url.ts). */}
+        {avatarUrl && <AvatarImage src={buildOptimizedImageUrl(avatarUrl, 96)!} alt={name} />}
         <AvatarFallback
           className="bg-transparent text-lg"
           style={{ color: isCat ? CORAL : NAVY_SOFT }}

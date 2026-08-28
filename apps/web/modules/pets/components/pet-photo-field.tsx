@@ -4,6 +4,7 @@ import { useRef, useState } from "react"
 import { Camera, ImageOff, Loader2, X } from "lucide-react"
 
 import { uploadPetPhotoAction } from "@/modules/pets/application/actions"
+import { buildOptimizedImageUrl } from "@/lib/storage/optimized-image-url"
 import { cn } from "@/lib/utils"
 
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"]
@@ -52,6 +53,10 @@ export function PetPhotoField({ petId, value, onChange, disabled, className }: P
   const [statusMessage, setStatusMessage] = useState("")
 
   const displayUrl = preview ?? value
+  // 128px é a maior largura válida do otimizador do Next para um box de
+  // 80px. `preview` (blob: local, ainda não salvo) passa direto pelo helper
+  // sem otimizar — ver lib/storage/optimized-image-url.ts.
+  const optimizedDisplayUrl = buildOptimizedImageUrl(displayUrl, 128)
 
   function resetPreview() {
     if (preview) URL.revokeObjectURL(preview)
@@ -125,9 +130,9 @@ export function PetPhotoField({ petId, value, onChange, disabled, className }: P
       <span className="text-sm font-medium text-foreground">Foto do pet</span>
       <div className="flex items-center gap-4">
         <div className="relative flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border bg-muted">
-          {displayUrl ? (
+          {optimizedDisplayUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={displayUrl} alt="" className="size-full object-cover" />
+            <img src={optimizedDisplayUrl} alt="" className="size-full object-cover" />
           ) : (
             <ImageOff className="size-6 text-muted-foreground" aria-hidden="true" />
           )}

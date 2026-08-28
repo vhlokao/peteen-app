@@ -4,10 +4,43 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Host do Supabase Storage, derivado de `NEXT_PUBLIC_SUPABASE_URL` — a MESMA
+ * variável que todo o resto do projeto já usa como fonte única (ver
+ * docs/BRAND_DOMAIN_PUBLIC_SURFACE.md). Sem isto, hardcoded aqui, o projeto
+ * teria dois lugares para atualizar numa troca de projeto Supabase, e um
+ * deles inevitavelmente ficaria esquecido.
+ *
+ * `remotePatterns` (não `domains`, que está deprecado) é exigido pelo Next
+ * para QUALQUER host externo passar pelo otimizador embutido — sem isto,
+ * `/_next/image?url=<host-supabase>` responde 400 mesmo com a URL válida.
+ */
+function supabaseStorageHostname(): string | undefined {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  if (!url) return undefined
+  try {
+    return new URL(url).hostname
+  } catch {
+    return undefined
+  }
+}
+
 const nextConfig: NextConfig = {
   // Fix workspace root when multiple lockfiles exist in parent dirs.
   // Ensures CSS/Tailwind tracing resolves from apps/web, not the monorepo root.
   outputFileTracingRoot: path.join(__dirname, "../.."),
+
+  images: {
+    remotePatterns: supabaseStorageHostname()
+      ? [
+          {
+            protocol: "https",
+            hostname: supabaseStorageHostname()!,
+            pathname: "/storage/v1/object/public/**",
+          },
+        ]
+      : [],
+  },
   experimental: {
     serverActions: {
       // Default do Next.js é 1MB — abaixo do limite de 5MB que a própria

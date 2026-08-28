@@ -19,6 +19,7 @@
     "test:agenda": "node --experimental-strip-types --test lib/date/agenda-temporal.test.ts modules/service-request/domain/agenda-conflict.test.ts modules/service-request/domain/start-eligibility.test.ts",
     "test:pet-photo": "node --experimental-strip-types --test lib/storage/pet-photo-signature.test.ts",
     "test:optimized-image": "node --experimental-strip-types --test lib/storage/optimized-image-url.test.ts",
+    "test:csp": "node --experimental-strip-types --test lib/csp/policy.test.ts",
     "test:avatar": "node --experimental-strip-types --test lib/storage/avatar-ownership-contract.test.ts",
     "test:avatar:live": "node scripts/test-avatar-live.mjs",
     "test:request-expiry": "node --experimental-strip-types --test modules/service-request/domain/request-expiry.test.ts modules/service-request/domain/request-lead-time.test.ts",

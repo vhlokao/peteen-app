@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { classifyRoute, requiresSession } from "@/modules/identity/domain/route-access";
+import { buildCspHeaderValue, CSP_HEADER_NAME, supabaseHostnameFromEnv } from "@/lib/csp/policy";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -11,6 +12,9 @@ import { NextResponse } from "next/server";
  *   2. Proteger rotas autenticadas — redirecionar para /login se não autenticado
  *   3. Redirecionar usuários autenticados que acessam /login para /dashboard
  *      (o /dashboard lê a persona no Prisma e redireciona corretamente)
+ *   4. Gerar o nonce da CSP e propagá-lo — ver lib/csp/policy.ts para o porquê
+ *      disto viver aqui e não em next.config.ts (precisa ser único por
+ *      requisição; headers() do Next é estático por rota)
  *
  * Limitações do Edge Runtime (onde o middleware roda):
  *   - Sem acesso ao Prisma — só pode verificar se há JWT válido (via getUser)
@@ -23,7 +27,30 @@ import { NextResponse } from "next/server";
 
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({ request });
+  // Nonce por requisição — nunca reaproveitado. `btoa`/`crypto.randomUUID`
+  // são Web APIs padrão, disponíveis no Edge Runtime (ao contrário de
+  // `Buffer`, que exigiria polyfill).
+  const nonce = btoa(crypto.randomUUID());
+  const cspHeaderValue = buildCspHeaderValue({
+    nonce,
+    supabaseHostname: supabaseHostnameFromEnv(process.env.NEXT_PUBLIC_SUPABASE_URL),
+    environment: process.env.NODE_ENV === "production" ? "production" : "development",
+  });
+
+  // Clonado UMA vez e reaproveitado em TODO `NextResponse.next({ request })`
+  // deste arquivo — inclusive dentro do callback de cookies do Supabase logo
+  // abaixo. `NextResponse.next({ request: { headers } })` não substitui a
+  // requisição de verdade: sinaliza ao Next, via headers internos
+  // `x-middleware-override-headers` (nunca vistos pelo browser), quais
+  // headers sobrescrever na requisição que a árvore de Server Components vai
+  // efetivamente receber. É de lá — da REQUISIÇÃO, não da resposta — que o
+  // Next lê o nonce para os próprios scripts de hidratação (ver o comentário
+  // grande em lib/csp/policy.ts). Reconstruir este objeto a cada chamada
+  // duplicaria a lógica e arriscaria as duas cópias divergirem.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(CSP_HEADER_NAME, cspHeaderValue);
+
+  let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,7 +64,7 @@ export async function middleware(request: NextRequest) {
           for (const { name, value } of cookiesToSet) {
             request.cookies.set(name, value);
           }
-          supabaseResponse = NextResponse.next({ request });
+          supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
           for (const { name, value, options } of cookiesToSet) {
             supabaseResponse.cookies.set(name, value, options);
           }
@@ -55,12 +82,20 @@ export async function middleware(request: NextRequest) {
 
   const { pathname } = request.nextUrl;
 
+  // Aplicada em TODO caminho de saída — inclusive os dois redirects, que o
+  // browser não renderiza como HTML, mas que ainda passam pelo relatório de
+  // violação se algo no meio do caminho tentasse driblar a política.
+  function withCsp(response: NextResponse): NextResponse {
+    response.headers.set(CSP_HEADER_NAME, cspHeaderValue);
+    return response;
+  }
+
   // ── Rotas de infraestrutura — sempre permitir, sem mais nenhuma regra ──
   // Só `infra` sai por aqui. Uma rota PÚBLICA (como /login) continua
   // atravessando o resto: é abaixo que mora o redirect de quem já está
   // autenticado e abriu /login.
   if (classifyRoute(pathname) === "infra") {
-    return supabaseResponse;
+    return withCsp(supabaseResponse);
   }
 
   // ── A rota exige sessão? ───────────────────────────────────────────────
@@ -76,7 +111,7 @@ export async function middleware(request: NextRequest) {
     // Consumido por LoginForm (magic link/senha) e por /auth/callback,
     // que valida o path com isSafeRedirectPath antes de redirecionar.
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    return withCsp(NextResponse.redirect(loginUrl));
   }
 
   // Usuário autenticado acessando /login → redirecionar para o dashboard
@@ -85,10 +120,10 @@ export async function middleware(request: NextRequest) {
     const dashboardUrl = request.nextUrl.clone();
     dashboardUrl.pathname = "/dashboard";
     dashboardUrl.searchParams.delete("next");
-    return NextResponse.redirect(dashboardUrl);
+    return withCsp(NextResponse.redirect(dashboardUrl));
   }
 
-  return supabaseResponse;
+  return withCsp(supabaseResponse);
 }
 
 export const config = {

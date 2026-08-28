@@ -100,6 +100,17 @@ function revalidateCarePaths(requestId: string) {
   revalidatePath(`/tutor/requests/${requestId}`)
   revalidatePath(`/requests/${requestId}/diario`)
   revalidatePath(`/tutor/requests/${requestId}/diario`)
+  // A Home do tutor mostra o atendimento em curso; publicar no Diário é
+  // atividade daquele atendimento, então invalidar aqui é semanticamente
+  // correto — e não era feito.
+  //
+  // NÃO É A CORREÇÃO, porém: `revalidatePath` só afeta a próxima navegação
+  // ou refresh. O caso que importa é a aba do tutor JÁ ABERTA na Home, e
+  // quem resolve esse é o token de sync (ver `careSignal` em
+  // domain/active-request-sync.ts). Esta linha cobre o cenário
+  // complementar — voltar para a Home depois — e por isso as duas coisas
+  // existem em vez de uma.
+  revalidatePath("/tutor")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

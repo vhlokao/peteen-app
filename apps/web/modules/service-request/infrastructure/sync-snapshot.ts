@@ -11,6 +11,7 @@
  */
 
 import { prisma } from "@/lib/prisma/client"
+import { buildCareActivitySignal } from "../domain/active-request-sync"
 import type {
   RequestSyncSnapshotInput,
   RequestListSyncSnapshotInput,
@@ -61,16 +62,70 @@ export async function getRequestSyncSnapshot(
 }
 
 /**
- * Snapshot para o probe de LISTA (REQUEST AUTO-SYNC RELIABILITY) — só as
- * assinaturas das requests NÃO terminais do ator. Um id que sai da lista
- * (virou terminal) ou entra (nova PENDING) já muda o token; não há razão
- * para buscar tutor/professional/pet aqui.
+ * Snapshot do TUTOR para o probe de LISTA (REQUEST AUTO-SYNC RELIABILITY) —
+ * assinaturas das requests NÃO terminais + atividade do Diário. Um id que sai
+ * da lista (virou terminal) ou entra (nova PENDING) já muda o token; não há
+ * razão para buscar tutor/professional/pet aqui.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE O TUTOR LÊ O DIÁRIO E O PROFISSIONAL NÃO
+ *
+ * O evento que a Home do tutor perdia é "o profissional publicou algo": chega
+ * de fora, sem interação dele, e é exatamente o que ele está esperando durante
+ * um atendimento. Do lado profissional o mesmo evento é a própria ação que ele
+ * acabou de completar — a tela dele já reflete por navegação/revalidação, e
+ * observar o Diário ali só produziria refresh de algo que ele mesmo causou.
+ *
+ * Por isso a extensão fica NESTA função, não na compartilhada. O snapshot do
+ * profissional continua idêntico, e o `buildRequestListSyncToken` devolve para
+ * ele exatamente o token de antes (ver `careSignal` opcional no domínio).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * CUSTO: UMA QUERY A MAIS, AGRUPADA — NUNCA N+1
+ *
+ * `groupBy` resolve todas as requests ativas do tutor de uma vez. A alternativa
+ * ingênua (uma contagem por request, dentro de um laço) seria N+1 num ciclo que
+ * roda a cada 10s por aba aberta. Quando não há request ativa, a segunda query
+ * nem sai: sem ids, não há o que agrupar.
+ *
+ * O `select` traz só `_count` e `_max.createdAt`. Nenhuma mídia, nenhum
+ * `content`, nenhum autor — o token precisa saber SE mudou, nunca o quê.
  */
 export async function getTutorRequestListSyncSnapshot(
   tutorId: string
 ): Promise<RequestListSyncSnapshotInput> {
   const items = await findActiveServiceRequestSignaturesByTutorId(tutorId)
-  return { items }
+  if (items.length === 0) return { items }
+
+  const atividade = await prisma.careUpdate.groupBy({
+    by: ["requestId"],
+    where: {
+      requestId: { in: items.map((i) => i.id) },
+      // Soft-deletadas fora: um item apagado precisa DERRUBAR a contagem,
+      // senão a Home continuaria "atualizada" por uma entrada que já não
+      // existe para o tutor.
+      deletedAt: null,
+    },
+    _count: { _all: true },
+    _max: { createdAt: true },
+  })
+
+  const porRequest = new Map(
+    atividade.map((a) => [
+      a.requestId,
+      buildCareActivitySignal({
+        count: a._count._all,
+        latestCreatedAt: a._max.createdAt,
+      }),
+    ])
+  )
+
+  return {
+    items: items.map((item) => ({
+      ...item,
+      careSignal: porRequest.get(item.id) ?? null,
+    })),
+  }
 }
 
 export async function getProfessionalRequestListSyncSnapshot(

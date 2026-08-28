@@ -246,6 +246,44 @@ export type RequestListItemSignature = {
   id: string
   status: RequestStatus
   updatedAt: Date
+  /**
+   * Atividade do Diário desta request — `"<total>:<instante do mais recente>"`,
+   * ou `null` quando não há nenhuma.
+   *
+   * ───────────────────────────────────────────────────────────────────────────
+   * O GAP QUE ISTO FECHA
+   *
+   * Publicar um CareUpdate NÃO move `ServiceRequest.updatedAt`: a transação de
+   * `createCareUpdateAtomic` cria a linha filha e nunca chama
+   * `serviceRequest.update`, e o `@updatedAt` do Prisma só dispara em update do
+   * próprio model. Com a assinatura anterior — `{id, status, updatedAt}` — o
+   * token era literalmente idêntico antes e depois de o profissional publicar,
+   * então a Home do tutor não tinha como saber que o atendimento avançou. O
+   * detalhe da Request reagia (o snapshot dele já lê o Diário) e o sino também
+   * (o probe agrega `careUpdate`); só a Home ficava parada.
+   *
+   * ───────────────────────────────────────────────────────────────────────────
+   * POR QUE CONTAGEM + INSTANTE, E NÃO O ID DO MAIS RECENTE
+   *
+   * `count` é o que enxerga REMOÇÃO: um soft delete não move nenhum timestamp
+   * para frente, e uma assinatura baseada só no id do último item ficaria cega
+   * ao apagamento de qualquer item que não fosse o último. É o mesmo par que o
+   * snapshot de DETALHE já usa (`latestCareUpdate` + `careUpdateCount`, ver
+   * infrastructure/sync-snapshot.ts) — os dois lados passam a concordar sobre
+   * o que conta como "o Diário mudou".
+   *
+   * EDIÇÃO de um update existente fica deliberadamente de fora: não move
+   * `createdAt` nem a contagem. A Home não mostra conteúdo de Diário — mostra
+   * que há atendimento em curso — e quem lê o texto está no detalhe, que
+   * rastreia `editedAt`. Incluir edição aqui custaria um campo a mais no
+   * agregado para atualizar uma tela que não exibe o que mudou.
+   *
+   * OPCIONAL no tipo de propósito: a Home do PROFISSIONAL usa o mesmo
+   * `buildRequestListSyncToken` e não precisa deste sinal (é ele quem publica;
+   * ver o relatório da missão). Ausente, o token sai byte a byte idêntico ao
+   * de antes — nenhuma mudança de comportamento do lado profissional.
+   */
+  careSignal?: string | null
 }
 
 export type RequestListSyncSnapshotInput = {
@@ -258,10 +296,36 @@ export type RequestListSyncSnapshotInput = {
  * conjunto de requests poderiam produzir tokens diferentes só por causa da
  * ordem de retorno do `findMany`, gerando um `router.refresh()` sem nada ter
  * mudado de verdade.
+ *
+ * `careSignal` só entra na string quando existe. Um snapshot sem ele — o do
+ * profissional — produz exatamente o token de antes desta mudança, o que
+ * mantém aquele lado intocado sem precisar de uma segunda função.
  */
 export function buildRequestListSyncToken(snapshot: RequestListSyncSnapshotInput): string {
   return snapshot.items
-    .map((item) => `${item.id}:${item.status}:${item.updatedAt.toISOString()}`)
+    .map((item) => {
+      const base = `${item.id}:${item.status}:${item.updatedAt.toISOString()}`
+      return item.careSignal ? `${base}:${item.careSignal}` : base
+    })
     .sort()
     .join(",")
+}
+
+/**
+ * Serializa a atividade de Diário de UMA request para dentro da assinatura.
+ *
+ * Vive no domínio, junto do consumidor, para que a infraestrutura não invente
+ * um formato próprio: o token é comparado como string crua, então o formato é
+ * contrato — não detalhe de implementação da query.
+ *
+ * Sem nenhum update visível → `null`, e não `"0:"`. A distinção importa: uma
+ * request que nunca teve Diário e uma que teve tudo apagado produzem a mesma
+ * tela, e devem produzir o mesmo token.
+ */
+export function buildCareActivitySignal(params: {
+  count: number
+  latestCreatedAt: Date | null
+}): string | null {
+  if (params.count <= 0 || !params.latestCreatedAt) return null
+  return `${params.count}:${params.latestCreatedAt.toISOString()}`
 }

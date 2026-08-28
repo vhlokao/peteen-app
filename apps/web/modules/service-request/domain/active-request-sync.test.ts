@@ -9,6 +9,9 @@
 
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { dirname, join } from "node:path"
+import { fileURLToPath } from "node:url"
 
 import {
   shouldSync,
@@ -17,6 +20,7 @@ import {
   shouldRefreshAfterProbe,
   buildRequestSyncToken,
   buildRequestListSyncToken,
+  buildCareActivitySignal,
   isRequestSyncActive,
   ACTIVE_REQUEST_SYNC_COOLDOWN_MS,
   REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
@@ -497,5 +501,161 @@ describe("item 10 — robustez: shouldSync nunca lança, mesmo com combinações
         }
       }
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TUTOR HOME LIVE CARE PULSE
+//
+// O gap: publicar um CareUpdate não move `ServiceRequest.updatedAt` (a
+// transação de `createCareUpdateAtomic` cria a linha filha e nunca chama
+// `serviceRequest.update`; o `@updatedAt` do Prisma só dispara em update do
+// próprio model). Com a assinatura antiga — `{id, status, updatedAt}` — o
+// token da Home do tutor era IDÊNTICO antes e depois da publicação, e a tela
+// não tinha como saber que o atendimento avançou.
+//
+// O teste central abaixo é o que falha se alguém remover `careSignal` do
+// contrato — ver o controle negativo no relatório da missão.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("careSignal — Diário visível ao token da lista do tutor", () => {
+  const EM_ANDAMENTO = new Date("2026-08-20T10:00:00.000Z")
+  const base = { id: "r1", status: "IN_PROGRESS" as const, updatedAt: EM_ANDAMENTO }
+
+  it("sem Diário novo, o token é estável", () => {
+    const sinal = buildCareActivitySignal({ count: 2, latestCreatedAt: new Date("2026-08-20T10:30:00.000Z") })
+    const t = buildRequestListSyncToken({ items: [{ ...base, careSignal: sinal }] })
+    assert.equal(shouldRefreshAfterProbe(t, t), false)
+  })
+
+  it("CENTRAL: CareUpdate novo muda o token — SEM `updatedAt` ter mudado", () => {
+    // `updatedAt` é literalmente o mesmo objeto Date nos dois lados: é a
+    // condição real do bug. Só o Diário mudou.
+    const antes = buildRequestListSyncToken({
+      items: [{ ...base, careSignal: buildCareActivitySignal({ count: 1, latestCreatedAt: new Date("2026-08-20T10:30:00.000Z") }) }],
+    })
+    const depois = buildRequestListSyncToken({
+      items: [{ ...base, careSignal: buildCareActivitySignal({ count: 2, latestCreatedAt: new Date("2026-08-20T10:45:00.000Z") }) }],
+    })
+    assert.notEqual(antes, depois)
+    assert.equal(shouldRefreshAfterProbe(antes, depois), true)
+  })
+
+  it("o primeiro CareUpdate de uma request sem Diário muda o token", () => {
+    const antes = buildRequestListSyncToken({ items: [{ ...base, careSignal: null }] })
+    const depois = buildRequestListSyncToken({
+      items: [{ ...base, careSignal: buildCareActivitySignal({ count: 1, latestCreatedAt: new Date("2026-08-20T10:30:00.000Z") }) }],
+    })
+    assert.equal(shouldRefreshAfterProbe(antes, depois), true)
+  })
+
+  it("soft delete muda o token — é o que `count` enxerga e o instante sozinho não", () => {
+    // Apagar um item NÃO move nenhum timestamp para frente. Uma assinatura
+    // baseada só no mais recente ficaria cega a isso.
+    const instante = new Date("2026-08-20T10:30:00.000Z")
+    const antes = buildRequestListSyncToken({
+      items: [{ ...base, careSignal: buildCareActivitySignal({ count: 3, latestCreatedAt: instante }) }],
+    })
+    const depois = buildRequestListSyncToken({
+      items: [{ ...base, careSignal: buildCareActivitySignal({ count: 2, latestCreatedAt: instante }) }],
+    })
+    assert.equal(shouldRefreshAfterProbe(antes, depois), true)
+  })
+
+  it("nenhum Diário e todo Diário apagado produzem o MESMO token", () => {
+    // As duas situações mostram a mesma tela; devem produzir o mesmo token.
+    assert.equal(buildCareActivitySignal({ count: 0, latestCreatedAt: null }), null)
+    assert.equal(buildCareActivitySignal({ count: 0, latestCreatedAt: new Date() }), null)
+  })
+
+  it("mudança de status continua mudando o token mesmo com Diário estável", () => {
+    const sinal = buildCareActivitySignal({ count: 1, latestCreatedAt: new Date("2026-08-20T10:30:00.000Z") })
+    const antes = buildRequestListSyncToken({ items: [{ ...base, status: "ACCEPTED", careSignal: sinal }] })
+    const depois = buildRequestListSyncToken({ items: [{ ...base, status: "IN_PROGRESS", careSignal: sinal }] })
+    assert.equal(shouldRefreshAfterProbe(antes, depois), true)
+  })
+
+  it("request virando terminal continua saindo da lista e mudando o token", () => {
+    const sinal = buildCareActivitySignal({ count: 4, latestCreatedAt: new Date("2026-08-20T10:30:00.000Z") })
+    const antes = buildRequestListSyncToken({ items: [{ ...base, careSignal: sinal }] })
+    assert.equal(shouldRefreshAfterProbe(antes, buildRequestListSyncToken({ items: [] })), true)
+  })
+
+  it("o sinal NUNCA carrega conteúdo, autor ou mídia — só contagem e instante", () => {
+    // Trava de privacidade/custo: o token viaja para o cliente a cada ciclo.
+    const sinal = buildCareActivitySignal({ count: 2, latestCreatedAt: new Date("2026-08-20T10:30:00.000Z") })
+    assert.equal(sinal, "2:2026-08-20T10:30:00.000Z")
+    assert.match(sinal!, /^\d+:[\d TZ:.-]+$/)
+  })
+
+  it("PROFISSIONAL intocado: snapshot sem careSignal produz o token de antes", () => {
+    // O lado profissional usa o MESMO builder e não passa `careSignal`. Se
+    // esta igualdade quebrar, a mudança vazou para uma superfície que a
+    // missão mandou não expandir.
+    const semSinal = buildRequestListSyncToken({ items: [base] })
+    assert.equal(semSinal, `r1:IN_PROGRESS:${EM_ANDAMENTO.toISOString()}`)
+    assert.equal(buildRequestListSyncToken({ items: [{ ...base, careSignal: null }] }), semSinal)
+  })
+
+  it("request de OUTRO tutor não entra no token — o recorte é da query, por tutorId", () => {
+    // Garantia de contrato: o builder só serializa o que recebe. O isolamento
+    // por dono vive no WHERE de findActiveServiceRequestSignaturesByTutorId.
+    const t = buildRequestListSyncToken({ items: [{ ...base, careSignal: "1:2026-08-20T10:30:00.000Z" }] })
+    assert.ok(!t.includes("r2"))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIAÇÃO — o contrato puro acima não prova que a QUERY o alimenta
+//
+// Descoberto por controle negativo: remover a leitura do Diário de
+// `getTutorRequestListSyncSnapshot` deixava os 62 testes puros passando, porque
+// nenhum deles toca a infraestrutura (que precisa de banco). O token estaria
+// correto e sempre sem `careSignal` — exatamente o bug de origem, de volta e
+// invisível. Estas asserções leem o fonte porque a propriedade é "a query
+// alimenta o contrato", que nenhum teste da função pura distingue de "alguém
+// esqueceu de chamar".
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("fiação: a query do tutor alimenta o careSignal", () => {
+  const SNAPSHOT = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "..", "infrastructure", "sync-snapshot.ts"),
+    "utf8"
+  )
+
+  it("getTutorRequestListSyncSnapshot agrega CareUpdate e devolve careSignal", () => {
+    assert.match(SNAPSHOT, /prisma\.careUpdate\.groupBy/)
+    assert.match(SNAPSHOT, /buildCareActivitySignal\(/)
+    assert.match(SNAPSHOT, /careSignal:/)
+  })
+
+  it("agrega por requestId em UMA query — nunca uma contagem por request", () => {
+    assert.match(SNAPSHOT, /by:\s*\["requestId"\]/)
+    assert.match(SNAPSHOT, /requestId:\s*\{\s*in:/)
+  })
+
+  it("exclui soft-deletadas e não carrega conteúdo nem mídia", () => {
+    assert.match(SNAPSHOT, /deletedAt:\s*null/)
+    // O agregado só pode pedir contagem e o instante mais recente.
+    assert.doesNotMatch(SNAPSHOT, /_max:\s*\{[^}]*content/)
+    assert.doesNotMatch(SNAPSHOT, /media:\s*true/)
+  })
+
+  it("o snapshot do PROFISSIONAL continua sem ler Diário", () => {
+    // Escopo tutor, conforme a missão. Se esta asserção quebrar, a mudança
+    // vazou para a Home profissional.
+    const proBody = SNAPSHOT.slice(SNAPSHOT.indexOf("getProfessionalRequestListSyncSnapshot"))
+    assert.doesNotMatch(proBody, /careUpdate|careSignal/)
+  })
+
+  it("/tutor entra na revalidação do Diário", () => {
+    const careActions = readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..", "..", "care-timeline", "application", "actions.ts"
+      ),
+      "utf8"
+    )
+    assert.match(careActions, /revalidatePath\("\/tutor"\)/)
   })
 })

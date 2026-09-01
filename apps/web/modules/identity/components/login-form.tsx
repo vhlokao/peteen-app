@@ -338,27 +338,24 @@ export function LoginForm({ errorCode, next }: LoginFormProps) {
                 </p>
               </div>
 
-              {/* Google OAuth — oculto por ora (apenas Magic Link no teste real) */}
-              <div className="hidden">
-                <div className="my-5 flex items-center gap-3.5">
-                  <span className="h-px flex-1 bg-[#1D2F6F]/10" />
-                  <span className="text-xs font-semibold text-[#8A897F]">
-                    ou
-                  </span>
-                  <span className="h-px flex-1 bg-[#1D2F6F]/10" />
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleGoogleSignIn}
-                  disabled={isLoading}
-                  className="h-auto w-full gap-2.5 rounded-[15px] border-[1.5px] border-[#1D2F6F]/[0.14] bg-white py-3.5 text-[14.5px] font-bold text-[#1A1A1A] hover:bg-[#FAFAF8]"
-                >
-                  <GoogleLogoIcon />
-                  {isPendingGoogle ? "Redirecionando…" : "Continuar com Google"}
-                </Button>
+              <div className="my-5 flex items-center gap-3.5">
+                <span className="h-px flex-1 bg-[#1D2F6F]/10" />
+                <span className="text-xs font-semibold text-[#8A897F]">
+                  ou
+                </span>
+                <span className="h-px flex-1 bg-[#1D2F6F]/10" />
               </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleGoogleSignIn}
+                disabled={isLoading}
+                className="h-auto w-full gap-2.5 rounded-[15px] border-[1.5px] border-[#1D2F6F]/[0.14] bg-white py-3.5 text-[14.5px] font-bold text-[#1A1A1A] hover:bg-[#FAFAF8]"
+              >
+                <GoogleLogoIcon />
+                {isPendingGoogle ? "Redirecionando…" : "Continuar com Google"}
+              </Button>
 
               {/* Destinos vêm de `legalHref`, não de strings soltas: estes dois
                   links apontavam para rotas que não existiam (404) no ponto

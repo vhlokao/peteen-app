@@ -39,6 +39,8 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 .env.prod-cutover.local
+.env.prod-secrets.local
+.env.demo-rollback.local
 # .env.example é commitado propositalmente
 
 # vercel

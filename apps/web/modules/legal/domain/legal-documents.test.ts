@@ -23,9 +23,24 @@ import {
 } from "./legal-documents.ts"
 
 describe("trava de publicação", () => {
-  it("documento com qualquer seção pendente NÃO é vigente", () => {
-    for (const doc of LEGAL_DOCUMENTS) {
-      assert.equal(documentoVigente(doc), false, `${doc.slug} se declara vigente`)
+  it("termos ainda tem seção pendente e por isso NÃO é vigente", () => {
+    // Termos de Uso continua sem texto jurídico real — ver missão de
+    // privacidade (PHASE legal), que só entregou o corpo da Política.
+    assert.equal(documentoVigente(TERMOS_DE_USO), false, "termos se declara vigente")
+  })
+
+  it("toda seção de termos permanece pendente — nenhum conteúdo foi inventado", () => {
+    for (const s of TERMOS_DE_USO.secoes) {
+      assert.equal(s.pendente, true, `termos#${s.id} deixou de ser pendente sem revisão jurídica`)
+    }
+  })
+
+  it("privacidade tem corpo real em toda seção e por isso É vigente", () => {
+    // Conteúdo publicado após auditoria factual do comportamento real do
+    // Peteen — ver docs da missão PRIVACY AUDIT / IMPLEMENTATION.
+    assert.equal(documentoVigente(POLITICA_DE_PRIVACIDADE), true, "privacidade não é vigente")
+    for (const s of POLITICA_DE_PRIVACIDADE.secoes) {
+      assert.equal(s.pendente, false, `privacidade#${s.id} ainda está pendente`)
     }
   })
 
@@ -161,17 +176,15 @@ describe("nenhum link legal aponta para string solta", () => {
   })
 })
 
-describe("nenhum texto jurídico foi inventado", () => {
-  it("o domínio legal não contém corpo de documento", () => {
-    // Se alguém acrescentar um campo de conteúdo aqui sem passar pela revisão
-    // jurídica, este teste é o que segura.
+describe("nenhum texto jurídico foi inventado além do que foi revisado", () => {
+  it("o domínio legal não contém lorem ipsum em lugar nenhum", () => {
     const fonte = lerCodigo("modules/legal/domain/legal-documents.ts")
-    for (const proibido of ["lorem", "Lorem", "conteudo:", "corpo:", "texto:"]) {
-      assert.ok(!fonte.includes(proibido), `apareceu conteúdo inventado: ${proibido}`)
+    for (const proibido of ["lorem", "Lorem"]) {
+      assert.ok(!fonte.includes(proibido), `apareceu conteúdo de rascunho: ${proibido}`)
     }
   })
 
-  it("a página declara a pendência de forma visível", () => {
+  it("a página ainda sabe declarar a pendência de forma visível (usada por termos)", () => {
     const fonte = ler("modules/legal/components/legal-document-page.tsx")
     assert.ok(fonte.includes("Documento em elaboração"))
     assert.ok(fonte.includes("Conteúdo em elaboração"))

@@ -46,6 +46,11 @@ export function LegalDocumentPage({ doc }: { doc: LegalDocument }) {
           {doc.titulo}
         </h1>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{doc.descricao}</p>
+        {vigente && doc.ultimaAtualizacao ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Última atualização: {doc.ultimaAtualizacao}
+          </p>
+        ) : null}
 
         {!vigente ? (
           <div
@@ -105,7 +110,29 @@ export function LegalDocumentPage({ doc }: { doc: LegalDocument }) {
                 <p className="mt-1.5 text-sm italic leading-relaxed text-muted-foreground">
                   Conteúdo em elaboração.
                 </p>
-              ) : null}
+              ) : (
+                <div className="mt-2 space-y-3">
+                  {secao.blocos.map((bloco, blocoIndex) =>
+                    bloco.tipo === "paragrafo" ? (
+                      <p
+                        key={blocoIndex}
+                        className="text-sm leading-relaxed text-muted-foreground"
+                      >
+                        {bloco.texto}
+                      </p>
+                    ) : (
+                      <ul
+                        key={blocoIndex}
+                        className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-muted-foreground"
+                      >
+                        {bloco.itens.map((item, itemIndex) => (
+                          <li key={itemIndex}>{item}</li>
+                        ))}
+                      </ul>
+                    )
+                  )}
+                </div>
+              )}
             </section>
           ))}
         </div>

@@ -8,6 +8,8 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
+  id-token: write
+  actions: read
 
 concurrency:
   group: peteen-orchestrator-issue-1
@@ -22,11 +24,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
       - name: Run Claude Code for authorized PETEEN mission
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@fa2b2666b747000bf42767d1f332065b375e3c8f
         with:
           github_token: ${{ github.token }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_federation_rule_id: fdrl_013zxuD9Jw2BWqHHwqj1xscr
+          anthropic_organization_id: d77d149b-b52e-4598-8bf7-1cbcbecdd19e
           trigger_phrase: "[PETEEN-ORCH-MISSION]"
           claude_args: |
             --max-turns 20

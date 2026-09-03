@@ -38,4 +38,4 @@ jobs:
           anthropic_service_account_id: svac_0146yweQrbRDsPdVT4eonW3N
           trigger_phrase: "[PETEEN-ORCH-MISSION]"
           claude_args: |
-            --max-turns 20
+            --max-turns 30

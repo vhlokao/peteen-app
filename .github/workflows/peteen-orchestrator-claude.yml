@@ -1,0 +1,32 @@
+name: PETEEN Orchestrator → Claude
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write
+
+concurrency:
+  group: peteen-orchestrator-issue-1
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    if: >-
+      github.event.issue.number == 1 &&
+      github.actor == 'vhlokao' &&
+      startsWith(github.event.comment.body, '[PETEEN-ORCH-MISSION]')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Run Claude Code for authorized PETEEN mission
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          trigger_phrase: "[PETEEN-ORCH-MISSION]"
+          claude_args: |
+            --max-turns 20

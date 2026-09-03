@@ -35,6 +35,8 @@ jobs:
           github_token: ${{ github.token }}
           anthropic_federation_rule_id: fdrl_013zxuD9Jw2BWqHHwqj1xscr
           anthropic_organization_id: d77d149b-b52e-4598-8bf7-1cbcbecdd19e
+          anthropic_service_account_id: svac_0146yweQrbRDsPdVT4eonW3N
+          anthropic_workspace_id: default
           trigger_phrase: "[PETEEN-ORCH-MISSION]"
           claude_args: |
             --max-turns 20

@@ -8,7 +8,6 @@ permissions:
   contents: write
   pull-requests: write
   issues: write
-  id-token: write
 
 concurrency:
   group: peteen-orchestrator-issue-1
@@ -26,6 +25,7 @@ jobs:
       - name: Run Claude Code for authorized PETEEN mission
         uses: anthropics/claude-code-action@v1
         with:
+          github_token: ${{ github.token }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           trigger_phrase: "[PETEEN-ORCH-MISSION]"
           claude_args: |

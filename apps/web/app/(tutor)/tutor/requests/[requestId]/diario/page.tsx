@@ -11,7 +11,7 @@ import {
   type ServiceType,
 } from "@/modules/professional/domain/types";
 import type { RequestStatus } from "@/modules/service-request/domain/types";
-import { CareTimeline, getCareTimelineAction } from "@/modules/care-timeline";
+import { CareMoments, CareTimeline, getCareTimelineAction } from "@/modules/care-timeline";
 import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh";
 import { buildRequestSyncToken } from "@/modules/service-request/domain/active-request-sync";
 import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot";
@@ -128,6 +128,9 @@ export default async function TutorCareDiaryPage({ params }: PageProps) {
   }
   const careUpdates = careTimelineResult.data;
 
+  /** Só IN_PROGRESS/COMPLETED chegam aqui (guard acima), então é binário. */
+  const emAndamento = request.status === "IN_PROGRESS";
+
   const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null;
 
   return (
@@ -145,7 +148,7 @@ export default async function TutorCareDiaryPage({ params }: PageProps) {
           >
             <ChevronLeft className="size-5" />
           </Link>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <h1 className="text-foreground text-base font-semibold">
               Diário de cuidado
             </h1>
@@ -154,14 +157,41 @@ export default async function TutorCareDiaryPage({ params }: PageProps) {
               {requestId.slice(0, 8).toUpperCase()}
             </p>
           </div>
+          {/* Estado do atendimento no cabeçalho, não escondido no meio da
+              página: é a primeira coisa que o tutor quer saber ao abrir o
+              Diário ("está acontecendo agora?"), e vem de `request.status`,
+              que esta página já tinha em mãos para o guard acima. */}
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+              emAndamento
+                ? "bg-primary/10 text-primary"
+                : "bg-success/10 text-success"
+            }`}
+          >
+            {emAndamento ? "Em andamento" : "Concluído"}
+          </span>
         </div>
 
-        <section className="border-border/70 bg-card rounded-2xl border p-5 shadow-[var(--shadow-card)]">
-          <h2 className="text-muted-foreground mb-4 text-xs font-semibold tracking-widest uppercase">
-            Histórico do atendimento
-          </h2>
-          <CareTimeline updates={careUpdates} />
-        </section>
+        <div className="flex flex-col gap-5">
+          {/* Momentos ANTES da timeline: leitura de 3 segundos primeiro, relato
+              completo logo abaixo. A faixa some sozinha quando não há
+              atualização — ver CareMoments. */}
+          <CareMoments updates={careUpdates} isInProgress={emAndamento} />
+
+          <section className="border-border/70 bg-card rounded-2xl border p-5 shadow-[var(--shadow-card)]">
+            <h2 className="text-muted-foreground mb-4 text-xs font-semibold tracking-widest uppercase">
+              Histórico do atendimento
+            </h2>
+            <CareTimeline
+              updates={careUpdates}
+              emptyHint={
+                emAndamento
+                  ? "Assim que o profissional registrar algo do atendimento, aparece aqui."
+                  : "Este atendimento foi concluído sem registros no diário."
+              }
+            />
+          </section>
+        </div>
       </div>
     </ActiveRequestAutoRefresh>
   );

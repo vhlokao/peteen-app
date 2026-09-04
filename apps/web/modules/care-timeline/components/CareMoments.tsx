@@ -37,58 +37,29 @@
  * há `preload`, não há tráfego de mídia. Não há autoplay em lugar nenhum.
  */
 
-import { useState } from "react"
-import { ImageOff, Play } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Expand, ImageOff, Play } from "lucide-react"
 
 import { CARE_CATEGORY_LABELS, type CareUpdate } from "../domain/types"
 import {
-  careUpdateAnchorId,
+  clampMomentIndex,
   selectCareMoments,
   type CareMoment,
 } from "../domain/care-moments"
 import { CATEGORY_ICON, formatCareUpdateTime } from "./care-update-visuals"
+import { CareMomentViewer } from "./CareMomentViewer"
 import { imagemChegouQuebrada } from "../domain/media-display"
 import {
   CARE_MEDIA_THUMBNAIL_PX,
   resolveTimelineImageSrc,
 } from "@/lib/storage/care-media-transform"
 
-/**
- * Leva a pessoa até a entrada completa e devolve o foco lá.
- *
- * `preventScroll` no `focus()` porque o scroll já foi feito com a animação
- * certa logo acima — sem isso o browser daria um segundo salto, instantâneo,
- * desfazendo o movimento suave.
- *
- * `prefers-reduced-motion` é consultado aqui (e não só no CSS) porque
- * `scrollIntoView({ behavior: "smooth" })` NÃO respeita a preferência
- * sozinho: é uma API de script, fora do alcance da media query.
- */
-function irParaAtualizacao(updateId: string) {
-  const alvo = document.getElementById(careUpdateAnchorId(updateId))
-  if (!alvo) return
-
-  const preferReduzido =
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-
-  alvo.scrollIntoView({
-    behavior: preferReduzido ? "auto" : "smooth",
-    block: "start",
-  })
-  // O destino é um <li tabIndex={-1}>: focável por script, fora da ordem de
-  // Tab. Sem isto, quem navega por teclado ou leitor de tela seria rolado
-  // até a entrada mas continuaria com o foco no card — e o próximo Tab
-  // voltaria para a faixa, não para o conteúdo que acabou de pedir.
-  alvo.focus({ preventScroll: true })
-}
-
 /** Rótulo acessível completo do card — o card visual é propositalmente curto. */
 function rotuloDoMomento(momento: CareMoment): string {
   const categoria = CARE_CATEGORY_LABELS[momento.update.category]
   const horario = formatCareUpdateTime(momento.update.occurredAt)
   const agora = momento.isCurrent ? "Momento atual. " : ""
-  return `${agora}${categoria}, ${horario}. Ver detalhes desta atualização.`
+  return `${agora}${categoria}, ${horario}. Abrir momento.`
 }
 
 function BadgeAgora() {
@@ -130,7 +101,16 @@ function LegendaDoCard({
   )
 }
 
-function CardMomento({ momento }: { momento: CareMoment }) {
+function CardMomento({
+  momento,
+  onOpen,
+  registrarRef,
+}: {
+  momento: CareMoment
+  onOpen: () => void
+  /** Guarda o nó do botão para o visualizador devolver o foco aqui ao fechar. */
+  registrarRef: (node: HTMLButtonElement | null) => void
+}) {
   const [midiaQuebrada, setMidiaQuebrada] = useState(false)
   const Icon = CATEGORY_ICON[momento.update.category]
 
@@ -145,7 +125,9 @@ function CardMomento({ momento }: { momento: CareMoment }) {
     <li className="snap-start">
       <button
         type="button"
-        onClick={() => irParaAtualizacao(momento.update.id)}
+        ref={registrarRef}
+        onClick={onOpen}
+        aria-haspopup="dialog"
         aria-label={rotuloDoMomento(momento)}
         className={`focus-visible:ring-ring relative flex aspect-[4/5] w-[132px] shrink-0 flex-col justify-end overflow-hidden rounded-2xl border transition-transform focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:scale-[0.98] ${
           momento.isCurrent ? "border-primary/70 ring-primary/15 ring-2" : "border-border/70"
@@ -176,6 +158,14 @@ function CardMomento({ momento }: { momento: CareMoment }) {
               onError={() => setMidiaQuebrada(true)}
               className="absolute inset-0 size-full object-cover"
             />
+            {/* GATE-9-...-REFINE-002: o card agora ABRE em tela cheia, e isso
+                precisava ser visível antes do toque. Um glifo de expandir no
+                canto é o sinal mínimo que comunica isso sem poluir a capa —
+                a alternativa (descobrir tocando) deixaria a faixa parecendo
+                decorativa. */}
+            <span className="absolute top-2 right-2 z-10 grid size-6 place-items-center rounded-full bg-black/45 text-white backdrop-blur-[2px]">
+              <Expand className="size-3" aria-hidden />
+            </span>
             <LegendaDoCard momento={momento} sobreMidia />
           </>
         ) : mostraVideo ? (
@@ -225,6 +215,33 @@ export function CareMoments({
 }) {
   const momentos = selectCareMoments(updates, { isInProgress })
 
+  /** `null` = visualizador fechado. */
+  const [aberto, setAberto] = useState<number | null>(null)
+  /** Um nó por card, para devolver o foco ao card certo ao fechar. */
+  const cardsRef = useRef<(HTMLButtonElement | null)[]>([])
+  const focoDeVoltaRef = useRef<HTMLElement | null>(null)
+
+  // O foco volta para o card do momento que está sendo visto AGORA, não para o
+  // que foi clicado lá atrás: depois de navegar do 1º ao 5º, devolver o foco ao
+  // 1º faria a pessoa perder o lugar na faixa.
+  useEffect(() => {
+    focoDeVoltaRef.current = aberto === null ? null : (cardsRef.current[aberto] ?? null)
+  }, [aberto])
+
+  // A lista pode ENCOLHER embaixo do visualizador aberto (o Diário tem
+  // auto-refresh, e o profissional pode remover um update dentro da janela de
+  // edição). Sem este ajuste o índice apontaria para fora do array.
+  useEffect(() => {
+    setAberto((atual) => (atual === null ? null : clampMomentIndex(atual, momentos.length)))
+  }, [momentos.length])
+
+  // Identidade estável: o visualizador guarda esta função num efeito que
+  // controla o histórico do browser, e um callback novo a cada render faria
+  // esse efeito se refazer sem necessidade.
+  const aoMudarAbertura = useCallback((estaAberto: boolean) => {
+    if (!estaAberto) setAberto(null)
+  }, [])
+
   // Sem atualização não há momento nenhum — a faixa some por completo em vez
   // de mostrar um cabeçalho vazio. O estado vazio é responsabilidade de quem
   // renderiza a timeline abaixo, que já o trata.
@@ -272,10 +289,25 @@ export function CareMoments({
         voltar do browser no iOS.
       */}
       <ul className="mx-[calc(var(--page-padding-x)*-1)] flex snap-x snap-mandatory gap-2.5 overflow-x-auto overscroll-x-contain px-[var(--page-padding-x)] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {momentos.map((momento) => (
-          <CardMomento key={momento.update.id} momento={momento} />
+        {momentos.map((momento, indice) => (
+          <CardMomento
+            key={momento.update.id}
+            momento={momento}
+            onOpen={() => setAberto(indice)}
+            registrarRef={(node) => {
+              cardsRef.current[indice] = node
+            }}
+          />
         ))}
       </ul>
+
+      <CareMomentViewer
+        moments={momentos}
+        openIndex={aberto}
+        onOpenChange={aoMudarAbertura}
+        onNavigate={setAberto}
+        finalFocus={focoDeVoltaRef}
+      />
     </section>
   )
 }

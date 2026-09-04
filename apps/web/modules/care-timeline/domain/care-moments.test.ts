@@ -13,7 +13,13 @@ import assert from "node:assert/strict"
 import {
   CARE_MOMENTS_MAX,
   careUpdateAnchorId,
+  clampMomentIndex,
+  momentPositionLabel,
+  neighborPreloadIndexes,
+  nextMomentIndex,
+  previousMomentIndex,
   resolveCareMomentCover,
+  resolveCareMomentMedia,
   selectCareMoments,
 } from "./care-moments.ts"
 import type { CareMediaView, CareUpdate, CareUpdateCategory } from "./types.ts"
@@ -159,5 +165,110 @@ describe("careUpdateAnchorId", () => {
 
   it("ids diferentes produzem âncoras diferentes", () => {
     assert.notEqual(careUpdateAnchorId("a"), careUpdateAnchorId("b"))
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VISUALIZADOR IMERSIVO — GATE-9-CARE-TIMELINE-UX-REFINE-002
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("resolveCareMomentMedia", () => {
+  it("sem mídia → nenhuma foto e nenhum vídeo", () => {
+    assert.deepEqual(resolveCareMomentMedia(update("a")), { photos: [], video: null })
+  })
+
+  it("devolve TODAS as fotos, não só a capa — nada da atualização some no viewer", () => {
+    const m = resolveCareMomentMedia(
+      update("a", { media: [midia("m1", "PHOTO"), midia("m2", "PHOTO"), midia("m3", "PHOTO")] })
+    )
+    assert.deepEqual(m.photos.map((p) => p.id), ["m1", "m2", "m3"])
+    assert.equal(m.video, null)
+  })
+
+  it("separa vídeo das fotos — superfícies diferentes, contratos de rede diferentes", () => {
+    const m = resolveCareMomentMedia(
+      update("a", { media: [midia("v1", "VIDEO"), midia("m1", "PHOTO")] })
+    )
+    assert.deepEqual(m.photos.map((p) => p.id), ["m1"])
+    assert.equal(m.video?.id, "v1")
+  })
+})
+
+describe("nextMomentIndex / previousMomentIndex — limites sem dar a volta", () => {
+  it("navega para frente dentro da lista", () => {
+    assert.equal(nextMomentIndex(0, 3), 1)
+    assert.equal(nextMomentIndex(1, 3), 2)
+  })
+
+  it("ÚLTIMO momento: não há próximo (null, não volta ao primeiro)", () => {
+    assert.equal(nextMomentIndex(2, 3), null)
+  })
+
+  it("navega para trás dentro da lista", () => {
+    assert.equal(previousMomentIndex(2, 3), 1)
+    assert.equal(previousMomentIndex(1, 3), 0)
+  })
+
+  it("PRIMEIRO momento: não há anterior (null, não pula para o último)", () => {
+    assert.equal(previousMomentIndex(0, 3), null)
+  })
+
+  it("um único momento: nem anterior nem próximo", () => {
+    assert.equal(nextMomentIndex(0, 1), null)
+    assert.equal(previousMomentIndex(0, 1), null)
+  })
+
+  it("lista vazia nunca produz índice", () => {
+    assert.equal(nextMomentIndex(0, 0), null)
+    assert.equal(previousMomentIndex(0, 0), null)
+  })
+})
+
+describe("clampMomentIndex — abrir num índice específico com segurança", () => {
+  it("índice válido passa intacto (abrir exatamente no momento tocado)", () => {
+    assert.equal(clampMomentIndex(0, 5), 0)
+    assert.equal(clampMomentIndex(3, 5), 3)
+    assert.equal(clampMomentIndex(4, 5), 4)
+  })
+
+  it("índice além do fim cai no último — a lista pode ENCOLHER com o auto-refresh", () => {
+    assert.equal(clampMomentIndex(9, 3), 2)
+  })
+
+  it("índice negativo cai no primeiro", () => {
+    assert.equal(clampMomentIndex(-2, 3), 0)
+  })
+
+  it("lista vazia → null (não há momento para abrir)", () => {
+    assert.equal(clampMomentIndex(0, 0), null)
+  })
+})
+
+describe("neighborPreloadIndexes — só os vizinhos imediatos", () => {
+  it("no meio da lista, pré-carrega anterior e próximo", () => {
+    assert.deepEqual(neighborPreloadIndexes(2, 5), [1, 3])
+  })
+
+  it("no primeiro, só o próximo", () => {
+    assert.deepEqual(neighborPreloadIndexes(0, 5), [1])
+  })
+
+  it("no último, só o anterior", () => {
+    assert.deepEqual(neighborPreloadIndexes(4, 5), [3])
+  })
+
+  it("com um único momento, nada a pré-carregar", () => {
+    assert.deepEqual(neighborPreloadIndexes(0, 1), [])
+  })
+
+  it("nunca pré-carrega a lista inteira — no máximo 2, independente do tamanho", () => {
+    assert.equal(neighborPreloadIndexes(10, 50).length, 2)
+  })
+})
+
+describe("momentPositionLabel", () => {
+  it("conta a partir de 1, como a pessoa lê", () => {
+    assert.equal(momentPositionLabel(0, 8), "1 de 8")
+    assert.equal(momentPositionLabel(7, 8), "8 de 8")
   })
 })

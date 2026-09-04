@@ -126,3 +126,92 @@ export function selectCareMoments(
 export function careUpdateAnchorId(updateId: string): string {
   return `care-update-${updateId}`
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VISUALIZADOR IMERSIVO — GATE-9-CARE-TIMELINE-UX-REFINE-002
+//
+// A faixa deixou de ser só um atalho: tocar num momento agora ABRE o momento em
+// tela cheia. Toda a lógica de "qual momento estou vendo, o que vem antes e
+// depois, e o que preciso carregar" mora aqui, fora do React — é o que permite
+// testar navegação e limites sem montar DOM.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * O que o visualizador mostra de mídia, já separado por tipo.
+ *
+ * A timeline permite até 3 fotos por atualização (CARE_UPDATE_MAX_MEDIA); a
+ * CAPA da faixa usa só a primeira, mas o visualizador mostra TODAS — esconder
+ * as outras duas seria perder conteúdo que o profissional publicou, e a regra
+ * do gate é que nada suma.
+ *
+ * `video` é separado porque tem superfície própria (CareVideoPlayer) e contrato
+ * de rede próprio: nenhum elemento montado antes do gesto.
+ */
+export type CareMomentMedia = {
+  photos: CareMediaView[]
+  video: CareMediaView | null
+}
+
+export function resolveCareMomentMedia(update: CareUpdate): CareMomentMedia {
+  return {
+    photos: update.media.filter((m) => m.type === "PHOTO"),
+    video: update.media.find((m) => m.type === "VIDEO") ?? null,
+  }
+}
+
+/**
+ * Índice válido dentro da lista, ou `null` quando não há para onde ir.
+ *
+ * Devolver `null` no limite — em vez de dar a volta (wrap) — é decisão de UX:
+ * numa sequência cronológica, pular do último de volta para o primeiro faz a
+ * pessoa perder a noção de onde está. O botão simplesmente desabilita, que é
+ * um limite visível em vez de um teletransporte silencioso.
+ */
+export function nextMomentIndex(current: number, total: number): number | null {
+  if (total <= 0) return null
+  const proximo = current + 1
+  return proximo < total ? proximo : null
+}
+
+export function previousMomentIndex(current: number, total: number): number | null {
+  if (total <= 0) return null
+  const anterior = current - 1
+  return anterior >= 0 ? anterior : null
+}
+
+/**
+ * Normaliza um índice recebido de fora (clique, teclado, estado antigo) para
+ * algo que a lista realmente contém. `null` quando a lista está vazia.
+ *
+ * Existe porque a lista pode ENCOLHER embaixo do visualizador aberto: o Diário
+ * tem auto-refresh (ActiveRequestAutoRefresh) e um update pode ser removido
+ * pelo profissional dentro da janela de edição. Sem isto, o índice apontaria
+ * para fora do array e o visualizador renderizaria `undefined`.
+ */
+export function clampMomentIndex(index: number, total: number): number | null {
+  if (total <= 0) return null
+  if (index < 0) return 0
+  if (index >= total) return total - 1
+  return index
+}
+
+/**
+ * Vizinhos que valem pré-carregar quando um momento está aberto.
+ *
+ * Só os IMEDIATAMENTE adjacentes, e só eles: pré-carregar a lista inteira
+ * desfaria a economia de rede que o Diário inteiro persegue (miniaturas de
+ * 288px na faixa, 1600px só no que se abre). Em 4G, baixar 12 fotos grandes
+ * porque a pessoa abriu uma é exatamente o custo que este produto evita.
+ *
+ * Quem consome usa isto só para FOTO — vídeo nunca é pré-carregado.
+ */
+export function neighborPreloadIndexes(current: number, total: number): number[] {
+  return [previousMomentIndex(current, total), nextMomentIndex(current, total)].filter(
+    (i): i is number => i !== null
+  )
+}
+
+/** Rótulo de posição — orientação simples, sem inventar contagem regressiva. */
+export function momentPositionLabel(index: number, total: number): string {
+  return `${index + 1} de ${total}`
+}

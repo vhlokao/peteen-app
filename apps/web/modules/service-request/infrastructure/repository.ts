@@ -130,12 +130,46 @@ export async function getProfessionalPhoneByRequestId(
 export async function findServiceRequestWithParticipants(
   id: string
 ): Promise<ServiceRequestWithParticipants | null> {
+  const found = await findServiceRequestDetailWithOwners(id)
+  return found?.detail ?? null
+}
+
+/**
+ * O MESMO detalhe acima, mais os `User.id` das duas pontas — numa ÚNICA query
+ * (GATE-3-REQUEST-LATENCY-002).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O ROUND-TRIP QUE ISTO ELIMINA
+ *
+ * `getServiceRequestDetailAction` lia a MESMA linha de `service_requests`
+ * duas vezes, em série: uma por `findRequestWithOwnershipContext` (só para
+ * saber de quem é a request) e outra por `findServiceRequestWithParticipants`
+ * (para montar a tela). Medido contra o Supabase real, cada round-trip custa
+ * ~170ms — e essa página é re-renderizada a cada `router.refresh()`, ou seja,
+ * depois de TODA ação do fluxo. Pagar duas viagens pela mesma linha era o
+ * gargalo mais barato de remover de todo o caminho crítico.
+ *
+ * `userId` NÃO entra em `detail`: ele é devolvido à parte, de propósito. O
+ * tipo `ServiceRequestWithParticipants` é consumido por componentes de tela
+ * (inclusive client components) e não há motivo para um id interno de User
+ * passear por ali só porque a autorização precisou dele no servidor.
+ *
+ * `findServiceRequestWithParticipants` delega para cá em vez de duplicar o
+ * `include`: uma segunda cópia do mesmo select divergiria no primeiro campo
+ * novo que alguém adicionasse em só um dos dois lugares.
+ */
+export async function findServiceRequestDetailWithOwners(id: string): Promise<{
+  detail: ServiceRequestWithParticipants
+  tutorUserId: string
+  professionalUserId: string
+} | null> {
   const result = await prisma.serviceRequest.findUnique({
     where: { id },
     include: {
       tutor: {
         select: {
           id: true,
+          userId: true,
           displayName: true,
           avatarUrl: true,
           city: true,
@@ -144,6 +178,7 @@ export async function findServiceRequestWithParticipants(
       professional: {
         select: {
           id: true,
+          userId: true,
           displayName: true,
           avatarUrl: true,
           city: true,
@@ -167,17 +202,26 @@ export async function findServiceRequestWithParticipants(
 
   if (!result) return null
 
+  // `userId` sai daqui e não segue para a projeção de tela — ver o comentário
+  // acima. O resto da forma é exatamente o que sempre foi devolvido.
+  const { userId: tutorUserId, ...tutor } = result.tutor
+  const { userId: professionalUserId, ...professional } = result.professional
+
   return {
-    ...mapToDomain(result),
-    tutor: result.tutor,
-    professional: result.professional,
-    pet: result.pet
-      ? {
-          ...result.pet,
-          species: result.pet.species as Species,
-        }
-      : null,
-    review: result.review ?? null,
+    detail: {
+      ...mapToDomain(result),
+      tutor,
+      professional,
+      pet: result.pet
+        ? {
+            ...result.pet,
+            species: result.pet.species as Species,
+          }
+        : null,
+      review: result.review ?? null,
+    },
+    tutorUserId,
+    professionalUserId,
   }
 }
 

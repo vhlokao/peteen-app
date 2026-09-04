@@ -51,7 +51,7 @@ import {
 import {
   createServiceRequestRecord,
   findServiceRequestById,
-  findServiceRequestWithParticipants,
+  findServiceRequestDetailWithOwners,
   findServiceRequestsByTutorId,
   findServiceRequestsByProfessionalId,
   findRequestWithOwnershipContext,
@@ -117,6 +117,38 @@ import {
   notifyServiceCompleted,
   notifyServiceStarted,
 } from "@/modules/notifications/application/push-service-request-events"
+
+/**
+ * Sessão + contexto de ownership da request, em PARALELO
+ * (GATE-3-REQUEST-LATENCY-002).
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE PARALELO, E POR QUE ISSO IMPORTA TANTO AQUI
+ *
+ * As duas leituras são INDEPENDENTES: `findRequestWithOwnershipContext` só
+ * precisa do `requestId` (parâmetro da action) e nunca da sessão. Em série,
+ * cada uma custava um round-trip inteiro — e round-trip, neste produto, é o
+ * termo dominante da latência percebida, não o tempo de execução da query.
+ *
+ * Medido contra o Supabase real (mediana de 8 amostras): ~170ms por
+ * round-trip de banco e ~200ms para `supabase.auth.getUser()`, que é uma
+ * CHAMADA DE REDE ao Auth do Supabase para validar o JWT — não um decode
+ * local. `requireAuth()` paga esse custo mais uma consulta Prisma do usuário.
+ * Em série isso somava; em paralelo passa a custar o mais lento dos dois.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * A AUTORIZAÇÃO NÃO MUDA — E ESSA É A PARTE QUE NÃO PODE SER PERDIDA
+ *
+ * Buscar em paralelo apenas LÊ a request antes de saber quem é o ator. Toda
+ * decisão continua acontecendo depois, no chamador, comparando contra
+ * `session.id`, e sempre ANTES de qualquer mutação. Nada é exposto ao cliente
+ * por esta função: quem decide o que devolver é a action, com a checagem de
+ * ownership intacta. Se `requireAuth()` rejeitar, o `Promise.all` rejeita
+ * junto e a action cai no próprio catch — nenhuma escrita acontece.
+ */
+async function loadSessionAndRequestContext(requestId: string) {
+  return Promise.all([requireAuth(), findRequestWithOwnershipContext(requestId)])
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CRIAÇÃO
@@ -389,9 +421,7 @@ export async function acceptServiceRequestAction(
   requestId: string
 ): Promise<ActionResult<ServiceRequestData>> {
   try {
-    const session = await requireAuth()
-
-    const ctx = await findRequestWithOwnershipContext(requestId)
+    const [session, ctx] = await loadSessionAndRequestContext(requestId)
     if (!ctx) {
       return { success: false, error: "Solicitação não encontrada." }
     }
@@ -571,9 +601,7 @@ export async function startServiceRequestAction(
   requestId: string
 ): Promise<ActionResult<ServiceRequestData>> {
   try {
-    const session = await requireAuth()
-
-    const ctx = await findRequestWithOwnershipContext(requestId)
+    const [session, ctx] = await loadSessionAndRequestContext(requestId)
     if (!ctx) {
       return { success: false, error: "Solicitação não encontrada." }
     }
@@ -697,9 +725,7 @@ export async function cancelServiceRequestAction(
   input?: import("../domain/types").CancelServiceRequestInput
 ): Promise<ActionResult<ServiceRequestData>> {
   try {
-    const session = await requireAuth()
-
-    const ctx = await findRequestWithOwnershipContext(requestId)
+    const [session, ctx] = await loadSessionAndRequestContext(requestId)
     if (!ctx) {
       return { success: false, error: "Solicitação não encontrada." }
     }
@@ -812,9 +838,7 @@ export async function completeServiceRequestAction(
   input?: import("../domain/types").CompleteServiceRequestInput
 ): Promise<ActionResult<ServiceRequestData>> {
   try {
-    const session = await requireAuth()
-
-    const ctx = await findRequestWithOwnershipContext(requestId)
+    const [session, ctx] = await loadSessionAndRequestContext(requestId)
     if (!ctx) {
       return { success: false, error: "Solicitação não encontrada." }
     }
@@ -1054,21 +1078,23 @@ export async function getServiceRequestDetailAction(
   requestId: string
 ): Promise<ActionResult<ServiceRequestWithParticipants>> {
   try {
-    const session = await requireAuth()
-
-    const ctx = await findRequestWithOwnershipContext(requestId)
-    if (!ctx) {
+    // GATE-3-REQUEST-LATENCY-002: UMA query traz o detalhe E os donos, em
+    // paralelo com a validação de sessão. Antes eram três round-trips em
+    // série (sessão → ownership → detalhe), sendo que os dois últimos liam a
+    // MESMA linha. Ver `findServiceRequestDetailWithOwners`. Esta ação roda em
+    // todo `router.refresh()` do fluxo, então é o ponto de maior repetição do
+    // caminho crítico.
+    const [session, found] = await Promise.all([
+      requireAuth(),
+      findServiceRequestDetailWithOwners(requestId),
+    ])
+    if (!found) {
       return { success: false, error: "Solicitação não encontrada." }
     }
 
-    const { tutorUserId, professionalUserId } = ctx
+    const { detail, tutorUserId, professionalUserId } = found
     if (tutorUserId !== session.id && professionalUserId !== session.id) {
       return { success: false, error: "Acesso negado." }
-    }
-
-    const detail = await findServiceRequestWithParticipants(requestId)
-    if (!detail) {
-      return { success: false, error: "Solicitação não encontrada." }
     }
 
     const synced = await syncExpiredPendingRequest(detail)
@@ -1093,9 +1119,7 @@ export async function getRequestSyncProbeAction(
   requestId: string
 ): Promise<ActionResult<{ token: string }>> {
   try {
-    const session = await requireAuth()
-
-    const ctx = await findRequestWithOwnershipContext(requestId)
+    const [session, ctx] = await loadSessionAndRequestContext(requestId)
     if (!ctx) {
       return { success: false, error: "Solicitação não encontrada." }
     }
@@ -1178,9 +1202,7 @@ async function applyTransition({
   auditAction: string
 }): Promise<ActionResult<ServiceRequestData>> {
   try {
-    const session = await requireAuth()
-
-    const ctx = await findRequestWithOwnershipContext(requestId)
+    const [session, ctx] = await loadSessionAndRequestContext(requestId)
     if (!ctx) {
       return { success: false, error: "Solicitação não encontrada." }
     }

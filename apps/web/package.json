@@ -23,6 +23,7 @@
     "test:avatar": "node --experimental-strip-types --test lib/storage/avatar-ownership-contract.test.ts",
     "test:avatar:live": "node scripts/test-avatar-live.mjs",
     "test:request-expiry": "node --experimental-strip-types --test modules/service-request/domain/request-expiry.test.ts modules/service-request/domain/request-lead-time.test.ts",
+    "test:request-critical-path": "node --experimental-strip-types --test modules/service-request/application/request-critical-path.test.ts",
     "test:trust-scoring": "node --experimental-strip-types --test modules/trust-engine/domain/scoring.test.ts",
     "test:relationship": "node --experimental-strip-types --test modules/relationship/domain/relationship-levels.test.ts modules/relationship/domain/status-to-event.test.ts modules/relationship-history/domain/build-summary.test.ts",
     "test:service-uniqueness": "node --experimental-strip-types --test modules/professional/domain/service-uniqueness.test.ts",

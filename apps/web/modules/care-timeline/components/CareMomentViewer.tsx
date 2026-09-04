@@ -183,7 +183,10 @@ function FotoDoMomento({
           if (node && imagemChegouQuebrada(node)) aoQuebrar()
         }}
         onError={aoQuebrar}
-        className="relative z-10 max-h-full max-w-full object-contain"
+        /* z-0, e não z-10: a foto é DECORATIVA e precisa ficar ABAIXO das
+           zonas de toque, senão o toque lateral cai na imagem em vez de
+           navegar. Medido: com as duas em z-10, o lado esquerdo ficava morto. */
+        className="relative z-0 max-h-full max-w-full object-contain"
       />
     </>
   )
@@ -326,25 +329,94 @@ export function CareMomentViewer({
           {video ? (
             /* CareVideoPlayer inteiro: card fechado sem <video> no DOM, e o
                elemento só nasce no toque. É daqui que vem a garantia de
-               ausência de autoplay — não de uma regra repetida aqui. */
-            <div className="w-full px-4">
-              <CareVideoPlayer media={video} />
+               ausência de autoplay — não de uma regra repetida aqui.
+               `variant="immersive"` só troca as cores do estado fechado; o
+               default (timeline e tela do profissional) segue intocado.
+
+               z-20 = ACIMA das zonas de toque: é isto que garante que o botão
+               de play e, depois, os controles nativos do vídeo nunca sejam
+               interceptados pela navegação lateral. */
+            /* `px-14`, e não `px-4`: o card do vídeo fica ACIMA das zonas de
+               toque (para o play nunca ser interceptado), então a largura dele
+               é exatamente a largura que a navegação lateral perde. Medido com
+               `px-4`, sobravam 16px de faixa tocável de cada lado — fino demais
+               para o polegar. Recuando o card, sobram ~56px de cada lado, e o
+               vídeo ainda ganha um enquadramento mais deliberado do que
+               encostado nas bordas. */
+            <div className="pointer-events-none relative z-20 w-full px-14">
+              {/* `pointer-events` só no player: o wrapper é largura total, e
+                  sem isto a faixa de padding dele (z-20) engolia o toque
+                  destinado às zonas laterais — medido, o lado ficava morto. */}
+              <div className="pointer-events-auto">
+                <CareVideoPlayer media={video} variant="immersive" />
+              </div>
             </div>
           ) : fotoGrande && !fotoQuebrada ? (
             <FotoDoMomento foto={fotoGrande} aoQuebrar={() => setFotoQuebrada(true)} />
           ) : (
             /* Sem mídia (ou foto indisponível): o relato assume o lugar dela,
                grande e centralizado. Não existe card vazio esperando por uma
-               foto que nunca vai chegar. */
-            <div className="flex max-h-full w-full flex-col items-center gap-4 overflow-y-auto px-6 py-6 text-center">
+               foto que nunca vai chegar.
+
+               `pointer-events-none` no container e `auto` só no parágrafo: o
+               texto continua selecionável e rolável, mas o espaço VAZIO ao
+               redor dele deixa o toque passar para as zonas de navegação.
+               Sem isso, um momento só de texto seria o único que não avança
+               com o toque lateral. */
+            <div className="pointer-events-none relative z-20 flex max-h-full w-full flex-col items-center gap-4 overflow-y-auto px-6 py-6 text-center">
               <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-white/10 text-white">
                 <Icon className="size-6" aria-hidden />
               </span>
-              <p className="text-base leading-relaxed font-medium text-balance break-words text-white">
+              <p className="pointer-events-auto text-base leading-relaxed font-medium text-balance break-words text-white">
                 {update.content}
               </p>
             </div>
           )}
+
+          {/*
+            ── Navegação por toque nas laterais ──────────────────────────────
+
+            QA físico do Vitor: com anterior/próximo só no rodapé, trocar de
+            momento exigia procurar a seta. A expectativa real é a de Stories —
+            tocar no lado da tela. Esta decisão SUBSTITUI a cautela do
+            REFINE-002 contra zonas invisíveis: agora há evidência de uso e
+            decisão explícita de produto.
+
+            São `<button>` de verdade, com `aria-label` — não `<div>` com
+            onClick. Isso mantém a navegação anunciável por leitor de tela e
+            alcançável por teclado, além do ArrowLeft/ArrowRight que já existe.
+
+            z-10: ficam ACIMA da foto (decorativa) e ABAIXO do vídeo e do
+            parágrafo de texto. A ordem é o que resolve o conflito de toque —
+            não uma lista de exceções que alguém teria de manter.
+
+            Desabilitam nos limites: no primeiro momento não há lado esquerdo
+            ativo, no último não há direito. Sem wrap, como antes.
+          */}
+          <button
+            type="button"
+            onClick={() => anterior !== null && onNavigate(anterior)}
+            disabled={anterior === null}
+            aria-label="Momento anterior"
+            className="group absolute inset-y-0 left-0 z-10 w-[32%] cursor-default focus-visible:outline-none disabled:pointer-events-none"
+          >
+            {/* Seta discreta: aparece no hover (desktop). No celular não há
+                hover e o toque já é a interação — o indicador seria enfeite. */}
+            <span className="pointer-events-none absolute top-1/2 left-2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/35 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+              <ChevronLeft className="size-5" aria-hidden />
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => proximo !== null && onNavigate(proximo)}
+            disabled={proximo === null}
+            aria-label="Próximo momento"
+            className="group absolute inset-y-0 right-0 z-10 w-[32%] cursor-default focus-visible:outline-none disabled:pointer-events-none"
+          >
+            <span className="pointer-events-none absolute top-1/2 right-2 grid size-9 -translate-y-1/2 place-items-center rounded-full bg-black/35 text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+              <ChevronRight className="size-5" aria-hidden />
+            </span>
+          </button>
         </div>
 
         {/* ── Miniaturas: só quando a atualização tem mais de uma foto ──── */}
@@ -377,55 +449,42 @@ export function CareMomentViewer({
           </div>
         ) : null}
 
-        {/* ── Rodapé: navegar, posição e a ponte para o histórico ───────── */}
-        <div className="flex shrink-0 items-center gap-3 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        {/*
+          ── Rodapé: só orientação e a ponte para o histórico ──────────────
+
+          Os dois botões circulares grandes de anterior/próximo saíram daqui
+          (REFINE-003). Eles eram o mecanismo PRINCIPAL de navegação e
+          dominavam o rodapé — obrigando a pessoa a sair da mídia, descer os
+          olhos e mirar um alvo. A navegação passou para o toque lateral, na
+          própria área da mídia; o rodapé volta a ser o que devia ser: onde
+          estou, e como chegar ao registro completo.
+        */}
+        <div className="flex shrink-0 flex-col items-center gap-1 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {/* `aria-live`: navegar por toque lateral ou teclado não muda o
+              foco, então sem isto um leitor de tela não anunciaria a troca. */}
+          <span className="text-[11px] font-medium text-white/70" aria-live="polite">
+            {momentPositionLabel(openIndex, total)}
+          </span>
           <button
             type="button"
-            onClick={() => anterior !== null && onNavigate(anterior)}
-            disabled={anterior === null}
-            aria-label="Momento anterior"
-            className="grid size-10 shrink-0 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none disabled:opacity-25 disabled:hover:bg-white/10"
-          >
-            <ChevronLeft className="size-5" aria-hidden />
-          </button>
-
-          <div className="flex min-w-0 flex-1 flex-col items-center gap-1">
-            {/* `aria-live`: navegar com o teclado não muda o foco, então sem
-                isto um leitor de tela não anunciaria que o momento trocou. */}
-            <span className="text-[11px] font-medium text-white/70" aria-live="polite">
-              {momentPositionLabel(openIndex, total)}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                fechar()
-                // Depois de fechar: a entrada da timeline continua sendo a
-                // fonte de verdade, e é para lá que quem quer o registro
-                // completo (com as fotos na galeria original) deve ir.
-                requestAnimationFrame(() => {
-                  document.getElementById(careUpdateAnchorId(update.id))?.scrollIntoView({
-                    behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-                      ? "auto"
-                      : "smooth",
-                    block: "start",
-                  })
+            onClick={() => {
+              fechar()
+              // Depois de fechar: a entrada da timeline continua sendo a
+              // fonte de verdade, e é para lá que quem quer o registro
+              // completo (com as fotos na galeria original) deve ir.
+              requestAnimationFrame(() => {
+                document.getElementById(careUpdateAnchorId(update.id))?.scrollIntoView({
+                  behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+                    ? "auto"
+                    : "smooth",
+                  block: "start",
                 })
-              }}
-              className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-white/60 transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
-            >
-              <ListTree className="size-3" aria-hidden />
-              Ver no histórico
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => proximo !== null && onNavigate(proximo)}
-            disabled={proximo === null}
-            aria-label="Próximo momento"
-            className="grid size-10 shrink-0 place-items-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none disabled:opacity-25 disabled:hover:bg-white/10"
+              })
+            }}
+            className="flex min-h-9 items-center gap-1 rounded-full px-3 text-[11px] font-medium text-white/60 transition-colors hover:text-white focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
           >
-            <ChevronRight className="size-5" aria-hidden />
+            <ListTree className="size-3" aria-hidden />
+            Ver no histórico
           </button>
         </div>
       </DialogContent>

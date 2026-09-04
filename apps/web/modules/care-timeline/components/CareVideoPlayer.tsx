@@ -121,7 +121,31 @@ function liberarReproducao(elemento: HTMLVideoElement) {
 
 type Estado = "fechado" | "carregando" | "tocando" | "erro"
 
-export function CareVideoPlayer({ media }: { media: CareMediaView }) {
+/**
+ * GATE-9-...-REFINE-003 — variante visual do estado FECHADO.
+ *
+ * `default` é a superfície clara da timeline e da tela do profissional, e
+ * continua exatamente como sempre foi.
+ *
+ * `immersive` existe porque o QA físico do Vitor mostrou o problema: dentro do
+ * visualizador de Momentos (fundo navy escuro), `bg-muted` renderiza claro no
+ * tema light — o card fechado virava um retângulo quase branco no meio da tela
+ * escura, com cara de placeholder técnico em vez de mídia. A variante troca
+ * SÓ as cores do estado fechado e do erro por tons que conversam com esse
+ * fundo.
+ *
+ * Opt-in de propósito: quem não passa a prop não muda de comportamento nem de
+ * aparência, então nenhuma das duas superfícies existentes é tocada.
+ */
+type VarianteVisual = "default" | "immersive"
+
+export function CareVideoPlayer({
+  media,
+  variant = "default",
+}: {
+  media: CareMediaView
+  variant?: VarianteVisual
+}) {
   /**
    * Antecipa DNS + TCP + TLS com o Storage — medido em ~480 ms de economia no
    * primeiro vídeo que o tutor abre (ver lib/storage/storage-origin.ts).
@@ -187,8 +211,9 @@ export function CareVideoPlayer({ media }: { media: CareMediaView }) {
   // FECHADO — nenhum <video> no DOM, nenhuma request
   // ───────────────────────────────────────────────────────────────────────────
   if (estado === "fechado") {
+    const imersivo = variant === "immersive"
     return (
-      <div className="mt-2">
+      <div className={imersivo ? undefined : "mt-2"}>
         <button
           type="button"
           onClick={abrir}
@@ -200,15 +225,38 @@ export function CareVideoPlayer({ media }: { media: CareMediaView }) {
           // `mx-auto` pela mesma razão do player aberto: com `max-height`
           // cortando um card vertical, a largura encolhe junto e sem
           // centralizar o bloco encostaria na margem esquerda.
-          className="group relative mx-auto flex w-full items-center justify-center overflow-hidden rounded-lg border border-border/70 bg-muted transition-colors hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className={`group relative mx-auto flex w-full items-center justify-center overflow-hidden transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+            imersivo
+              ? // Sem borda clara e sem fundo `muted`: no visualizador escuro o
+                // card precisa LER como um vídeo esperando play, não como um
+                // bloco encaixado. O véu branco translúcido escurece com o
+                // fundo do viewer em vez de brigar com ele.
+                "rounded-2xl bg-white/[0.06] hover:bg-white/[0.1] focus-visible:ring-white focus-visible:ring-offset-transparent"
+              : "rounded-lg border border-border/70 bg-muted hover:bg-muted/70 focus-visible:ring-ring"
+          }`}
         >
           <span className="flex flex-col items-center gap-2">
             {/* O círculo é o alvo visual do play; o <button> inteiro é a área
                 tocável, então não há alvo de toque pequeno aqui. */}
-            <span className="grid size-14 place-items-center rounded-full bg-background/90 shadow-sm ring-1 ring-border/50 transition-transform group-hover:scale-105">
-              <Play className="size-6 translate-x-0.5 fill-foreground text-foreground" aria-hidden />
+            <span
+              className={`grid place-items-center rounded-full transition-transform group-hover:scale-105 ${
+                imersivo
+                  ? "size-16 bg-white/95 shadow-lg"
+                  : "size-14 bg-background/90 shadow-sm ring-1 ring-border/50"
+              }`}
+            >
+              <Play
+                className={`translate-x-0.5 ${
+                  imersivo ? "size-7 fill-[#141B33] text-[#141B33]" : "size-6 fill-foreground text-foreground"
+                }`}
+                aria-hidden
+              />
             </span>
-            <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <span
+              className={`flex items-center gap-1.5 text-xs font-medium ${
+                imersivo ? "text-white/75" : "text-muted-foreground"
+              }`}
+            >
               <Video className="size-3.5" aria-hidden />
               Vídeo do atendimento
             </span>
@@ -222,19 +270,33 @@ export function CareVideoPlayer({ media }: { media: CareMediaView }) {
   // ERRO — discreto, com ação, sem detalhe técnico
   // ───────────────────────────────────────────────────────────────────────────
   if (estado === "erro") {
+    const imersivo = variant === "immersive"
     return (
       <div
-        className="mt-2 flex flex-col items-center gap-3 rounded-lg border border-border/70 bg-muted/40 px-4 py-6"
+        className={`flex flex-col items-center gap-3 px-4 py-6 ${
+          imersivo
+            ? "rounded-2xl bg-white/[0.06]"
+            : "mt-2 rounded-lg border border-border/70 bg-muted/40"
+        }`}
         role="status"
       >
-        <VideoOff className="size-5 text-muted-foreground" aria-hidden />
-        <span className="text-center text-sm text-muted-foreground">
+        <VideoOff
+          className={`size-5 ${imersivo ? "text-white/70" : "text-muted-foreground"}`}
+          aria-hidden
+        />
+        <span
+          className={`text-center text-sm ${imersivo ? "text-white/80" : "text-muted-foreground"}`}
+        >
           Não foi possível reproduzir este vídeo.
         </span>
         <button
           type="button"
           onClick={tentarNovamente}
-          className="flex min-h-11 items-center gap-1.5 rounded-lg border border-border/70 bg-background px-3 text-sm font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className={`flex min-h-11 items-center gap-1.5 rounded-lg px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 ${
+            imersivo
+              ? "bg-white/10 text-white hover:bg-white/15 focus-visible:ring-white"
+              : "border border-border/70 bg-background text-foreground focus-visible:ring-ring"
+          }`}
         >
           <RotateCcw className="size-4" aria-hidden />
           Tentar novamente

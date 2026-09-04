@@ -15,6 +15,7 @@ import {
   PARTNER_CATEGORIES,
   PARTNER_CATEGORY_LABELS,
 } from "@/modules/partners/domain/constants"
+import { formatBrazilianPhone } from "@/modules/partners/domain/phone-format"
 import type { PartnerCategory } from "@/modules/partners/domain/types"
 import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
@@ -43,7 +44,11 @@ export function PartnerProfileEditForm({ partner }: PartnerProfileEditFormProps)
       description: partner.description ?? "",
       city: partner.city,
       state: partner.state,
-      phone: partner.phone ?? "",
+      // GATE-8-PARTNER-INPUT-MASKS-001: reformata o valor salvo ao carregar
+      // o formulário — dados existentes no banco não são todos formatados
+      // (telefone era texto livre antes deste gate), então sem isto a edição
+      // abriria mostrando o valor bruto até o parceiro digitar de novo.
+      phone: formatBrazilianPhone(partner.phone ?? ""),
       category: partner.category,
       website: partner.website ?? "",
       logoUrl: partner.logoUrl ?? "",
@@ -164,7 +169,21 @@ export function PartnerProfileEditForm({ partner }: PartnerProfileEditFormProps)
 
       <FormField name="phone" label="Telefone" error={errors.phone?.message}>
         {(field) => (
-          <Input id={field.id} {...register("phone")} type="tel" aria-invalid={field["aria-invalid"]} />
+          <Input
+            id={field.id}
+            {...register("phone", {
+              // Reformata a cada tecla ANTES do react-hook-form ler o valor —
+              // mutar `e.target.value` aqui é o jeito padrão de aplicar
+              // máscara com `register` sem trocar para `Controller`.
+              onChange: (e) => {
+                e.target.value = formatBrazilianPhone(e.target.value)
+              },
+            })}
+            type="tel"
+            inputMode="tel"
+            placeholder="(11) 99999-9999"
+            aria-invalid={field["aria-invalid"]}
+          />
         )}
       </FormField>
 

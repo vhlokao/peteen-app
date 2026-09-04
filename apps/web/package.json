@@ -39,7 +39,7 @@
     "test:legal": "node --experimental-strip-types --test modules/legal/domain/legal-documents.test.ts",
     "test:public-surface": "node --experimental-strip-types --test modules/identity/infrastructure/auth-callback-url.test.ts modules/seo/public-surface.test.ts",
     "test:authz": "node --experimental-strip-types --test modules/verification/application/server-action-surface.test.ts",
-    "test:partner-capability": "node --experimental-strip-types --test modules/partners/domain/onboarding-capability.test.ts",
+    "test:partner-capability": "node --experimental-strip-types --test modules/partners/domain/onboarding-capability.test.ts modules/partners/domain/phone-format.test.ts",
     "test:routing": "node --experimental-strip-types --test modules/identity/domain/route-access.test.ts modules/identity/domain/post-login-destination.test.ts",
     "test:partner-discovery": "node --experimental-strip-types --test modules/partners/infrastructure/professional-search-city.test.ts",
     "test:professional-crm": "node --experimental-strip-types --test modules/professional-crm/domain/request-list-tab.test.ts"

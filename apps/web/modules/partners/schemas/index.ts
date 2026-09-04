@@ -68,14 +68,26 @@ export const PartnerOnboardingBusinessSchema = z.object({
     .trim()
     .length(2, "Use a sigla do estado (ex: SP)"),
 
-  // Mesma regex do portal autenticado. Sem máscara de propósito: o projeto
-  // inteiro trata telefone como texto livre com `type="tel"` (ver
-  // professional-profile-form.tsx e tutor-profile-form.tsx). Introduzir
-  // máscara só aqui criaria um TERCEIRO comportamento de telefone no produto.
+  // GATE-8-PARTNER-INPUT-MASKS-001: Partner agora tem máscara própria
+  // (ver modules/partners/domain/phone-format.ts) — decisão específica deste
+  // gate, que substitui a diretriz anterior de "telefone é texto livre em
+  // todo o produto" só para Partner (Professional/Tutor não foram tocados).
+  //
+  // BUG CONFIRMADO que este `.refine` corrige: a regex sozinha só limitava a
+  // CONTAGEM DE CARACTERES da string (8-20), não a quantidade de dígitos —
+  // um valor como "12345678" (8 caracteres, mas só 8 dígitos, sem DDD) já
+  // passava como "válido com DDD", que é exatamente o que a mensagem de erro
+  // promete verificar e a regex sozinha não garante. O `.refine` alinha
+  // Partner com a mesma contagem mínima que `professional-profile-form.tsx`
+  // já aplica (≥10 dígitos = DDD + número), que o comentário antigo desta
+  // regra já dizia seguir sem de fato aplicar.
   phone: z
     .string()
     .trim()
-    .regex(/^\+?[\d\s\-()]{8,20}$/, "Informe um telefone válido com DDD"),
+    .regex(/^\+?[\d\s\-()]{8,20}$/, "Informe um telefone válido com DDD")
+    .refine((val) => val.replace(/\D/g, "").length >= 10, {
+      message: "Informe um telefone válido com DDD",
+    }),
 
   instagram: z.string().trim().max(100, "Usuário muito longo"),
 

@@ -25,6 +25,7 @@ import {
   PARTNER_CATEGORIES,
 } from "@/modules/partners/domain/constants"
 import { activationScoreLabel } from "@/modules/partners/domain/activation"
+import { formatBrazilianPhone } from "@/modules/partners/domain/phone-format"
 import { validarDadosDoNegocio } from "@/modules/partners/schemas"
 import type {
   PartnerCategory,
@@ -440,12 +441,15 @@ export function PartnerOnboardingWizard() {
             </FormField>
           </div>
 
-          {/* Telefone — mesmo contrato de professional-profile-form.tsx:
-              `type="tel"` + `autoComplete="tel"` + o mesmo placeholder.
-              `inputMode="tel"` é o que abre o teclado numérico no celular.
-              Sem máscara de propósito: nenhum campo de telefone do produto tem
-              uma, e criar a primeira só aqui daria ao parceiro um campo que se
-              comporta diferente do resto da Peteen. */}
+          {/* Telefone — GATE-8-PARTNER-INPUT-MASKS-001: máscara BR própria de
+              Partner (formatBrazilianPhone), decisão específica deste gate
+              que substitui o texto-livre que o produto usa em outro lugar
+              (Professional/Tutor não foram tocados). `type="tel"` +
+              `autoComplete="tel"` seguem o mesmo contrato de sempre;
+              `inputMode="tel"` abre o teclado numérico no celular. O valor
+              exibido/armazenado já sai formatado — o schema (ver
+              modules/partners/schemas/index.ts) aceita pontuação, então
+              nenhuma conversão extra é feita no submit. */}
           <FormField
             name="phone"
             label="Telefone *"
@@ -457,13 +461,13 @@ export function PartnerOnboardingWizard() {
                 {...field}
                 value={phone}
                 onChange={(e) => {
-                  setPhone(e.target.value)
+                  setPhone(formatBrazilianPhone(e.target.value))
                   limparErro("phone")
                 }}
                 type="tel"
                 inputMode="tel"
                 autoComplete="tel"
-                placeholder="+55 11 9 9999-9999"
+                placeholder="(11) 99999-9999"
                 className={ALVO_TOQUE}
               />
             )}

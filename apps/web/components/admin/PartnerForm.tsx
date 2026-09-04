@@ -12,6 +12,7 @@ import {
   PARTNER_CATEGORY_LABELS,
 } from "@/modules/partners/domain/constants"
 import type { Partner, PartnerCategory, CreatePartnerInput } from "@/modules/partners/domain/types"
+import { formatBrazilianPhone } from "@/modules/partners/domain/phone-format"
 import { generatePartnerSlug } from "@/modules/partners/domain/slug"
 
 type Props = {
@@ -34,7 +35,10 @@ export function PartnerForm({ partner, onDone }: Props) {
   const [city, setCity] = useState(partner?.city ?? "")
   const [state, setState] = useState(partner?.state ?? "")
   const [description, setDescription] = useState(partner?.description ?? "")
-  const [phone, setPhone] = useState(partner?.phone ?? "")
+  // GATE-8-PARTNER-INPUT-MASKS-001: reformata o valor salvo ao carregar em
+  // modo edição — dados existentes no banco não são todos formatados
+  // (telefone era texto livre antes deste gate).
+  const [phone, setPhone] = useState(formatBrazilianPhone(partner?.phone ?? ""))
   const [website, setWebsite] = useState(partner?.website ?? "")
   const [instagram, setInstagram] = useState(partner?.instagram ?? "")
   const [logoUrl, setLogoUrl] = useState(partner?.logoUrl ?? "")
@@ -174,7 +178,14 @@ export function PartnerForm({ partner, onDone }: Props) {
 
         <div>
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">Telefone</label>
-          <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} className={inputClass} />
+          <input
+            type="tel"
+            inputMode="tel"
+            value={phone}
+            onChange={(e) => setPhone(formatBrazilianPhone(e.target.value))}
+            placeholder="(11) 99999-9999"
+            className={inputClass}
+          />
         </div>
 
         <div>

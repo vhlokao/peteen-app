@@ -34,6 +34,10 @@ import {
   REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
 } from "@/modules/service-request/domain/active-request-sync"
 import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
+import {
+  parseTutorRequestsTab,
+  tutorRequestsListHref,
+} from "@/modules/tutor-portal/domain/request-list-tab"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
@@ -49,6 +53,7 @@ const NOT_FOUND_DETAIL_ERRORS = new Set(["Solicitação não encontrada.", "Aces
 
 type PageProps = {
   params: Promise<{ requestId: string }>
+  searchParams: Promise<{ tab?: string | string[] }>
 }
 
 function formatDate(date: Date | null, scheduledHasTime: boolean): string {
@@ -165,8 +170,11 @@ function SubmittedReview({
  * projeto hoje (confirmado por busca no código antes de implementar) —
  * não foi inventado aqui.
  */
-export default async function TutorRequestDetailPage({ params }: PageProps) {
+export default async function TutorRequestDetailPage({ params, searchParams }: PageProps) {
   const { requestId } = await params
+  const { tab: rawTab } = await searchParams
+  const backHref = tutorRequestsListHref(parseTutorRequestsTab(rawTab))
+
   const session = await requireAuthOrRedirect()
   const tutorProfile = await findTutorProfileByUserId(session.id)
 
@@ -189,7 +197,7 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
         <div className="page-container max-w-2xl pb-4">
           <div className="mb-5 flex items-center gap-3">
             <Link
-              href="/tutor/requests"
+              href={backHref}
               aria-label="Voltar"
               className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
             >
@@ -285,7 +293,7 @@ export default async function TutorRequestDetailPage({ params }: PageProps) {
     <div className="page-container max-w-2xl pb-4">
       <div className="mb-5 flex items-center gap-3">
         <Link
-          href="/tutor/requests"
+          href={backHref}
           aria-label="Voltar"
           className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
         >

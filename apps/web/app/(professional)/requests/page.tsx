@@ -15,9 +15,14 @@ import { RequestListAutoRefresh } from "@/modules/service-request/components/Act
 import { buildRequestListSyncToken } from "@/modules/service-request/domain/active-request-sync"
 import { getProfessionalRequestListSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 import { findProfessionalProfileByUserId } from "@/modules/professional/infrastructure/repository"
+import { parseProfessionalRequestsTab } from "@/modules/professional-crm/domain/request-list-tab"
 
 export const metadata: Metadata = {
   title: "Solicitações",
+}
+
+type PageProps = {
+  searchParams: Promise<{ tab?: string | string[] }>
 }
 
 function groupRequests(requests: ServiceRequestWithParticipants[]) {
@@ -44,7 +49,8 @@ function groupRequests(requests: ServiceRequestWithParticipants[]) {
  * continuar acessando esta tela mesmo que a persona ativa seja outra —
  * primaryRole define preferência de destino, não permissão.
  */
-export default async function RequestsPage() {
+export default async function RequestsPage({ searchParams }: PageProps) {
+  const { tab: rawTab } = await searchParams
   const ctx = await getAuthContext()
 
   if (!ctx.authenticated) {
@@ -69,6 +75,7 @@ export default async function RequestsPage() {
   ])
   const requests: ServiceRequestWithParticipants[] = result.success ? result.data : []
   const { new: newRequests, ongoing, history } = groupRequests(requests)
+  const initialTab = parseProfessionalRequestsTab(rawTab, newRequests.length)
 
   // Token inicial calculado no MESMO render que já produziu `requests` —
   // seeda o probe do cliente para comparar contra o que esta tela já mostra,
@@ -106,6 +113,7 @@ export default async function RequestsPage() {
         />
       ) : (
         <ProfessionalRequestsTabs
+          initialTab={initialTab}
           newCount={newRequests.length}
           ongoingCount={ongoing.length}
           historyCount={history.length}
@@ -113,7 +121,7 @@ export default async function RequestsPage() {
             newRequests.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {newRequests.map((req) => (
-                  <ProfessionalRequestCard key={req.id} request={req} />
+                  <ProfessionalRequestCard key={req.id} request={req} returnTab="new" />
                 ))}
               </div>
             ) : (
@@ -127,7 +135,7 @@ export default async function RequestsPage() {
             ongoing.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {ongoing.map((req) => (
-                  <ProfessionalRequestCard key={req.id} request={req} />
+                  <ProfessionalRequestCard key={req.id} request={req} returnTab="ongoing" />
                 ))}
               </div>
             ) : (
@@ -141,7 +149,7 @@ export default async function RequestsPage() {
             history.length > 0 ? (
               <div className="grid gap-3 sm:grid-cols-2">
                 {history.map((req) => (
-                  <ProfessionalRequestCard key={req.id} request={req} />
+                  <ProfessionalRequestCard key={req.id} request={req} returnTab="history" />
                 ))}
               </div>
             ) : (

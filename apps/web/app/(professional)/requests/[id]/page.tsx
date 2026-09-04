@@ -25,6 +25,7 @@ import {
 } from "@/modules/service-request/domain/active-request-sync"
 import { getRequestSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
 import { ErrorState } from "@/components/shared/feedback/ErrorState"
+import { professionalRequestsBackHref } from "@/modules/professional-crm/domain/request-list-tab"
 
 export const metadata: Metadata = {
   title: "Detalhe da solicitação",
@@ -38,6 +39,7 @@ const NOT_FOUND_DETAIL_ERRORS = new Set(["Solicitação não encontrada.", "Aces
 
 type DetailPageProps = {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string | string[] }>
 }
 
 function formatDate(date: Date | null, scheduledHasTime: boolean): string {
@@ -65,8 +67,10 @@ function formatDate(date: Date | null, scheduledHasTime: boolean): string {
  * RequestActions, disputa) são exatamente os mesmos de antes — só a
  * apresentação mudou.
  */
-export default async function RequestDetailPage({ params }: DetailPageProps) {
+export default async function RequestDetailPage({ params, searchParams }: DetailPageProps) {
   const { id } = await params
+  const { tab: rawTab } = await searchParams
+  const backHref = professionalRequestsBackHref(rawTab)
 
   const [ctx, detailResult] = await Promise.all([
     getAuthContext(),
@@ -79,7 +83,7 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
         <div className="page-container max-w-2xl pb-4">
           <div className="mb-5 flex items-center gap-3">
             <Link
-              href="/requests"
+              href={backHref}
               aria-label="Voltar"
               className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
             >
@@ -154,7 +158,7 @@ export default async function RequestDetailPage({ params }: DetailPageProps) {
     <div className="page-container max-w-2xl pb-4">
       <div className="mb-5 flex items-center gap-3">
         <Link
-          href="/requests"
+          href={backHref}
           aria-label="Voltar"
           className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
         >

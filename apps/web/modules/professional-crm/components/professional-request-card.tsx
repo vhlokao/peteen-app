@@ -15,6 +15,10 @@ import {
   PROFESSIONAL_REQUEST_CARD_CTA,
   PROFESSIONAL_REQUEST_CARD_NEXT_STEP,
 } from "../domain/request-status-display"
+import {
+  professionalRequestDetailHref,
+  type ProfessionalRequestsTab,
+} from "../domain/request-list-tab"
 import { ProfessionalRequestStatusPill } from "./professional-request-status-pill"
 
 function formatDate(date: Date | null, scheduledHasTime: boolean): string {
@@ -47,8 +51,12 @@ function formatTimeRange(request: ServiceRequestWithParticipants): string | null
  */
 export function ProfessionalRequestCard({
   request,
+  returnTab = "new",
 }: {
   request: ServiceRequestWithParticipants
+  /** Aba de origem (GATE-5-NAV-CONTEXT-001) — carregada na URL do detalhe
+   *  para o botão Voltar reabrir a mesma aba desta lista. */
+  returnTab?: ProfessionalRequestsTab
 }) {
   const timeRange = formatTimeRange(request)
   const tutor = request.tutor
@@ -126,7 +134,7 @@ export function ProfessionalRequestCard({
       {nextStep && <p className="text-xs font-medium text-primary">{nextStep}</p>}
 
       <Link
-        href={`/requests/${request.id}`}
+        href={professionalRequestDetailHref(request.id, returnTab)}
         className={buttonVariants({
           variant: request.status === "PENDING" ? "default" : "outline",
           size: "sm",

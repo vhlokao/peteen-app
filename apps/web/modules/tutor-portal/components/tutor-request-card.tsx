@@ -6,6 +6,7 @@ import { formatScheduledCivilDate } from "@/lib/date/zoned-datetime"
 import type { ServiceRequestWithParticipants } from "@/modules/service-request/domain/types"
 import { SERVICE_TYPE_LABELS, type ServiceType } from "@/modules/professional/domain/types"
 import { REQUEST_STATUS_META } from "../domain/request-status-display"
+import { tutorRequestDetailHref, type TutorRequestsTab } from "../domain/request-list-tab"
 import { TutorRequestStatusPill } from "./TutorRequestStatusPill"
 import { cardInteractiveClasses } from "@/components/ui/card"
 
@@ -30,8 +31,12 @@ function formatDate(date: Date | null, scheduledHasTime: boolean): string {
  */
 export function TutorRequestCard({
   request,
+  returnTab = "active",
 }: {
   request: ServiceRequestWithParticipants
+  /** Aba de origem (GATE-5-NAV-CONTEXT-001) — carregada na URL do detalhe
+   *  para o botão Voltar reabrir a mesma aba desta lista. */
+  returnTab?: TutorRequestsTab
 }) {
   const meta = REQUEST_STATUS_META[request.status]
   const pro = request.professional
@@ -49,7 +54,7 @@ export function TutorRequestCard({
 
   return (
     <Link
-      href={`/tutor/requests/${request.id}`}
+      href={tutorRequestDetailHref(request.id, returnTab)}
       className={`flex items-center gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-[var(--shadow-card)] ${cardInteractiveClasses}`}
     >
       <Avatar className="size-12 shrink-0 rounded-xl" style={{ background: "#E8EEF6" }}>

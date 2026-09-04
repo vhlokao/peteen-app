@@ -16,9 +16,14 @@ import { requireAuthOrRedirect } from "@/modules/identity/application/get-sessio
 import { RequestListAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
 import { buildRequestListSyncToken } from "@/modules/service-request/domain/active-request-sync"
 import { getTutorRequestListSyncSnapshot } from "@/modules/service-request/infrastructure/sync-snapshot"
+import { parseTutorRequestsTab } from "@/modules/tutor-portal/domain/request-list-tab"
 
 export const metadata: Metadata = {
   title: "Seus pedidos",
+}
+
+type PageProps = {
+  searchParams: Promise<{ tab?: string | string[] }>
 }
 
 function groupRequests(requests: ServiceRequestWithParticipants[]) {
@@ -37,7 +42,10 @@ function groupRequests(requests: ServiceRequestWithParticipants[]) {
  * COMPLETED/CANCELLED (tutor ou profissional)/DISPUTED/EXPIRED anteriores, como já
  * era feito pelos sets OPEN/TERMINAL do código original.
  */
-export default async function TutorRequestsPage() {
+export default async function TutorRequestsPage({ searchParams }: PageProps) {
+  const { tab: rawTab } = await searchParams
+  const initialTab = parseTutorRequestsTab(rawTab)
+
   const session = await requireAuthOrRedirect()
   const tutorProfile = await findTutorProfileByUserId(session.id)
 
@@ -93,13 +101,14 @@ export default async function TutorRequestsPage() {
         />
       ) : (
         <TutorRequestsTabs
+          initialTab={initialTab}
           activeCount={active.length}
           previousCount={previous.length}
           activeContent={
             active.length > 0 ? (
               <div className="flex flex-col gap-3">
                 {active.map((req) => (
-                  <TutorRequestCard key={req.id} request={req} />
+                  <TutorRequestCard key={req.id} request={req} returnTab="active" />
                 ))}
               </div>
             ) : (
@@ -115,7 +124,7 @@ export default async function TutorRequestsPage() {
             previous.length > 0 ? (
               <div className="flex flex-col gap-3">
                 {previous.map((req) => (
-                  <TutorRequestCard key={req.id} request={req} />
+                  <TutorRequestCard key={req.id} request={req} returnTab="previous" />
                 ))}
               </div>
             ) : (

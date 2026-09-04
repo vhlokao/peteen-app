@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
+import type { CookieOptions } from "@supabase/ssr";
 import { classifyRoute, requiresSession } from "@/modules/identity/domain/route-access";
 import { buildCspHeaderValue, CSP_HEADER_NAME, supabaseHostnameFromEnv } from "@/lib/csp/policy";
+import { VERIFIED_AUTH_ID_HEADER } from "@/modules/identity/domain/verified-auth-header";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
@@ -37,20 +39,42 @@ export async function middleware(request: NextRequest) {
     environment: process.env.NODE_ENV === "production" ? "production" : "development",
   });
 
-  // Clonado UMA vez e reaproveitado em TODO `NextResponse.next({ request })`
-  // deste arquivo — inclusive dentro do callback de cookies do Supabase logo
-  // abaixo. `NextResponse.next({ request: { headers } })` não substitui a
+  // Reaproveitado em TODO header que este middleware precisa fazer chegar à
+  // aplicação (CSP + identidade validada, ver GATE-3-AUTH-LATENCY-005
+  // abaixo). `NextResponse.next({ request: { headers } })` não substitui a
   // requisição de verdade: sinaliza ao Next, via headers internos
   // `x-middleware-override-headers` (nunca vistos pelo browser), quais
   // headers sobrescrever na requisição que a árvore de Server Components vai
   // efetivamente receber. É de lá — da REQUISIÇÃO, não da resposta — que o
   // Next lê o nonce para os próprios scripts de hidratação (ver o comentário
-  // grande em lib/csp/policy.ts). Reconstruir este objeto a cada chamada
-  // duplicaria a lógica e arriscaria as duas cópias divergirem.
+  // grande em lib/csp/policy.ts).
+  //
+  // IMPORTANTE: `NextResponse.next()` serializa este objeto de forma EAGER —
+  // no INSTANTE da chamada, não por referência tardia (confirmado lendo o
+  // código-fonte do Next: `handleMiddlewareField` itera as entradas do
+  // Headers ali mesmo). Por isso só pode haver UMA construção de
+  // `NextResponse.next()` neste arquivo, e ela precisa vir depois de TODOS
+  // os headers finais já estarem decididos — inclusive o de identidade, que
+  // só é conhecido depois de `getUser()` resolver, mais abaixo.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(CSP_HEADER_NAME, cspHeaderValue);
 
-  let supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
+  // GATE-3-AUTH-LATENCY-005 — remove SEMPRE, incondicionalmente, ANTES de
+  // qualquer decisão. `requestHeaders` nasceu como cópia de
+  // `request.headers`: se um cliente mandasse este header por conta
+  // própria, ele estaria aqui dentro agora. Sem este delete, um request não
+  // autenticado (ou cujo `getUser()` falhasse) deixaria esse valor FORJADO
+  // atravessar para a aplicação. Só é setado de novo, mais abaixo, com o
+  // valor que `getUser()` realmente confirmou — nunca copiado do que já
+  // estava aqui.
+  requestHeaders.delete(VERIFIED_AUTH_ID_HEADER);
+
+  // Cookies que o SDK do Supabase pedir para (re)gravar durante `getUser()`
+  // (ex.: refresh de token) — capturadas aqui, aplicadas só na construção
+  // única de `supabaseResponse`, mais abaixo. Antes desta missão,
+  // `supabaseResponse` era reconstruído aqui dentro; agora não pode mais
+  // ser, porque neste ponto ainda não sabemos se há usuário (ver acima).
+  let cookiesParaGravar: { name: string; value: string; options: CookieOptions }[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -64,10 +88,7 @@ export async function middleware(request: NextRequest) {
           for (const { name, value } of cookiesToSet) {
             request.cookies.set(name, value);
           }
-          supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
-          for (const { name, value, options } of cookiesToSet) {
-            supabaseResponse.cookies.set(name, value, options);
-          }
+          cookiesParaGravar = cookiesToSet;
         },
       },
     }
@@ -79,6 +100,28 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // GATE-3-AUTH-LATENCY-005 — a ÚNICA escrita deste header em todo o
+  // sistema, e só depois da linha acima ter validado o JWT de verdade contra
+  // o Supabase. `getAuthContext()` (modules/identity/application/
+  // get-session.ts) lê este header para pular uma SEGUNDA chamada de rede a
+  // `getUser()` dentro do MESMO request HTTP — mas continua fazendo a
+  // própria consulta ao Prisma a partir do valor, nunca confiando em
+  // identidade/roles vindos daqui além do `authId`. Se `user` for `null`
+  // (sem sessão, JWT inválido, ou getUser() falhou), o header permanece
+  // ausente — nunca setado com um valor vazio nem qualquer coisa que
+  // pudesse ser confundida com "verificado".
+  if (user) {
+    requestHeaders.set(VERIFIED_AUTH_ID_HEADER, user.id);
+  }
+
+  // ÚNICA construção de `NextResponse.next()` deste middleware — só agora
+  // `requestHeaders` está com todos os headers finais (CSP + identidade) e
+  // sabemos quais cookies gravar (capturados em `cookiesParaGravar` acima).
+  const supabaseResponse = NextResponse.next({ request: { headers: requestHeaders } });
+  for (const { name, value, options } of cookiesParaGravar) {
+    supabaseResponse.cookies.set(name, value, options);
+  }
 
   const { pathname } = request.nextUrl;
 

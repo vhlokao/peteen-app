@@ -1,52 +1,38 @@
 import { cache } from "react"
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { createSupabaseServerClient } from "@/lib/supabase/server"
 import { prisma } from "@/lib/prisma/client"
+import type { Prisma } from "@prisma/client"
+import { VERIFIED_AUTH_ID_HEADER } from "../domain/verified-auth-header"
 import type { AuthContext, PersonaRole, SessionUser } from "../domain/types"
 
+const USER_WITH_PERSONAS_SELECT = {
+  id: true,
+  authId: true,
+  email: true,
+  activePrimaryRole: true,
+  onboardingCompletedAt: true,
+  lastSeenAt: true,
+  tutorProfile: { select: { id: true, avatarUrl: true } },
+  professionalProfile: { select: { id: true, avatarUrl: true } },
+  partnerProfile: { select: { id: true, avatarUrl: true } },
+  adminProfile: { select: { id: true } },
+} satisfies Prisma.UserSelect
+
+type UserWithPersonas = Prisma.UserGetPayload<{ select: typeof USER_WITH_PERSONAS_SELECT }>
+
 /**
- * getAuthContext — retorna o usuário autenticado com suas personas.
- *
- * Fluxo:
- *   1. Lê sessão Supabase (JWT validado no servidor)
- *   2. Busca o User correspondente no Prisma com todas as personas
- *   3. Determina quais personas este user possui
- *   4. Retorna AuthContext tipado — discriminated union para type narrowing seguro
- *
- * Usar em Server Components e Server Actions. Nunca chamar no browser.
- *
- * cache(): deduplica chamadas dentro do mesmo request de render.
- * Layouts, páginas e Server Actions compartilham o mesmo resultado sem N+1 queries.
+ * Monta o `AuthContext` a partir da linha do Prisma — mesma lógica de
+ * roles/primaryRole/avatar de sempre, só extraída para ser compartilhada
+ * pelos dois caminhos de `getAuthContext` (com e sem o header validado).
+ * `dbUser === null` cobre tanto "usuário não existe" quanto "existe no
+ * Supabase mas ainda não sincronizou com public.users" (primeira sessão,
+ * antes do trigger/onboarding) — os dois casos sempre foram tratados como
+ * não-autenticado, comportamento inalterado por esta missão.
  */
-export const getAuthContext = cache(async (): Promise<AuthContext> => {
-  const supabase = await createSupabaseServerClient()
-  const {
-    data: { user: supabaseUser },
-  } = await supabase.auth.getUser()
-
-  if (!supabaseUser) {
-    return { authenticated: false, user: null }
-  }
-
-  const dbUser = await prisma.user.findUnique({
-    where: { authId: supabaseUser.id },
-    select: {
-      id: true,
-      authId: true,
-      email: true,
-      activePrimaryRole: true,
-      onboardingCompletedAt: true,
-      lastSeenAt: true,
-      tutorProfile: { select: { id: true, avatarUrl: true } },
-      professionalProfile: { select: { id: true, avatarUrl: true } },
-      partnerProfile: { select: { id: true, avatarUrl: true } },
-      adminProfile: { select: { id: true } },
-    },
-  })
-
+function toAuthContext(dbUser: UserWithPersonas | null): AuthContext {
   if (!dbUser) {
-    // Usuário existe no Supabase mas ainda não sincronizou com public.users.
-    // Ocorre na primeira sessão antes do trigger processar ou antes do onboarding.
     return { authenticated: false, user: null }
   }
 
@@ -81,6 +67,68 @@ export const getAuthContext = cache(async (): Promise<AuthContext> => {
   }
 
   return { authenticated: true, user: sessionUser }
+}
+
+/**
+ * getAuthContext — retorna o usuário autenticado com suas personas.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * GATE-3-AUTH-LATENCY-005 — evita uma SEGUNDA validação de rede por request
+ *
+ * `middleware.ts` já chamou `supabase.auth.getUser()` (valida o JWT contra o
+ * servidor do Supabase) para TODO request que chega até aqui — é o próprio
+ * matcher do middleware que garante isso. Repetir essa chamada aqui dentro
+ * era pagar a MESMA validação de rede duas vezes no mesmo request HTTP.
+ *
+ * `middleware.ts` escreve o `authId` já validado num header interno
+ * (`VERIFIED_AUTH_ID_HEADER`) — ver o comentário de segurança lá, e em
+ * `verified-auth-header.ts`, para a garantia central: o middleware SEMPRE
+ * apaga qualquer valor deste header vindo do cliente antes de decidir se
+ * escreve um novo, então o que chega até aqui, quando presente, é sempre o
+ * que `getUser()` validou segundos atrás — nunca o que o cliente mandou.
+ *
+ * Mesmo assim, este código NUNCA confia em identidade/roles a partir do
+ * header sozinho: o `authId` só vira `AuthContext` depois de uma consulta
+ * real ao Prisma (idêntica à que já existia) — a MESMA trava de sempre
+ * (usuário existir em `public.users`, personas reais) continua valendo. O
+ * único custo eliminado é a validação de JWT redundante, não a consulta ao
+ * banco.
+ *
+ * FALLBACK: se o header não estiver presente — rota fora do matcher do
+ * middleware, ambiente de teste, ou qualquer caminho não coberto —, o
+ * comportamento é EXATAMENTE o de antes desta missão: chama
+ * `supabase.auth.getUser()` normalmente. Nunca menos seguro, só sem o
+ * atalho quando ele não pode ser provado seguro.
+ *
+ * cache(): deduplica chamadas dentro do mesmo request de render.
+ * Layouts, páginas e Server Actions compartilham o mesmo resultado sem N+1 queries.
+ */
+export const getAuthContext = cache(async (): Promise<AuthContext> => {
+  const verifiedAuthId = (await headers()).get(VERIFIED_AUTH_ID_HEADER)
+
+  if (verifiedAuthId) {
+    const dbUser = await prisma.user.findUnique({
+      where: { authId: verifiedAuthId },
+      select: USER_WITH_PERSONAS_SELECT,
+    })
+    return toAuthContext(dbUser)
+  }
+
+  const supabase = await createSupabaseServerClient()
+  const {
+    data: { user: supabaseUser },
+  } = await supabase.auth.getUser()
+
+  if (!supabaseUser) {
+    return { authenticated: false, user: null }
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { authId: supabaseUser.id },
+    select: USER_WITH_PERSONAS_SELECT,
+  })
+
+  return toAuthContext(dbUser)
 })
 
 /**

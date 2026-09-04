@@ -57,6 +57,7 @@ import { Play, RotateCcw, Video, VideoOff, Volume2, VolumeX } from "lucide-react
 
 import type { CareMediaView } from "../domain/types"
 import { proporcaoAberta, proporcaoFechada } from "../domain/media-aspect"
+import { videoProgressFraction } from "../domain/care-moments"
 import { supabaseStorageOrigin } from "@/lib/storage/storage-origin"
 
 /**
@@ -137,14 +138,30 @@ type Estado = "fechado" | "carregando" | "tocando" | "erro"
  * Opt-in de propósito: quem não passa a prop não muda de comportamento nem de
  * aparência, então nenhuma das duas superfícies existentes é tocada.
  */
-type VarianteVisual = "default" | "immersive"
+/**
+ * `diary` (GATE-9-...-REFINE-005): a timeline COMPLETA do Tutor. Mesmo
+ * comportamento do default — card fechado, nenhum `<video>` antes do gesto —
+ * mas com presença de mídia editorial em vez de bloco pequeno anexado ao log.
+ * A tela do profissional continua no `default`, intocada.
+ */
+type VarianteVisual = "default" | "immersive" | "diary"
 
 export function CareVideoPlayer({
   media,
   variant = "default",
+  onProgress,
 }: {
   media: CareMediaView
   variant?: VarianteVisual
+  /**
+   * Progresso de reprodução (0..1), opt-in — GATE-9-...-REFINE-005.
+   *
+   * Existe para que a barra de segmentos do visualizador seja dirigida pelo
+   * PRÓPRIO vídeo (`currentTime/duration`), em vez de por um cronômetro
+   * paralelo que inevitavelmente dessincronizaria em buffering. Quem não
+   * passa a prop não paga nada: sem callback, nenhum listener extra importa.
+   */
+  onProgress?: (fraction: number) => void
 }) {
   /**
    * Antecipa DNS + TCP + TLS com o Storage — medido em ~480 ms de economia no
@@ -266,7 +283,16 @@ export function CareVideoPlayer({
           // `mx-auto` pela mesma razão do player aberto: com `max-height`
           // cortando um card vertical, a largura encolhe junto e sem
           // centralizar o bloco encostaria na margem esquerda.
-          className="group border-border/70 bg-muted hover:bg-muted/70 focus-visible:ring-ring relative mx-auto flex w-full items-center justify-center overflow-hidden rounded-lg border transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
+          //
+          // `diary` (REFINE-005): mesma estrutura, presença maior — cantos
+          // mais generosos e sem borda concorrendo com a foto ao lado, para
+          // que vídeo e foto leiam como a MESMA linguagem na timeline do
+          // Tutor. O `default` (profissional) segue idêntico ao que era.
+          className={`group focus-visible:ring-ring relative mx-auto flex w-full items-center justify-center overflow-hidden transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none ${
+            variant === "diary"
+              ? "bg-muted hover:bg-muted/80 rounded-2xl"
+              : "border-border/70 bg-muted hover:bg-muted/70 rounded-lg border"
+          }`}
         >
           <span className="flex flex-col items-center gap-2">
             {/* O círculo é o alvo visual do play; o <button> inteiro é a área
@@ -341,6 +367,10 @@ export function CareVideoPlayer({
             // caixa dentro dela. Uma borda clara aqui reintroduziria a
             // aparência de "card encaixado" que o REFINE-003 removeu.
             "relative mx-auto max-h-full overflow-hidden"
+          : variant === "diary"
+          ? // Timeline do Tutor: mesma linguagem de canto das fotos, sem
+            // borda — a moldura clara fazia o vídeo parecer anexo, não mídia.
+            "relative mx-auto mt-2 overflow-hidden rounded-2xl bg-black"
           : // `mx-auto` não é cosmético. Quando `max-height` corta a caixa de
             // um vídeo VERTICAL, a largura encolhe junto (9:16 limitado a
             // 506px de altura dá 285px de largura). Sem centralizar, esse
@@ -406,6 +436,17 @@ export function CareVideoPlayer({
             setProporcao(el.videoWidth / el.videoHeight)
           }
         }}
+        // A barra de segmentos é dirigida pelo vídeo, não por um timer
+        // paralelo: em buffering o `currentTime` simplesmente para, e a barra
+        // para junto — em vez de fingir que o conteúdo avançou.
+        onTimeUpdate={
+          onProgress
+            ? (e) => {
+                const el = e.currentTarget
+                onProgress(videoProgressFraction(el.currentTime, el.duration))
+              }
+            : undefined
+        }
         onPlaying={() => setEstado("tocando")}
         onPlay={(e) => assumirReproducao(e.currentTarget)}
         onPause={(e) => liberarReproducao(e.currentTarget)}
@@ -418,10 +459,25 @@ export function CareVideoPlayer({
           spinner infinito — `onError` leva ao estado de erro com ação. */}
       {estado === "carregando" ? (
         <span
-          className="pointer-events-none absolute inset-0 grid place-items-center bg-black/40"
+          /*
+           * REFINE-005 — feedback IMEDIATO enquanto o primeiro frame não vem.
+           *
+           * Medido contra o Storage real: conexão fria custa 391 ms só de
+           * DNS/TCP/TLS/TTFB. Nesse intervalo o `<video>` é uma caixa preta
+           * vazia, e a tela parecia travada. O véu com brilho em movimento
+           * dá sinal de "está vindo" sem prometer progresso que não existe —
+           * a barra de progresso real só começa quando o vídeo reporta tempo.
+           *
+           * `motion-safe:` porque quem pediu menos movimento no sistema
+           * recebe o mesmo véu, parado.
+           */
+          className="pointer-events-none absolute inset-0 overflow-hidden bg-black/55"
           role="status"
         >
-          <span className="size-8 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+          <span className="absolute inset-0 motion-safe:animate-pulse bg-gradient-to-br from-white/[0.07] via-transparent to-white/[0.07]" />
+          <span className="absolute inset-0 grid place-items-center">
+            <span className="size-8 animate-spin rounded-full border-2 border-white/30 border-t-white motion-reduce:animate-none" />
+          </span>
           <span className="sr-only">Carregando vídeo…</span>
         </span>
       ) : null}

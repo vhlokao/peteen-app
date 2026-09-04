@@ -21,6 +21,10 @@ import {
   resolveCareMomentCover,
   resolveCareMomentMedia,
   selectCareMoments,
+  MOMENT_VISUAL_DURATION_MS,
+  clampProgressFraction,
+  segmentFill,
+  videoProgressFraction,
 } from "./care-moments.ts"
 import type { CareMediaView, CareUpdate, CareUpdateCategory } from "./types.ts"
 
@@ -270,5 +274,91 @@ describe("momentPositionLabel", () => {
   it("conta a partir de 1, como a pessoa lê", () => {
     assert.equal(momentPositionLabel(0, 8), "1 de 8")
     assert.equal(momentPositionLabel(7, 8), "8 de 8")
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROGRESSO DOS SEGMENTOS — GATE-9-CARE-TIMELINE-UX-REFINE-005
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("clampProgressFraction", () => {
+  it("mantém frações válidas", () => {
+    assert.equal(clampProgressFraction(0.5), 0.5)
+  })
+
+  it("trava nos limites 0 e 1", () => {
+    assert.equal(clampProgressFraction(-3), 0)
+    assert.equal(clampProgressFraction(0), 0)
+    assert.equal(clampProgressFraction(1), 1)
+    assert.equal(clampProgressFraction(9), 1)
+  })
+
+  it("NaN e Infinity viram 0 — a barra nunca inventa progresso", () => {
+    assert.equal(clampProgressFraction(Number.NaN), 0)
+    assert.equal(clampProgressFraction(Number.POSITIVE_INFINITY), 0)
+  })
+})
+
+describe("videoProgressFraction — a barra é dirigida pelo próprio vídeo", () => {
+  it("calcula currentTime / duration", () => {
+    assert.equal(videoProgressFraction(3, 12), 0.25)
+    assert.equal(videoProgressFraction(6, 12), 0.5)
+  })
+
+  it("duration NaN (metadados ainda não chegaram) → 0, não finge progresso", () => {
+    assert.equal(videoProgressFraction(2, Number.NaN), 0)
+  })
+
+  it("duration 0 ou Infinity → 0", () => {
+    assert.equal(videoProgressFraction(2, 0), 0)
+    assert.equal(videoProgressFraction(2, Number.POSITIVE_INFINITY), 0)
+  })
+
+  it("currentTime além da duração satura em 1, sem passar", () => {
+    assert.equal(videoProgressFraction(20, 12), 1)
+  })
+
+  it("início do vídeo é 0", () => {
+    assert.equal(videoProgressFraction(0, 12), 0)
+  })
+})
+
+describe("segmentFill — anteriores cheios, atual em progresso, seguintes vazios", () => {
+  it("segmentos anteriores ficam 100%", () => {
+    assert.equal(segmentFill(0, 2, 0.3), 1)
+    assert.equal(segmentFill(1, 2, 0.3), 1)
+  })
+
+  it("o segmento atual reflete o progresso real", () => {
+    assert.equal(segmentFill(2, 2, 0.42), 0.42)
+  })
+
+  it("segmentos seguintes ficam vazios", () => {
+    assert.equal(segmentFill(3, 2, 0.9), 0)
+    assert.equal(segmentFill(9, 2, 0.9), 0)
+  })
+
+  it("no primeiro Momento, nada atrás está preenchido", () => {
+    assert.equal(segmentFill(0, 0, 0), 0)
+    assert.equal(segmentFill(1, 0, 0.5), 0)
+  })
+
+  it("no último Momento, todos os anteriores estão cheios", () => {
+    assert.equal(segmentFill(0, 3, 1), 1)
+    assert.equal(segmentFill(2, 3, 1), 1)
+    assert.equal(segmentFill(3, 3, 1), 1)
+  })
+
+  it("o atual também respeita os limites 0/1", () => {
+    assert.equal(segmentFill(1, 1, -2), 0)
+    assert.equal(segmentFill(1, 1, 5), 1)
+    assert.equal(segmentFill(1, 1, Number.NaN), 0)
+  })
+})
+
+describe("MOMENT_VISUAL_DURATION_MS", () => {
+  it("é uma duração de leitura calma, não um cronômetro apertado", () => {
+    assert.ok(MOMENT_VISUAL_DURATION_MS >= 5000)
+    assert.ok(MOMENT_VISUAL_DURATION_MS <= 12000)
   })
 })

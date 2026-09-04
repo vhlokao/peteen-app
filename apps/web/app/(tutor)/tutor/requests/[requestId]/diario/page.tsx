@@ -184,6 +184,9 @@ export default async function TutorCareDiaryPage({ params }: PageProps) {
             </h2>
             <CareTimeline
               updates={careUpdates}
+              /* Só o Diário do Tutor pede a composição editorial; a tela do
+                 profissional segue no `compact` de sempre. */
+              mediaPresentation="diary"
               emptyHint={
                 emAndamento
                   ? "Assim que o profissional registrar algo do atendimento, aparece aqui."

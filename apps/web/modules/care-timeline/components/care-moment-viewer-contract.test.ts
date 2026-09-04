@@ -187,3 +187,101 @@ describe("único controle de mídia: som", () => {
     assert.doesNotMatch(PLAYER, /role="progressbar"/)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GATE-9-...-REFINE-005 — performance, harmonia da timeline e progresso real
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MOMENTS = readFileSync(join(AQUI, "CareMoments.tsx"), "utf8")
+const GALLERY = readFileSync(join(AQUI, "CareMediaGallery.tsx"), "utf8")
+const TIMELINE = readFileSync(join(AQUI, "CareTimeline.tsx"), "utf8")
+
+describe("performance: conexão aquecida cedo, sem baixar vídeo nenhum", () => {
+  it("o preconnect acontece na FAIXA, não só dentro do player", () => {
+    // Medido no Storage real: conexão fria 391 ms vs quente 97 ms. Dentro do
+    // player a dica não tinha janela — o vídeo do viewer monta junto com a
+    // request.
+    assert.match(MOMENTS, /preconnect\(origemStorage\)/)
+  })
+
+  it("só emite a dica quando existe vídeo entre os momentos", () => {
+    assert.match(MOMENTS, /const temVideo = momentos\.some\(/)
+    assert.match(MOMENTS, /if \(origemStorage && temVideo\) preconnect\(origemStorage\)/)
+  })
+
+  it("NÃO pré-carrega arquivos de vídeo — preconnect não transfere bytes", () => {
+    // Nenhum preload/prefetch de mídia, e o preload de vizinhos segue só foto.
+    assert.doesNotMatch(MOMENTS, /preload\(/)
+    assert.doesNotMatch(VIEWER, /new window\.Image\(\)[\s\S]{0,120}signedUrl/)
+  })
+
+  it("o viewer só antecipa FOTO dos vizinhos, nunca vídeo", () => {
+    assert.match(VIEWER, /const foto = resolveCareMomentMedia\(vizinho\.update\)\.photos\[0\]/)
+    assert.match(VIEWER, /neighborPreloadIndexes\(openIndex, total\)/)
+  })
+})
+
+describe("timeline do Tutor: composição editorial, sem tocar no profissional", () => {
+  it("a apresentação é opt-in e o default continua compacto", () => {
+    assert.match(GALLERY, /apresentacao = "compact"/)
+    assert.match(TIMELINE, /mediaPresentation = "compact"/)
+  })
+
+  it("a composição muda por QUANTIDADE de mídia", () => {
+    assert.match(GALLERY, /if \(media\.length === 1\) return "aspect-\[4\/3\]"/)
+    assert.match(GALLERY, /if \(media\.length === 2\) return "aspect-\[4\/5\]"/)
+    assert.match(GALLERY, /indice === 0 \? "aspect-\[3\/2\]" : "aspect-square"/)
+  })
+
+  it("o vídeo da timeline acompanha a mesma linguagem quando em modo diário", () => {
+    assert.match(GALLERY, /variant=\{apresentacao === "diary" \? "diary" : "default"\}/)
+  })
+
+  it("o modo diário é pedido APENAS pela página do Tutor", () => {
+    const paginaTutor = readFileSync(
+      join(AQUI, "..", "..", "..", "app", "(tutor)", "tutor", "requests", "[requestId]", "diario", "page.tsx"),
+      "utf8"
+    )
+    assert.match(paginaTutor, /mediaPresentation="diary"/)
+
+    const paginaProfissional = readFileSync(
+      join(AQUI, "..", "..", "..", "app", "(professional)", "requests", "[id]", "diario", "page.tsx"),
+      "utf8"
+    )
+    // A tela do profissional NÃO pode pedir a variante — é o que garante que
+    // ela continua exatamente como era.
+    assert.doesNotMatch(paginaProfissional, /mediaPresentation/)
+  })
+})
+
+describe("progresso real nos segmentos", () => {
+  it("os segmentos usam a regra do domínio, não uma cópia local", () => {
+    assert.match(VIEWER, /segmentFill\(i, indice, fracao\)/)
+  })
+
+  it("o vídeo dirige o próprio progresso via currentTime/duration", () => {
+    assert.match(PLAYER, /onTimeUpdate=/)
+    assert.match(PLAYER, /videoProgressFraction\(el\.currentTime, el\.duration\)/)
+    assert.match(VIEWER, /onProgress=\{setProgresso\}/)
+  })
+
+  it("foto e texto usam a duração visual previsível do domínio", () => {
+    assert.match(VIEWER, /MOMENT_VISUAL_DURATION_MS/)
+    assert.match(VIEWER, /requestAnimationFrame\(passo\)/)
+  })
+
+  it("o progresso zera ao trocar de Momento", () => {
+    assert.match(VIEWER, /setProgresso\(0\)\n\s*\}, \[openIndex\]\)/)
+  })
+
+  it("prefers-reduced-motion não roda cronômetro quadro a quadro", () => {
+    assert.match(VIEWER, /if \(reduzirMovimento\) \{\s*\n\s*setProgresso\(1\)/)
+  })
+
+  it("NÃO existe auto-advance: chegar a 100% apenas para", () => {
+    // Se alguém ligar avanço automático, terá de chamar onNavigate do timer —
+    // este teste falha na hora.
+    assert.doesNotMatch(VIEWER, /fracao >= 1[\s\S]{0,120}onNavigate/)
+    assert.match(VIEWER, /if \(fracao < 1\) raf = requestAnimationFrame\(passo\)/)
+  })
+})

@@ -46,11 +46,14 @@ import { DialogContent } from "@/components/ui/dialog"
 import { CARE_CATEGORY_LABELS, type CareMediaView } from "../domain/types"
 import {
   careUpdateAnchorId,
+  clampProgressFraction,
   momentPositionLabel,
+  MOMENT_VISUAL_DURATION_MS,
   neighborPreloadIndexes,
   nextMomentIndex,
   previousMomentIndex,
   resolveCareMomentMedia,
+  segmentFill,
   type CareMoment,
 } from "../domain/care-moments"
 import { CATEGORY_ICON, formatCareUpdateTime } from "./care-update-visuals"
@@ -131,17 +134,39 @@ function useBackToClose(aberto: boolean, fechar: () => void) {
   }, [aberto])
 }
 
-/** Barra de posição — segmentos discretos, sem progresso automático. */
-function Segmentos({ indice, total }: { indice: number; total: number }) {
+/**
+ * Barra de segmentos — GATE-9-...-REFINE-005: progresso REAL, não só posição.
+ *
+ * Anteriores 100%, atual conforme `fracao`, seguintes 0%. A regra vive em
+ * `segmentFill` (domínio, testada); aqui é só pintura.
+ *
+ * `aria-hidden` de propósito: a orientação para leitor de tela é o "X de N"
+ * do rodapé, que já é anunciado. Uma barra que se atualiza a cada frame
+ * viraria spam de `aria-live` sem acrescentar informação.
+ */
+function Segmentos({
+  indice,
+  total,
+  fracao,
+  animar,
+}: {
+  indice: number
+  total: number
+  fracao: number
+  /** Sob prefers-reduced-motion a largura muda sem transição. */
+  animar: boolean
+}) {
   return (
     <div className="flex flex-1 items-center gap-1" aria-hidden>
       {Array.from({ length: total }, (_, i) => (
-        <span
-          key={i}
-          className={`h-0.5 flex-1 rounded-full transition-colors ${
-            i === indice ? "bg-white" : i < indice ? "bg-white/45" : "bg-white/20"
-          }`}
-        />
+        <span key={i} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/20">
+          <span
+            className={`block h-full rounded-full bg-white ${
+              animar ? "transition-[width] duration-150 ease-linear" : ""
+            }`}
+            style={{ width: `${segmentFill(i, indice, fracao) * 100}%` }}
+          />
+        </span>
       ))}
     </div>
   )
@@ -230,6 +255,57 @@ export function CareMomentViewer({
   }, [openIndex])
 
   /**
+   * ── Progresso do Momento atual (0..1) — GATE-9-...-REFINE-005 ────────────
+   *
+   * VÍDEO dirige o próprio progresso (`onProgress` do player, alimentado por
+   * `currentTime/duration`): em buffering o tempo para e a barra para junto,
+   * em vez de fingir avanço.
+   *
+   * FOTO e TEXTO não têm duração intrínseca, então usam uma duração visual
+   * calma e previsível (`MOMENT_VISUAL_DURATION_MS`) — só para dar a sensação
+   * de Stories. Em NENHUM dos casos chegar a 100% avança sozinho: este gate
+   * comunica tempo, não autoriza auto-advance.
+   */
+  const [progresso, setProgresso] = useState(0)
+
+  /** Preferência do sistema, lida uma vez por abertura. */
+  const [reduzirMovimento, setReduzirMovimento] = useState(false)
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    setReduzirMovimento(!!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches)
+  }, [aberto])
+
+  // Todo Momento começa do zero — inclusive ao VOLTAR para um já visto.
+  useEffect(() => {
+    setProgresso(0)
+  }, [openIndex])
+
+  const momentoTemVideo = momento ? resolveCareMomentMedia(momento.update).video !== null : false
+
+  useEffect(() => {
+    // Vídeo se encarrega do próprio progresso; aqui só cuidamos de foto/texto.
+    if (!aberto || momentoTemVideo) return
+
+    // Reduced motion: sem cronômetro rodando quadro a quadro. O segmento
+    // atual aparece cheio, comunicando "você está aqui" sem animação.
+    if (reduzirMovimento) {
+      setProgresso(1)
+      return
+    }
+
+    let raf = 0
+    const inicio = performance.now()
+    const passo = (agora: number) => {
+      const fracao = clampProgressFraction((agora - inicio) / MOMENT_VISUAL_DURATION_MS)
+      setProgresso(fracao)
+      // Para em 100% e espera. Nada de avançar sozinho.
+      if (fracao < 1) raf = requestAnimationFrame(passo)
+    }
+    raf = requestAnimationFrame(passo)
+    return () => cancelAnimationFrame(raf)
+  }, [aberto, openIndex, momentoTemVideo, reduzirMovimento])
+
+  /**
    * Pré-carrega só a foto dos momentos VIZINHOS — nunca a lista inteira, nunca
    * vídeo. `new Image()` é o mesmo mecanismo que a galeria da timeline já usa
    * para antecipar o lightbox: não entra no DOM e o browser deduplica por URL.
@@ -293,7 +369,12 @@ export function CareMomentViewer({
         {/* ── Topo: posição, identificação e fechar ─────────────────────── */}
         <div className="flex shrink-0 flex-col gap-3 px-4 pt-3 pb-2">
           <div className="flex items-center gap-3">
-            <Segmentos indice={openIndex} total={total} />
+            <Segmentos
+              indice={openIndex}
+              total={total}
+              fracao={progresso}
+              animar={!reduzirMovimento}
+            />
             <button
               type="button"
               ref={fecharRef}
@@ -353,6 +434,7 @@ export function CareMomentViewer({
               <CareVideoPlayer
                 media={video}
                 variant="immersive"
+                onProgress={setProgresso}
                 /* `key` por mídia: trocar de Momento DESMONTA o vídeo anterior
                    em vez de reaproveitar o elemento com outro `src`. É o que
                    garante que o anterior pare, que o novo comece mudo do zero,

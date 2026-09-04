@@ -72,6 +72,7 @@ function altDaFoto(indice: number, total: number): string {
 export function CareMediaGallery({
   media,
   prioridade = false,
+  apresentacao = "compact",
 }: {
   media: CareMediaView[]
   /**
@@ -83,6 +84,18 @@ export function CareMediaGallery({
    * carrega com prioridade; o resto continua lazy.
    */
   prioridade?: boolean
+  /**
+   * GATE-9-...-REFINE-005 — composição da grade.
+   *
+   * `compact` (default) é a grade de 3 miniaturas quadradas de sempre, usada
+   * pela tela do profissional e pelo resumo da Request. Intocada.
+   *
+   * `diary` é a timeline completa do Tutor: a mídia é o que ele abriu a tela
+   * para ver, e três quadradinhos de ~96px a tratavam como anexo do log. A
+   * composição muda por QUANTIDADE — 1 protagonista, 2 lado a lado, 3 com
+   * destaque — em vez de espremer tudo na mesma grade.
+   */
+  apresentacao?: "compact" | "diary"
 }) {
   const [ampliada, setAmpliada] = useState<CareMediaView | null>(null)
   const [quebradas, setQuebradas] = useState<Set<string>>(new Set())
@@ -140,7 +153,7 @@ export function CareMediaGallery({
   // O contrato V0 é 1 vídeo por atualização, publicado sozinho, então este
   // ramo é excludente e não precisa compor os dois na mesma tela.
   const video = media.find((m) => m.type === "VIDEO")
-  if (video) return <CareVideoPlayer media={video} />
+  if (video) return <CareVideoPlayer media={video} variant={apresentacao === "diary" ? "diary" : "default"} />
 
   function marcarQuebrada(id: string) {
     setQuebradas((atual) => {
@@ -157,19 +170,55 @@ export function CareMediaGallery({
 
   const indiceAmpliada = ampliada ? media.findIndex((m) => m.id === ampliada.id) : -1
 
+  const diario = apresentacao === "diary"
+
+  /**
+   * Composição por QUANTIDADE (só no `diary`).
+   *
+   * A grade de 3 colunas é ótima para um resumo, e péssima quando a foto é o
+   * assunto: com 1 mídia sobravam dois terços vazios e a única foto ficava do
+   * tamanho de um ícone. Aqui a forma acompanha o conteúdo:
+   *   1 → protagonista, largura inteira, mais alta (4:3);
+   *   2 → par equilibrado lado a lado, retrato suave (4:5);
+   *   3 → destaque em cima (3:2) + duas embaixo (1:1), sem três minúsculas.
+   *
+   * Recorte: as miniaturas usam `object-cover` como sempre — o enquadramento
+   * completo, sem corte, continua a um toque de distância no lightbox, que
+   * mostra a imagem inteira com `object-contain`. Nada do que foi publicado
+   * se perde; muda só a vitrine.
+   */
+  function formaDoItem(indice: number): string {
+    if (!diario) return "aspect-square"
+    if (media.length === 1) return "aspect-[4/3]"
+    if (media.length === 2) return "aspect-[4/5]"
+    // A primeira ocupa as duas colunas (o `col-span-2` fica no <li>); a forma
+    // dela é panorâmica, e as duas de baixo voltam ao quadrado.
+    return indice === 0 ? "aspect-[3/2]" : "aspect-square"
+  }
+
   return (
     <>
-      {/* 3 colunas fixas: o teto por atualização é 3 (CARE_MEDIA_MAX_PER_UPDATE),
-          então a grade nunca quebra linha e cada miniatura mantém proporção
-          quadrada mesmo em 320px. */}
-      <ul className="mt-2 grid grid-cols-3 gap-1.5">
+      {/* `compact`: 3 colunas fixas — o teto por atualização é 3
+          (CARE_MEDIA_MAX_PER_UPDATE), então a grade nunca quebra linha e cada
+          miniatura mantém proporção quadrada mesmo em 320px.
+          `diary`: 1 ou 2 colunas conforme a quantidade, para a composição
+          acima funcionar. */}
+      <ul
+        className={
+          diario
+            ? `mt-3 grid gap-2 ${media.length === 1 ? "grid-cols-1" : "grid-cols-2"}`
+            : "mt-2 grid grid-cols-3 gap-1.5"
+        }
+      >
         {media.map((m, indice) => {
           const estaQuebrada = quebradas.has(m.id)
           return (
-            <li key={m.id}>
+            <li key={m.id} className={diario && media.length === 3 && indice === 0 ? "col-span-2" : undefined}>
               {estaQuebrada ? (
                 <div
-                  className="grid aspect-square place-items-center rounded-lg border border-border/70 bg-muted/40 text-muted-foreground"
+                  className={`border-border/70 bg-muted/40 text-muted-foreground grid place-items-center border ${
+                    diario ? "rounded-2xl" : "rounded-lg"
+                  } ${formaDoItem(indice)}`}
                   role="img"
                   aria-label="Foto indisponível no momento"
                 >
@@ -188,7 +237,9 @@ export function CareMediaGallery({
                   onPointerEnter={() => prepararAmpliacao(m)}
                   onTouchStart={() => prepararAmpliacao(m)}
                   aria-label={`Ampliar ${altDaFoto(indice, media.length).toLowerCase()}`}
-                  className="block aspect-square w-full overflow-hidden rounded-lg border border-border/70 bg-muted/30 transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  className={`bg-muted/30 focus-visible:ring-ring block w-full overflow-hidden transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none ${
+                    diario ? "rounded-2xl" : "border-border/70 rounded-lg border"
+                  } ${formaDoItem(indice)}`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img

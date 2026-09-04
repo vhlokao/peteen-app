@@ -38,7 +38,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { preconnect } from "react-dom"
 import { Expand, ImageOff, Play } from "lucide-react"
+
+import { supabaseStorageOrigin } from "@/lib/storage/storage-origin"
 
 import { CARE_CATEGORY_LABELS, type CareUpdate } from "../domain/types"
 import {
@@ -214,6 +217,29 @@ export function CareMoments({
   isInProgress: boolean
 }) {
   const momentos = selectCareMoments(updates, { isInProgress })
+
+  /**
+   * GATE-9-...-REFINE-005 — aquece a conexão com o Storage ASSIM QUE A FAIXA
+   * RENDERIZA, e não quando o player monta.
+   *
+   * Medido contra o Storage real do projeto:
+   *   conexão fria (1 KB) .... 391 ms
+   *   conexão quente (1 KB) ... 97 ms
+   * ou seja, ~294 ms são só DNS + TCP + TLS.
+   *
+   * O `preconnect` já existia, mas vivia DENTRO do CareVideoPlayer. Desde o
+   * REFINE-004 o vídeo do visualizador monta no mesmo instante em que a
+   * requisição sai, então a dica não tinha janela nenhuma para render efeito.
+   * Aqui ela acontece enquanto a pessoa ainda está lendo o Diário — o custo
+   * de conexão já foi pago quando ela abre o Momento.
+   *
+   * Só emite quando existe vídeo entre os momentos: uma faixa só de fotos não
+   * tem por que abrir conexão de mídia. E `preconnect` NÃO baixa o arquivo —
+   * nenhum byte de vídeo é transferido por causa desta linha.
+   */
+  const origemStorage = supabaseStorageOrigin()
+  const temVideo = momentos.some((m) => m.cover.kind === "VIDEO")
+  if (origemStorage && temVideo) preconnect(origemStorage)
 
   /** `null` = visualizador fechado. */
   const [aberto, setAberto] = useState<number | null>(null)

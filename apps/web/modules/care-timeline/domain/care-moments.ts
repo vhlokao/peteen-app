@@ -215,3 +215,59 @@ export function neighborPreloadIndexes(current: number, total: number): number[]
 export function momentPositionLabel(index: number, total: number): string {
   return `${index + 1} de ${total}`
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROGRESSO DOS SEGMENTOS — GATE-9-CARE-TIMELINE-UX-REFINE-005
+//
+// Os segmentos do topo deixaram de ser só posição e passaram a mostrar quanto
+// do Momento já passou. A regra de preenchimento vive aqui, fora do React,
+// porque é ela que o teste consegue exercitar sem montar DOM nem vídeo.
+//
+// ATENÇÃO: barra de progresso NÃO é autorização para avançar sozinho. Este
+// gate para em 100% e espera — auto-advance é decisão de produto separada.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Duração visual de um Momento SEM vídeo (foto ou só texto).
+ *
+ * 7s é tempo de leitura calmo para um relato curto, não um cronômetro
+ * apertando a pessoa. Só governa a barra — nada acontece ao chegar ao fim.
+ */
+export const MOMENT_VISUAL_DURATION_MS = 7000
+
+/** Mantém uma fração dentro de 0..1, tolerando NaN/Infinity vindos de mídia. */
+export function clampProgressFraction(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  if (value <= 0) return 0
+  if (value >= 1) return 1
+  return value
+}
+
+/**
+ * Progresso vindo do próprio vídeo.
+ *
+ * `duration` é `NaN` até os metadados chegarem e pode ser `Infinity` em
+ * stream sem duração conhecida — nos dois casos a barra fica em 0 em vez de
+ * FINGIR progresso, que é o que a missão pede para buffering/erro.
+ */
+export function videoProgressFraction(currentTime: number, duration: number): number {
+  if (!Number.isFinite(duration) || duration <= 0) return 0
+  return clampProgressFraction(currentTime / duration)
+}
+
+/**
+ * Quanto o segmento `segmentIndex` deve aparecer preenchido.
+ *
+ * Anteriores completos, atual conforme o progresso real, seguintes vazios —
+ * a leitura de "onde estou na sequência" que os segmentos estáticos não
+ * davam.
+ */
+export function segmentFill(
+  segmentIndex: number,
+  currentIndex: number,
+  currentFraction: number
+): number {
+  if (segmentIndex < currentIndex) return 1
+  if (segmentIndex > currentIndex) return 0
+  return clampProgressFraction(currentFraction)
+}

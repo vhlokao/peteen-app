@@ -18,8 +18,20 @@ import { CareMediaGallery } from "./CareMediaGallery"
 export function CareTimeline({
   updates,
   emptyHint,
+  mediaPresentation = "compact",
 }: {
   updates: CareUpdate[]
+  /**
+   * GATE-9-...-REFINE-005 — como a mídia aparece em cada entrada.
+   *
+   * `compact` (default) mantém a grade de miniaturas de sempre, usada pela
+   * tela do PROFISSIONAL — que não pode ser redesenhada de raspão.
+   *
+   * `diary` é a timeline completa do Tutor, onde a foto é o motivo de a
+   * pessoa ter aberto a tela: composição maior e editorial. Opt-in para que
+   * a mudança não vaze para a outra superfície.
+   */
+  mediaPresentation?: "compact" | "diary"
   /**
    * Frase extra no estado vazio, específica de quem está lendo.
    *
@@ -81,7 +93,11 @@ export function CareTimeline({
               {/* Só a entrada do TOPO carrega a primeira foto com prioridade:
                   com recent-first ela é a mais relevante e a única
                   garantidamente visível ao abrir. */}
-              <CareMediaGallery media={update.media} prioridade={posicao === 0} />
+              <CareMediaGallery
+                media={update.media}
+                prioridade={posicao === 0}
+                apresentacao={mediaPresentation}
+              />
             </div>
           </li>
         )

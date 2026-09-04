@@ -4,6 +4,7 @@ import type { NextRequest } from "next/server";
 import { handleAuthCallback } from "@/modules/identity/infrastructure/auth-actions";
 import { getUserByAuthId } from "@/modules/identity/infrastructure/sync-user";
 import { isSafeRedirectPath } from "@/modules/identity/domain/safe-redirect";
+import { resolvePostLoginDestination } from "@/modules/identity/domain/post-login-destination";
 
 /**
  * GET /auth/callback
@@ -16,7 +17,8 @@ import { isSafeRedirectPath } from "@/modules/identity/domain/safe-redirect";
  *   2. Sincronizar o usuário Supabase com o banco Prisma (syncSupabaseUser)
  *   3. Determinar para onde redirecionar baseado na persona do usuário:
  *      - Nenhuma persona → /onboarding (usuário novo)
- *      - TUTOR           → /discover
+ *      - TUTOR           → /tutor (GATE-6-TUTOR-POSTLOGIN-001 — Home do
+ *                          Tutor, não mais Discovery direto)
  *      - PROFESSIONAL    → /requests
  *      - ADMIN           → /admin
  *
@@ -26,17 +28,13 @@ import { isSafeRedirectPath } from "@/modules/identity/domain/safe-redirect";
  *   - O code é single-use — o Supabase rejeita replay attacks automaticamente
  *
  * Nota: esta rota usa o runtime Node.js (não Edge) para ter acesso ao Prisma.
+ *
+ * O destino por persona (incluindo a prioridade de `next`) vive em
+ * `modules/identity/domain/post-login-destination.ts` — função pura, testada
+ * separadamente porque este arquivo importa `next/server` e não roda sob
+ * `node --test`.
  */
 export const runtime = "nodejs";
-
-/** Destinos de redirect por persona — centralizados para fácil manutenção */
-const PERSONA_REDIRECTS = {
-  TUTOR: "/discover",
-  PROFESSIONAL: "/requests",
-  PARTNER: "/partner",
-  ADMIN: "/admin",
-  ONBOARDING: "/onboarding",
-} as const;
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -61,41 +59,10 @@ export async function GET(request: NextRequest) {
 
     // 3. Destino: ?next= (validado, path interno) tem prioridade sobre a
     // persona — preserva para onde o usuário estava indo antes do login.
-    const destination = isSafeRedirectPath(next) ? next : resolveRedirectDestination(dbUser);
+    const destination = isSafeRedirectPath(next) ? next : resolvePostLoginDestination(dbUser);
 
     return NextResponse.redirect(`${origin}${destination}`);
   } catch {
     return NextResponse.redirect(`${origin}/login?error=callback_failed`);
   }
-}
-
-/**
- * resolveRedirectDestination — determina o destino pós-login.
- *
- * Ordem de prioridade:
- *   1. activePrimaryRole (persona explicitamente escolhida pelo usuário)
- *   2. Primeira persona encontrada (para usuários com uma única persona)
- *   3. Nenhuma persona → onboarding
- *
- * Preparado para multi-persona: quando um usuário tiver TUTOR + PROFESSIONAL,
- * o activePrimaryRole define qual área ele acessa. O switcher de persona
- * (futuro) atualizará activePrimaryRole no banco.
- */
-function resolveRedirectDestination(dbUser: Awaited<ReturnType<typeof getUserByAuthId>>) {
-  if (!dbUser) return PERSONA_REDIRECTS.ONBOARDING;
-
-  // Persona explicitamente ativa — respeita a escolha do usuário em multi-persona
-  if (dbUser.activePrimaryRole) {
-    return PERSONA_REDIRECTS[dbUser.activePrimaryRole as keyof typeof PERSONA_REDIRECTS]
-      ?? PERSONA_REDIRECTS.ONBOARDING;
-  }
-
-  // Inferência: primeira persona existente
-  if (dbUser.adminProfile) return PERSONA_REDIRECTS.ADMIN;
-  if (dbUser.partnerProfile) return PERSONA_REDIRECTS.PARTNER;
-  if (dbUser.professionalProfile) return PERSONA_REDIRECTS.PROFESSIONAL;
-  if (dbUser.tutorProfile) return PERSONA_REDIRECTS.TUTOR;
-
-  // Usuário novo sem persona
-  return PERSONA_REDIRECTS.ONBOARDING;
 }

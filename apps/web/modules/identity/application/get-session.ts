@@ -139,7 +139,7 @@ const UNAUTHENTICATED_REDIRECT = "/login"
 
 /**
  * Destino padrão quando há sessão porém sem o papel exigido.
- * `/dashboard` roteia por persona (TUTOR → /discover, PROFESSIONAL → /requests,
+ * `/dashboard` roteia por persona (TUTOR → /tutor, PROFESSIONAL → /requests,
  * PARTNER → /partner), que é exatamente o comportamento que AdminShell já
  * produzia — por isso nenhum destino novo é introduzido aqui.
  */

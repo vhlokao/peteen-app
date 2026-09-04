@@ -15,7 +15,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  *   O /dashboard (Node.js runtime) lê a sessão do Prisma e redireciona corretamente.
  *
  * Personas → destinos:
- *   TUTOR        → /discover
+ *   TUTOR        → /tutor (GATE-6-TUTOR-POSTLOGIN-001 — Home do Tutor, não
+ *                  mais Discovery direto; ver ROLE_DESTINATIONS)
  *   PROFESSIONAL → /requests
  *   ADMIN        → /admin
  *   PARTNER      → /partner
@@ -37,8 +38,14 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  */
 export const runtime = "nodejs";
 
+/**
+ * TUTOR → /tutor (GATE-6-TUTOR-POSTLOGIN-001): mesmo default do
+ * /auth/callback (ver PERSONA_REDIRECTS lá) — os dois pontos de entrada
+ * pós-login precisam concordar, senão login por senha (que passa por aqui
+ * sem `next`) divergiria de Google/Magic Link (que passam por lá).
+ */
 const ROLE_DESTINATIONS = {
-  TUTOR: "/discover",
+  TUTOR: "/tutor",
   PROFESSIONAL: "/requests",
   ADMIN: "/admin",
   PARTNER: "/partner",

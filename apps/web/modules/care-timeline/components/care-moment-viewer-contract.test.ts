@@ -60,9 +60,16 @@ describe("zonas de toque laterais existem como controles acessíveis", () => {
 })
 
 describe("ordem de empilhamento: controles de mídia nunca são interceptados", () => {
-  it("o vídeo fica ACIMA das zonas (z-20 > z-10) — play sempre clicável", () => {
-    assert.match(VIEWER, /pointer-events-none relative z-20 w-full px-14/)
-    assert.match(VIEWER, /pointer-events-auto/)
+  it("o wrapper do vídeo NÃO cria contexto de empilhamento — o botão de som precisa subir", () => {
+    // REFINE-004: um `z-*` aqui prenderia o botão de som (z-30, dentro do
+    // player) abaixo das zonas (z-10), e tocar no som trocaria de Momento.
+    assert.match(VIEWER, /<div className="relative flex size-full items-center justify-center">/)
+  })
+
+  it("trocar de Momento desmonta o vídeo anterior (key por mídia)", () => {
+    // Sem `key`, o React reaproveitaria o elemento trocando só o `src`: o
+    // vídeo anterior poderia continuar tocando e o novo não reiniciaria mudo.
+    assert.match(VIEWER, /key=\{video\.id\}/)
   })
 
   it("a foto fica ABAIXO das zonas (z-0) — o toque lateral não morre nela", () => {
@@ -95,7 +102,10 @@ describe("rodapé deixou de ser o mecanismo de navegação", () => {
 
 describe("vídeo: variante imersiva sem quebrar o contrato existente", () => {
   it("o visualizador pede a variante imersiva", () => {
-    assert.match(VIEWER, /<CareVideoPlayer media=\{video\} variant="immersive" \/>/)
+    // Props conferidas separadamente: o JSX é multi-linha (carrega `key`
+    // também), e travar a formatação exata quebraria a cada reindentação.
+    assert.match(VIEWER, /<CareVideoPlayer/)
+    assert.match(VIEWER, /variant="immersive"/)
   })
 
   it("a variante é OPT-IN: o default segue sendo o da timeline/profissional", () => {
@@ -103,9 +113,9 @@ describe("vídeo: variante imersiva sem quebrar o contrato existente", () => {
     assert.match(PLAYER, /variant\?: VarianteVisual/)
   })
 
-  it("nenhum <video> antes do gesto continua valendo — o estado fechado não monta elemento", () => {
-    // O ramo "fechado" precisa retornar ANTES de qualquer <video>: é isso que
-    // garante zero autoplay e zero preload, na variante imersiva também.
+  it("a TIMELINE não monta <video> antes do gesto — nada de autoplay por viewport", () => {
+    // O ramo "fechado" (só alcançado pela timeline) precisa retornar ANTES de
+    // qualquer <video>: é isso que impede a lista de disparar vídeos ao rolar.
     const posFechado = PLAYER.indexOf('if (estado === "fechado")')
     // Ancora no ELEMENTO real (`key={tentativa}` só existe nele), e não na
     // primeira ocorrência de "<video" — o comentário do topo do arquivo cita
@@ -115,10 +125,65 @@ describe("vídeo: variante imersiva sem quebrar o contrato existente", () => {
     assert.ok(posVideo !== -1, "elemento <video> não encontrado")
     assert.ok(posFechado < posVideo, "o estado fechado deve retornar antes do <video>")
   })
+})
 
-  it("o estado fechado imersivo não usa a superfície clara que virava bloco branco", () => {
-    // `bg-muted` renderiza claro no tema light — era ele o "placeholder
-    // branco" dentro do viewer escuro relatado no QA físico.
-    assert.match(PLAYER, /imersivo\s*\n?\s*\?[\s\S]{0,200}bg-white\/\[0\.06\]/)
+// ─────────────────────────────────────────────────────────────────────────────
+// GATE-9-...-REFINE-004 — reprodução mínima: autoplay mudo, só controle de som
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("controles nativos do navegador foram removidos", () => {
+  it("o <video> NÃO recebe `controls`", () => {
+    // Era daqui que vinham barra de tempo, volume, fullscreen, menu de três
+    // pontos, download e velocidade — o player tradicional que o QA rejeitou.
+    assert.doesNotMatch(PLAYER, /^\s*controls\s*$/m)
+  })
+
+  it("mantém atributos defensivos contra download/PiP e menu de contexto", () => {
+    assert.match(PLAYER, /controlsList="nodownload noplaybackrate noremoteplayback"/)
+    assert.match(PLAYER, /disablePictureInPicture/)
+    assert.match(PLAYER, /onContextMenu=\{\(e\) => e\.preventDefault\(\)\}/)
+  })
+})
+
+describe("autoplay é sempre mudo, e o som é sempre escolha explícita", () => {
+  it("o <video> combina autoPlay + muted + playsInline", () => {
+    assert.match(PLAYER, /autoPlay\s*\n\s*muted=\{semSom\}/)
+    assert.match(PLAYER, /playsInline/)
+  })
+
+  it("o estado inicial do som é MUDO", () => {
+    assert.match(PLAYER, /const \[semSom, setSemSom\] = useState\(true\)/)
+  })
+
+  it("`muted` também é imposto no elemento — o React não reflete essa prop de forma confiável", () => {
+    assert.match(PLAYER, /videoRef\.current\.muted = semSom/)
+  })
+
+  it("no VIEWER o vídeo já nasce aberto: sem segundo toque em 'Reproduzir'", () => {
+    assert.match(PLAYER, /variant === "immersive" \? "carregando" : "fechado"/)
+  })
+})
+
+describe("único controle de mídia: som", () => {
+  it("é um botão real, com rótulo que alterna e estado anunciado", () => {
+    assert.match(PLAYER, /aria-label=\{semSom \? "Ativar som" : "Desativar som"\}/)
+    assert.match(PLAYER, /aria-pressed=\{!semSom\}/)
+  })
+
+  it("fica ACIMA das zonas laterais (z-30 > z-10) e não dispara navegação", () => {
+    assert.match(PLAYER, /z-30/)
+    assert.match(PLAYER, /e\.stopPropagation\(\)/)
+  })
+
+  it("tem alvo de toque adequado (44px)", () => {
+    assert.match(PLAYER, /size-11/)
+  })
+
+  it("não existe barra de progresso nem volume slider próprios", () => {
+    // Marcadores de ELEMENTO, não a palavra "progresso" — que aparece
+    // legitimamente nos comentários explicando o que foi removido.
+    assert.doesNotMatch(PLAYER, /type="range"/)
+    assert.doesNotMatch(PLAYER, /<progress/)
+    assert.doesNotMatch(PLAYER, /role="progressbar"/)
   })
 })

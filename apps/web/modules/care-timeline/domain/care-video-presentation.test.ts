@@ -81,8 +81,12 @@ describe("CareVideoPlayer — estado fechado não gera trabalho de rede", () => 
     assert.equal(ocorrencias.length, 1, `encontrado ${ocorrencias.length} elementos <video>`)
   })
 
-  it("o estado inicial é 'fechado'", () => {
-    assert.match(codigo, /useState<Estado>\("fechado"\)/)
+  it("o estado inicial é 'fechado' NA TIMELINE (variante default)", () => {
+    // GATE-9-...-REFINE-004: o estado inicial passou a depender da variante.
+    // Na timeline continua "fechado" — é isso que impede a lista de carregar
+    // vídeos ao rolar. No visualizador ele já nasce aberto, porque abrir o
+    // Momento JÁ é o gesto (ver care-moment-viewer-contract.test.ts).
+    assert.match(codigo, /variant === "immersive" \? "carregando" : "fechado"/)
   })
 
   it("o preconnect não requisita o arquivo nem toca na signed URL", () => {
@@ -160,8 +164,21 @@ describe("CareVideoPlayer — player ativo", () => {
     assert.match(codigo, /preload="auto"/)
   })
 
-  it("tem controls nativos", () => {
-    assert.match(codigo, /^\s*controls\s*$/m)
+  it("NÃO tem controls nativos — decisão revertida no REFINE-004", () => {
+    // Este teste travava o oposto até o GATE-9-...-REFINE-004. O QA físico do
+    // Vitor mostrou que os controles nativos (barra de tempo, volume,
+    // fullscreen, menu de três pontos, download, velocidade) faziam o Momento
+    // parecer um player tradicional encaixado. O único controle de mídia
+    // agora é o de som, desenhado pelo produto.
+    assert.doesNotMatch(codigo, /^\s*controls\s*$/m)
+  })
+
+  it("reproduz sempre mudo — é o que torna o autoplay possível", () => {
+    // Autoplay COM áudio é bloqueado de forma inconsistente pelos navegadores
+    // mobile. Mudo é o que garante que o vídeo realmente comece; o som é
+    // sempre uma ação explícita depois.
+    assert.match(codigo, /autoPlay\s*\n\s*muted=\{semSom\}/)
+    assert.match(codigo, /const \[semSom, setSemSom\] = useState\(true\)/)
   })
 
   it("tem playsInline — sem ele o iOS força tela cheia", () => {

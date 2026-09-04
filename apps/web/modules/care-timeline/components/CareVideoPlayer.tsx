@@ -53,7 +53,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { preconnect } from "react-dom"
-import { Play, RotateCcw, Video, VideoOff } from "lucide-react"
+import { Play, RotateCcw, Video, VideoOff, Volume2, VolumeX } from "lucide-react"
 
 import type { CareMediaView } from "../domain/types"
 import { proporcaoAberta, proporcaoFechada } from "../domain/media-aspect"
@@ -164,7 +164,17 @@ export function CareVideoPlayer({
    */
   if (ORIGEM_STORAGE) preconnect(ORIGEM_STORAGE)
 
-  const [estado, setEstado] = useState<Estado>("fechado")
+  /**
+   * GATE-9-...-REFINE-004: no viewer o vídeo já nasce ABERTO.
+   *
+   * A missão pede que abrir um Momento com vídeo comece a tocar sozinho, sem
+   * um segundo toque em "Reproduzir" — abrir o Momento JÁ É o gesto. Na
+   * timeline o estado inicial continua "fechado", que é o que impede dezenas
+   * de vídeos de carregarem só porque a lista rolou.
+   */
+  const [estado, setEstado] = useState<Estado>(
+    variant === "immersive" ? "carregando" : "fechado"
+  )
   /**
    * Proporção do card FECHADO — do banco, sem tocar no arquivo. Vertical vira
    * 4:5, horizontal 16:9, quadrado 1:1, desconhecido 4:5 (portrait-first).
@@ -185,6 +195,30 @@ export function CareVideoPlayer({
    */
   const [tentativa, setTentativa] = useState(0)
   const videoRef = useRef<HTMLVideoElement | null>(null)
+
+  /**
+   * GATE-9-...-REFINE-004 — som desligado é o estado inicial, sempre.
+   *
+   * Não é preferência estética: navegador nenhum autoriza autoplay COM áudio
+   * sem gesto prévio, e o bloqueio é inconsistente entre iOS/Android/desktop.
+   * Começar mudo é o que faz o vídeo realmente começar; ligar o som é sempre
+   * uma ação explícita da pessoa, que é justamente o gesto que o browser
+   * exige. Estado local e efêmero — nada é persistido.
+   */
+  const [semSom, setSemSom] = useState(true)
+
+  /**
+   * `muted` é uma propriedade que o React historicamente não reflete de forma
+   * confiável como atributo. Aqui ela decide se o autoplay acontece, então é
+   * imposta no próprio elemento a cada mudança, além de declarada no JSX.
+   */
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.muted = semSom
+  }, [semSom, tentativa, estado])
+
+  const alternarSom = useCallback(() => {
+    setSemSom((atual) => !atual)
+  }, [])
 
   // Se o componente sair da tela tocando (rolagem longa, navegação), o
   // registro não pode continuar apontando para um nó que não existe mais.
@@ -209,11 +243,18 @@ export function CareVideoPlayer({
 
   // ───────────────────────────────────────────────────────────────────────────
   // FECHADO — nenhum <video> no DOM, nenhuma request
+  //
+  // Só a TIMELINE chega aqui. No visualizador o estado inicial já é
+  // "carregando" (ver useState acima), então o card de espera e o segundo
+  // toque em "Reproduzir" deixaram de existir lá — abrir o Momento é o gesto.
+  //
+  // Na timeline este card continua sendo o que impede dezenas de vídeos de
+  // carregarem só porque a lista rolou: sem gesto, não há elemento, não há
+  // request, não há autoplay por viewport.
   // ───────────────────────────────────────────────────────────────────────────
   if (estado === "fechado") {
-    const imersivo = variant === "immersive"
     return (
-      <div className={imersivo ? undefined : "mt-2"}>
+      <div className="mt-2">
         <button
           type="button"
           onClick={abrir}
@@ -225,38 +266,15 @@ export function CareVideoPlayer({
           // `mx-auto` pela mesma razão do player aberto: com `max-height`
           // cortando um card vertical, a largura encolhe junto e sem
           // centralizar o bloco encostaria na margem esquerda.
-          className={`group relative mx-auto flex w-full items-center justify-center overflow-hidden transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
-            imersivo
-              ? // Sem borda clara e sem fundo `muted`: no visualizador escuro o
-                // card precisa LER como um vídeo esperando play, não como um
-                // bloco encaixado. O véu branco translúcido escurece com o
-                // fundo do viewer em vez de brigar com ele.
-                "rounded-2xl bg-white/[0.06] hover:bg-white/[0.1] focus-visible:ring-white focus-visible:ring-offset-transparent"
-              : "rounded-lg border border-border/70 bg-muted hover:bg-muted/70 focus-visible:ring-ring"
-          }`}
+          className="group border-border/70 bg-muted hover:bg-muted/70 focus-visible:ring-ring relative mx-auto flex w-full items-center justify-center overflow-hidden rounded-lg border transition-colors focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none"
         >
           <span className="flex flex-col items-center gap-2">
             {/* O círculo é o alvo visual do play; o <button> inteiro é a área
                 tocável, então não há alvo de toque pequeno aqui. */}
-            <span
-              className={`grid place-items-center rounded-full transition-transform group-hover:scale-105 ${
-                imersivo
-                  ? "size-16 bg-white/95 shadow-lg"
-                  : "size-14 bg-background/90 shadow-sm ring-1 ring-border/50"
-              }`}
-            >
-              <Play
-                className={`translate-x-0.5 ${
-                  imersivo ? "size-7 fill-[#141B33] text-[#141B33]" : "size-6 fill-foreground text-foreground"
-                }`}
-                aria-hidden
-              />
+            <span className="bg-background/90 ring-border/50 grid size-14 place-items-center rounded-full shadow-sm ring-1 transition-transform group-hover:scale-105">
+              <Play className="fill-foreground text-foreground size-6 translate-x-0.5" aria-hidden />
             </span>
-            <span
-              className={`flex items-center gap-1.5 text-xs font-medium ${
-                imersivo ? "text-white/75" : "text-muted-foreground"
-              }`}
-            >
+            <span className="text-muted-foreground flex items-center gap-1.5 text-xs font-medium">
               <Video className="size-3.5" aria-hidden />
               Vídeo do atendimento
             </span>
@@ -316,10 +334,23 @@ export function CareVideoPlayer({
       // encosta na margem esquerda e deixa uma faixa vazia à direita —
       // medido: 73px num aparelho de 390px. Centralizado, a sobra fica
       // simétrica e o vídeo lê como parte da coluna, não como algo desalinhado.
-      className="relative mx-auto mt-2 overflow-hidden rounded-lg border border-border/70 bg-black"
+      className={
+        variant === "immersive"
+          ? // No visualizador o vídeo se comporta como a foto: ocupa a área
+            // disponível, sem moldura nem borda, e a proporção real decide a
+            // caixa dentro dela. Uma borda clara aqui reintroduziria a
+            // aparência de "card encaixado" que o REFINE-003 removeu.
+            "relative mx-auto max-h-full overflow-hidden"
+          : // `mx-auto` não é cosmético. Quando `max-height` corta a caixa de
+            // um vídeo VERTICAL, a largura encolhe junto (9:16 limitado a
+            // 506px de altura dá 285px de largura). Sem centralizar, esse
+            // bloco mais estreito encosta na margem esquerda e deixa uma faixa
+            // vazia à direita — medido: 73px num aparelho de 390px.
+            "relative mx-auto mt-2 overflow-hidden rounded-lg border border-border/70 bg-black"
+      }
       style={{
         aspectRatio: String(proporcao ?? proporcaoDoCard),
-        maxHeight: ALTURA_MAXIMA,
+        maxHeight: variant === "immersive" ? "100%" : ALTURA_MAXIMA,
       }}
     >
       <video
@@ -345,11 +376,26 @@ export function CareVideoPlayer({
         // O contrato de rede segue intacto onde importa: ANTES do clique não
         // existe `<video>` nenhum, então não há preload de espécie alguma.
         preload="auto"
-        controls
-        // `autoPlay` aqui NÃO é autoplay de timeline: este elemento só existe
-        // porque a pessoa tocou em "Reproduzir". Sem ele, o clique abriria um
-        // player parado e exigiria um segundo toque para a mesma intenção.
+        // GATE-9-...-REFINE-004: SEM `controls`.
+        //
+        // Os controles nativos traziam barra de tempo, volume, fullscreen,
+        // menu de três pontos, download e velocidade — um player tradicional
+        // encaixado dentro de um Momento. O único controle de mídia agora é o
+        // de som, logo abaixo, desenhado como parte do visualizador.
+        //
+        // Os atributos abaixo são DEFENSIVOS, não substitutos: mesmo sem
+        // `controls`, alguns navegadores expõem download/PiP por menu de
+        // contexto ou pela UI do sistema.
+        controlsList="nodownload noplaybackrate noremoteplayback"
+        disablePictureInPicture
+        // Fecha o menu de contexto do browser sobre o vídeo (é por ele que o
+        // "Salvar vídeo como…" reaparece mesmo sem controles).
+        onContextMenu={(e) => e.preventDefault()}
+        // `autoPlay` + `muted` são um par indivisível: navegador nenhum
+        // autoriza autoplay com áudio sem gesto anterior. Mudo é o que faz o
+        // vídeo de fato começar; o som é sempre uma escolha explícita depois.
         autoPlay
+        muted={semSom}
         // Obrigatório no iOS: sem isto o Safari joga o vídeo em tela cheia
         // nativa ao tocar play, tirando a pessoa da timeline.
         playsInline
@@ -379,6 +425,34 @@ export function CareVideoPlayer({
           <span className="sr-only">Carregando vídeo…</span>
         </span>
       ) : null}
+
+      {/*
+        ── Único controle de mídia: som ─────────────────────────────────────
+
+        Substitui a barra nativa inteira. `z-30` porque, no visualizador, as
+        zonas de navegação lateral ficam em `z-10` sobre o vídeo — sem isto,
+        tocar no botão de som trocaria de Momento em vez de ligar o áudio.
+
+        `size-11` = 44px, o alvo de toque mínimo confortável já adotado no
+        projeto. `stopPropagation` fecha a porta para o clique escapar para
+        qualquer área de navegação que venha a envolver o player.
+      */}
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          alternarSom()
+        }}
+        aria-label={semSom ? "Ativar som" : "Desativar som"}
+        aria-pressed={!semSom}
+        className="absolute right-3 bottom-3 z-30 grid size-11 place-items-center rounded-full bg-black/55 text-white backdrop-blur-sm transition-colors hover:bg-black/70 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none"
+      >
+        {semSom ? (
+          <VolumeX className="size-5" aria-hidden />
+        ) : (
+          <Volume2 className="size-5" aria-hidden />
+        )}
+      </button>
     </div>
   )
 }

@@ -336,20 +336,30 @@ export function CareMomentViewer({
                z-20 = ACIMA das zonas de toque: é isto que garante que o botão
                de play e, depois, os controles nativos do vídeo nunca sejam
                interceptados pela navegação lateral. */
-            /* `px-14`, e não `px-4`: o card do vídeo fica ACIMA das zonas de
-               toque (para o play nunca ser interceptado), então a largura dele
-               é exatamente a largura que a navegação lateral perde. Medido com
-               `px-4`, sobravam 16px de faixa tocável de cada lado — fino demais
-               para o polegar. Recuando o card, sobram ~56px de cada lado, e o
-               vídeo ainda ganha um enquadramento mais deliberado do que
-               encostado nas bordas. */
-            <div className="pointer-events-none relative z-20 w-full px-14">
-              {/* `pointer-events` só no player: o wrapper é largura total, e
-                  sem isto a faixa de padding dele (z-20) engolia o toque
-                  destinado às zonas laterais — medido, o lado ficava morto. */}
-              <div className="pointer-events-auto">
-                <CareVideoPlayer media={video} variant="immersive" />
-              </div>
+            /* GATE-9-...-REFINE-004: o vídeo passou a ficar ABAIXO das zonas
+               de toque, e não mais acima.
+
+               No REFINE-003 ele precisava estar acima porque a área inteira
+               era um botão "Reproduzir" — interceptá-la quebraria o play.
+               Agora não há mais botão nenhum sobre o vídeo: ele já começa
+               tocando, e o único controle é o de som, que sobe sozinho para
+               `z-30` (dentro do player). Com isso a navegação lateral volta a
+               valer sobre TODA a largura do vídeo, como já vale sobre a foto.
+
+               Este wrapper fica sem `z-index` de propósito: um `z` aqui criaria
+               contexto de empilhamento e prenderia o botão de som embaixo das
+               zonas, que é exatamente o que a missão proíbe. */
+            <div className="relative flex size-full items-center justify-center">
+              <CareVideoPlayer
+                media={video}
+                variant="immersive"
+                /* `key` por mídia: trocar de Momento DESMONTA o vídeo anterior
+                   em vez de reaproveitar o elemento com outro `src`. É o que
+                   garante que o anterior pare, que o novo comece mudo do zero,
+                   e que voltar a um vídeo reinicie do começo — previsível, sem
+                   estado residual de reprodução. */
+                key={video.id}
+              />
             </div>
           ) : fotoGrande && !fotoQuebrada ? (
             <FotoDoMomento foto={fotoGrande} aoQuebrar={() => setFotoQuebrada(true)} />

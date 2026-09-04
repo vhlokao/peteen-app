@@ -182,7 +182,30 @@
   }
 }
 
-@layer utilities {
+/*
+ * GATE-4-VISUAL-LAYOUT-001 — `.page-container` estava em `@layer utilities`,
+ * a MESMA camada de cascata das classes que o Tailwind gera (`max-w-2xl` etc).
+ * Camadas nativas de `@layer` resolvem por ORDEM DE DECLARAÇÃO da camada, não
+ * por onde a regra aparece no arquivo — mas DENTRO da mesma camada, ainda vale
+ * ordem-de-fonte/especificidade normal. Como `.page-container` acabava
+ * compilada DEPOIS de `.max-w-2xl` no CSS final (confirmado inspecionando o
+ * bundle: `.max-w-2xl` no índice ~36943, `.page-container` no ~188320), o
+ * `max-width: 72rem` dela sempre vencia — e todas as telas que combinam
+ * `page-container` com um `max-w-*` de override (22 ocorrências em 20
+ * arquivos: detalhe/diário de Request do tutor e do profissional, perfis,
+ * onboarding de parceiro/profissional, configurações de conta, entre outras)
+ * renderizavam na largura TOTAL do container, não na largura pretendida.
+ *
+ * `.page-container` é estruturalmente um COMPONENTE (um container de layout
+ * pensado para ser estendido/sobrescrito por utilitário), não um utilitário
+ * de baixo nível — por isso pertence a `@layer components`, não a
+ * `@layer utilities`. A ordem nativa que o Tailwind v4 declara
+ * (`@layer theme, base, components, utilities`) garante que QUALQUER
+ * utilitário do Tailwind (`max-w-2xl` e qualquer `max-w-*` futuro) sempre
+ * vence sobre esta camada — é exatamente a garantia que o padrão
+ * "componente base + utilitário de override" depende, e que estava quebrada.
+ */
+@layer components {
   .page-container {
     width: 100%;
     max-width: var(--content-max-width);
@@ -190,7 +213,9 @@
     padding-inline: var(--page-padding-x);
     padding-block: var(--page-padding-y);
   }
+}
 
+@layer utilities {
   .touch-target {
     min-height: var(--touch-target-min);
     min-width: var(--touch-target-min);

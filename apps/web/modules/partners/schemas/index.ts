@@ -73,21 +73,30 @@ export const PartnerOnboardingBusinessSchema = z.object({
   // gate, que substitui a diretriz anterior de "telefone é texto livre em
   // todo o produto" só para Partner (Professional/Tutor não foram tocados).
   //
-  // BUG CONFIRMADO que este `.refine` corrige: a regex sozinha só limitava a
-  // CONTAGEM DE CARACTERES da string (8-20), não a quantidade de dígitos —
-  // um valor como "12345678" (8 caracteres, mas só 8 dígitos, sem DDD) já
-  // passava como "válido com DDD", que é exatamente o que a mensagem de erro
-  // promete verificar e a regex sozinha não garante. O `.refine` alinha
-  // Partner com a mesma contagem mínima que `professional-profile-form.tsx`
-  // já aplica (≥10 dígitos = DDD + número), que o comentário antigo desta
-  // regra já dizia seguir sem de fato aplicar.
+  // BUG CONFIRMADO que o `.refine` de mínimo corrige: a regex sozinha só
+  // limitava a CONTAGEM DE CARACTERES da string (8-20), não a quantidade de
+  // dígitos — um valor como "12345678" (8 caracteres, mas só 8 dígitos, sem
+  // DDD) já passava como "válido com DDD", que é exatamente o que a mensagem
+  // de erro promete verificar e a regex sozinha não garante. O piso de 10
+  // alinha Partner com a mesma contagem mínima que
+  // `professional-profile-form.tsx` já aplica.
+  //
+  // GATE-8-PARTNER-INPUT-MASKS-FIX-002: o teto de 11 foi adicionado junto —
+  // `formatBrazilianPhone` agora recusa a esconder dígitos excedentes de uma
+  // entrada inválida/longa (não trunca mais silenciosamente para "parecer"
+  // um número válido); este teto é o que faz essa entrada ser REJEITADA em
+  // vez de aceita. Um telefone BR com DDD nunca passa de 11 dígitos.
   phone: z
     .string()
     .trim()
     .regex(/^\+?[\d\s\-()]{8,20}$/, "Informe um telefone válido com DDD")
-    .refine((val) => val.replace(/\D/g, "").length >= 10, {
-      message: "Informe um telefone válido com DDD",
-    }),
+    .refine(
+      (val) => {
+        const digitos = val.replace(/\D/g, "").length
+        return digitos >= 10 && digitos <= 11
+      },
+      { message: "Informe um telefone válido com DDD" }
+    ),
 
   instagram: z.string().trim().max(100, "Usuário muito longo"),
 

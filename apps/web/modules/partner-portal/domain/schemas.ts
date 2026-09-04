@@ -22,18 +22,21 @@ export const UpdatePartnerPortalProfileSchema = z.object({
     .optional(),
   city: z.string().min(2, "Cidade é obrigatória").max(100),
   state: z.string().length(2, "Use a sigla do estado (ex: SP)"),
-  // GATE-8-PARTNER-INPUT-MASKS-001: mesmo `.refine` de contagem de dígitos
-  // adicionado à cópia gêmea deste schema em
-  // modules/partners/schemas/index.ts — a regex sozinha só limitava
-  // CARACTERES (8-20), não dígitos, deixando passar telefone sem DDD
-  // suficiente. Dívida de duplicação entre os dois arquivos já registrada
-  // ali; não resolvida nesta missão (fora de escopo consolidar os dois).
+  // GATE-8-PARTNER-INPUT-MASKS-001/FIX-002: mesmo `.refine` (piso 10, teto
+  // 11 dígitos) da cópia gêmea deste schema em
+  // modules/partners/schemas/index.ts — ver os comentários lá para o porquê
+  // de cada limite. Dívida de duplicação entre os dois arquivos já
+  // registrada; não resolvida nesta missão (fora de escopo consolidar os dois).
   phone: z
     .string()
     .regex(/^\+?[\d\s\-()]{8,20}$/, "Telefone inválido")
-    .refine((val) => val.replace(/\D/g, "").length >= 10, {
-      message: "Telefone inválido — inclua o DDD",
-    })
+    .refine(
+      (val) => {
+        const digitos = val.replace(/\D/g, "").length
+        return digitos >= 10 && digitos <= 11
+      },
+      { message: "Telefone inválido — inclua o DDD" }
+    )
     .optional()
     .or(z.literal("")),
   category: partnerCategoryEnum,

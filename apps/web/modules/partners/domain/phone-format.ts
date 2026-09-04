@@ -11,6 +11,29 @@
  * de Partner (onboarding, edição autenticada, admin), então as três exibem e
  * aceitam o mesmo formato.
  *
+ * GATE-8-PARTNER-INPUT-MASKS-FIX-002 — REGRESSÃO CORRIGIDA
+ *
+ * A primeira versão fazia `extractPhoneDigits(value).slice(0, 11)` cegamente.
+ * Um telefone colado/autopreenchido COM código de país BR
+ * (`+55 11 99999-9999` → dígitos `5511999999999`, 13 dígitos) virava
+ * `55119999999` depois do slice — os 2 primeiros dígitos do NÚMERO real
+ * (`11999999999`) eram perdidos, e o "55" do DDI passava a ser lido como
+ * DDD. O telefone salvo não era mais o telefone fornecido.
+ *
+ * A REGRA agora é: só remover um prefixo "55" quando a CONTAGEM DE DÍGITOS
+ * deixa isso inequívoco — um telefone doméstico BR com DDD nunca passa de 11
+ * dígitos, então 12 ou 13 dígitos começando em "55" só podem ser DDI + número
+ * doméstico (12 = DDI + 10 dígitos de fixo; 13 = DDI + 11 dígitos de celular).
+ * Um telefone doméstico de 10 ou 11 dígitos que POR ACASO tem DDD 55 (Santa
+ * Maria/RS é DDD 55 de verdade) nunca cai nessa contagem — fica com os
+ * mesmos 10/11 dígitos de sempre, DDD preservado, nada é removido dele.
+ *
+ * Entradas maiores que 11 dígitos que NÃO se encaixam nesse padrão de DDI
+ * (12/13 dígitos começando em "55") não são truncadas para parecer um número
+ * válido — os dígitos excedentes ficam visíveis, sem agrupamento, para que a
+ * validação (ver modules/partners/schemas/index.ts) rejeite em vez de aceitar
+ * silenciosamente um número diferente do que foi digitado/colado.
+ *
  * Função PURA — sem estado, sem posição de cursor. Recebe o valor bruto do
  * campo (o que quer que o usuário tenha digitado ou colado) e devolve a
  * versão formatada; o chamador reatribui isso ao valor do input a cada
@@ -21,8 +44,12 @@
  * anterior.
  */
 
-/** Máximo de dígitos aceito: DDD (2) + celular com 9º dígito (9) = 11. */
-const MAX_PHONE_DIGITS = 11
+/** Telefone doméstico BR com DDD: fixo tem 10 dígitos, celular 11. */
+const MIN_DOMESTIC_DIGITS = 10
+const MAX_DOMESTIC_DIGITS = 11
+
+/** DDI do Brasil — só tratado como código de país quando o comprimento total é inequívoco (ver stripBrazilCountryCode). */
+const BRAZIL_COUNTRY_CODE = "55"
 
 /** Extrai só os dígitos de um valor de telefone — usado pela máscara e pela validação de contagem. */
 export function extractPhoneDigits(value: string): string {
@@ -30,21 +57,29 @@ export function extractPhoneDigits(value: string): string {
 }
 
 /**
- * Formata dígitos de telefone BR progressivamente, conforme a quantidade
- * digitada até agora — nunca exige o número completo para começar a mostrar
- * a máscara:
- *   0-2 dígitos   → "(11"
- *   3-6 dígitos   → "(11) 999"
- *   7-10 dígitos  → "(11) 3333-4444"   (fixo: DDD + 4 + 4)
- *   11 dígitos    → "(11) 99999-9999" (celular: DDD + 5 + 4)
- *
- * Dígitos além do 11º são descartados — nenhum telefone BR com DDD passa
- * disso, e truncar aqui é uma regra explícita (não silenciosa: é o próprio
- * formato que para de aceitar mais dígitos).
+ * Remove o prefixo "55" SÓ quando o comprimento total prova que é DDI, não
+ * DDD: 12 dígitos = DDI(2) + fixo doméstico(10); 13 dígitos = DDI(2) +
+ * celular doméstico(11). Qualquer outro comprimento (inclusive 10/11 — um
+ * doméstico legítimo com DDD 55) passa intocado.
  */
-export function formatBrazilianPhone(value: string): string {
-  const digits = extractPhoneDigits(value).slice(0, MAX_PHONE_DIGITS)
+function stripBrazilCountryCode(digits: string): string {
+  const isUnambiguousCountryCode =
+    digits.startsWith(BRAZIL_COUNTRY_CODE) &&
+    (digits.length === BRAZIL_COUNTRY_CODE.length + MIN_DOMESTIC_DIGITS ||
+      digits.length === BRAZIL_COUNTRY_CODE.length + MAX_DOMESTIC_DIGITS)
 
+  return isUnambiguousCountryCode ? digits.slice(BRAZIL_COUNTRY_CODE.length) : digits
+}
+
+/**
+ * Formata até 11 dígitos DOMÉSTICOS (DDD já resolvido, sem DDI) progressiva,
+ * conforme a quantidade digitada até agora:
+ *   0-2 dígitos  → "(11"
+ *   3-6 dígitos  → "(11) 999"
+ *   7-10 dígitos → "(11) 3333-4444"  (fixo: DDD + 4 + 4)
+ *   11 dígitos   → "(11) 99999-9999" (celular: DDD + 5 + 4)
+ */
+function formatDomesticDigits(digits: string): string {
   if (digits.length === 0) return ""
   if (digits.length <= 2) return `(${digits}`
 
@@ -55,6 +90,29 @@ export function formatBrazilianPhone(value: string): string {
 
   // 10 dígitos totais (rest.length === 8) é o teto do fixo (4+4); a partir
   // do 9º dígito do `rest` (11 dígitos totais) já é celular (5+4).
-  const splitAt = digits.length >= MAX_PHONE_DIGITS ? 5 : 4
+  const splitAt = digits.length >= MAX_DOMESTIC_DIGITS ? 5 : 4
   return `(${ddd}) ${rest.slice(0, splitAt)}-${rest.slice(splitAt)}`
+}
+
+/**
+ * Formata um telefone BR — ver o comentário do módulo para a regra completa
+ * de normalização de DDI e o porquê de entradas excedentes não serem
+ * truncadas silenciosamente.
+ */
+export function formatBrazilianPhone(value: string): string {
+  const digits = stripBrazilCountryCode(extractPhoneDigits(value))
+
+  if (digits.length <= MAX_DOMESTIC_DIGITS) {
+    return formatDomesticDigits(digits)
+  }
+
+  // Mais dígitos do que um telefone doméstico comporta, e não é um DDI 55
+  // reconhecível (senão `stripBrazilCountryCode` já teria resolvido acima).
+  // Formata só os 11 primeiros e devolve o restante COLADO, sem máscara —
+  // nada é escondido, e a contagem de dígitos do resultado continua > 11,
+  // então a validação do schema rejeita em vez de aceitar um número
+  // silenciosamente diferente do que foi fornecido.
+  const dominio = digits.slice(0, MAX_DOMESTIC_DIGITS)
+  const excedente = digits.slice(MAX_DOMESTIC_DIGITS)
+  return `${formatDomesticDigits(dominio)}${excedente}`
 }

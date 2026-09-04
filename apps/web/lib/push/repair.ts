@@ -34,7 +34,9 @@ import {
   registrarServiceWorker,
   renegociarSubscription,
   type MotivoFalhaAssinatura,
+  type ResultadoAssinatura,
 } from "./client"
+import { deveRenegociarAoReparar } from "@/modules/notifications/domain/push-repair-strategy"
 
 export type MotivoFalhaReparo =
   /** Permissão não é `granted`. Reparo silencioso é proibido — ver o cabeçalho. */
@@ -103,7 +105,35 @@ async function executarReparo(vapidPublicKey: string): Promise<ResultadoReparo> 
   const reg = await registrarServiceWorker()
   if (!reg) return { ok: false, motivo: "sem-service-worker" }
 
-  let assinatura = await assinar(reg, vapidPublicKey)
+  // ── GATE-2-PUSH-FIX-002 — gap 404/410 (ver push-repair-strategy.ts) ────────
+  // `assinar()` reaproveita a subscription que o browser já segura sempre que
+  // a chave VAPID bate — mas isso inclui reaproveitar um endpoint que o
+  // SERVIDOR já comprovou morto (404/410 real do push service). Antes de
+  // decidir, perguntamos: este MESMO endpoint já foi revogado como "gone"
+  // alguma vez? Se sim, descartamos e negociamos um endpoint novo
+  // (renegociarSubscription faz unsubscribe() primeiro); senão, o caminho de
+  // hoje (assinar, que reaproveita) continua sendo o correto.
+  //
+  // `endpointAtual` é lido ANTES de chamar assinar()/renegociarSubscription()
+  // de propósito: são elas que podem substituir a subscription do browser, e
+  // a pergunta é sobre o que existia ANTES desta rodada de reparo.
+  const subscricaoAtual = await reg.pushManager.getSubscription()
+  const endpointAtual = subscricaoAtual?.endpoint ?? null
+
+  let revogadoComoGone = false
+  if (endpointAtual) {
+    const { wasEndpointRevokedAsGoneAction } = await import(
+      "@/modules/notifications/application/push-actions"
+    )
+    // Falha de rede/servidor não pode virar "sim, é gone" — o lado seguro é o
+    // comportamento atual (assinar reaproveita), não o novo caminho.
+    revogadoComoGone = await wasEndpointRevokedAsGoneAction(endpointAtual).catch(() => false)
+  }
+
+  let assinatura: ResultadoAssinatura = deveRenegociarAoReparar({ endpointAtual, revogadoComoGone })
+    ? await renegociarSubscription(reg, vapidPublicKey)
+    : await assinar(reg, vapidPublicKey)
+
   if (!assinatura.ok) {
     return { ok: false, motivo: "falha-assinatura", detalhe: assinatura.motivo }
   }

@@ -138,6 +138,38 @@ export async function findActiveDeviceIdentity(params: {
   })
 }
 
+/**
+ * ESTE endpoint (deste MESMO usuário) já foi comprovadamente encerrado pelo
+ * push service (404/410 real, `revokeGoneSubscription`) em algum momento
+ * anterior? GATE-2-PUSH-FIX-002 — ver push-repair-strategy.ts no domínio para
+ * o porquê desta pergunta existir.
+ *
+ * A linha revogada tem `endpoint = NULL` (é assim que o unique libera para
+ * reassinatura — ver `revokeGoneSubscription`), então a busca por identidade
+ * não pode ser por `endpoint`: usa `endpointHash`, que sobrevive à revogação
+ * exatamente para permitir esta correlação.
+ *
+ * Escopada por `userId`: o chamador já provou posse do endpoint (é o que o
+ * PRÓPRIO browser dele devolveu) e da sessão — não abre oráculo sobre
+ * histórico de device de outro usuário, mesmo que o mesmo endpointHash apareça
+ * revogado na conta de outra pessoa (hardware trocado de dono, por exemplo).
+ */
+export async function wasEndpointRevokedAsGone(params: {
+  userId: string
+  endpoint: string
+}): Promise<boolean> {
+  const row = await prisma.pushSubscription.findFirst({
+    where: {
+      userId: params.userId,
+      endpointHash: hashEndpoint(params.endpoint),
+      revokedAt: { not: null },
+      revokedReason: "gone",
+    },
+    select: { id: true },
+  })
+  return row !== null
+}
+
 export async function findActiveByUser(userId: string): Promise<SafeSubscription[]> {
   return prisma.pushSubscription.findMany({
     where: { userId, revokedAt: null },

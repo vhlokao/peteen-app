@@ -41,6 +41,7 @@ import {
   findActiveDeviceIdentity,
   refreshSubscription,
   revokeSubscription,
+  wasEndpointRevokedAsGone,
 } from "../infrastructure/push-repository"
 
 /** Validação estrutural mínima. Não confia em nada vindo do client. */
@@ -295,5 +296,43 @@ export async function getDevicePushStateAction(
     // UI leria como NEEDS_REPAIR e mostraria alarme falso. O client trata a
     // exceção como `servidor não consultado` e preserva o último estado bom.
     throw err
+  }
+}
+
+/**
+ * ESTE endpoint (do device corrente) já foi comprovadamente encerrado pelo
+ * push service (404/410 real) no passado, para o usuário da sessão?
+ *
+ * GATE-2-PUSH-FIX-002 — consumida por `lib/push/repair.ts` para decidir entre
+ * reaproveitar a subscription que o browser já segura (`assinar`) ou
+ * descartá-la e negociar uma nova (`renegociarSubscription`). Ver
+ * `modules/notifications/domain/push-repair-strategy.ts` para o porquê da
+ * distinção.
+ *
+ * Responde só um booleano, no mesmo espírito de `getDevicePushStateAction`:
+ * "já foi gone alguma vez" é suficiente para a decisão de reparo, e não expõe
+ * `revokedAt`/histórico completo por uma pergunta que não precisa disso.
+ */
+export async function wasEndpointRevokedAsGoneAction(endpoint: string): Promise<boolean> {
+  let userId: string
+  try {
+    const user = await requireAuth()
+    userId = user.id
+  } catch {
+    return false
+  }
+
+  if (typeof endpoint !== "string" || endpoint.length < 20 || endpoint.length > 1000) {
+    return false
+  }
+
+  try {
+    return await wasEndpointRevokedAsGone({ userId, endpoint })
+  } catch (err) {
+    console.error("[push] revoked_as_gone_check_failed", { erro: String(err).slice(0, 120) })
+    // Falha ao consultar não pode virar "sim, foi revogado" — isso forçaria
+    // uma renegociação desnecessária. O caminho seguro é o comportamento
+    // atual (assinar reaproveita), não o novo.
+    return false
   }
 }

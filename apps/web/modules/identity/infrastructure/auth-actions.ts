@@ -119,6 +119,17 @@ export async function signInWithGoogle(next?: string) {
       // `buildMagicLinkRedirectUrl` já valida com `isSafeRedirectPath`, então
       // um `next` externo/hostil nunca vira redirect.
       redirectTo: buildMagicLinkRedirectUrl(next),
+      // GATE-7-GOOGLE-ACCOUNT-CHOOSER-001: `queryParams` é repassado por
+      // `signInWithOAuth` direto para a URL de autorização do provider (ver
+      // SignInWithOAuthCredentials no SDK) — `prompt=select_account` é o
+      // parâmetro documentado do Google para exigir o seletor de conta a
+      // cada login, em vez de reautenticar silenciosamente com a última
+      // conta Google já logada no navegador. Sem isso, sair do Peteen e
+      // entrar de novo com Google podia devolver a pessoa errada num
+      // aparelho compartilhado, sem nenhuma decisão explícita.
+      queryParams: {
+        prompt: "select_account",
+      },
     },
   });
 

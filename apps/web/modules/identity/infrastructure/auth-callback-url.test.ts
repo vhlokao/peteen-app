@@ -119,3 +119,34 @@ describe("signInWithGoogle mantém seu próprio contrato de throw", () => {
     assert.match(corpo, /throw new Error\(error\.message\)/)
   })
 })
+
+describe("GATE-7-GOOGLE-ACCOUNT-CHOOSER-001 — signInWithGoogle pede o seletor de conta", () => {
+  const corpo = corpoDe("signInWithGoogle")
+
+  it("provider continua google — nenhum provider novo introduzido", () => {
+    assert.match(corpo, /provider:\s*"google"/)
+  })
+
+  it("pede prompt=select_account via queryParams (contrato do SDK, não a implementação interna)", () => {
+    // `queryParams` é o campo documentado de `SignInWithOAuthCredentials`
+    // (@supabase/auth-js) repassado à URL de autorização do provider — o
+    // teste trava no NOME DO CAMPO do SDK e no valor exigido pelo Google,
+    // não em como o Supabase internamente monta a URL.
+    assert.match(corpo, /queryParams:\s*\{\s*\n?\s*prompt:\s*"select_account"/)
+  })
+
+  it("redirectTo continua exatamente o mesmo — next não foi tocado", () => {
+    // A mudança é ADITIVA: só `queryParams` foi introduzido. Se este teste
+    // falhar, alguém alterou como `next`/redirectTo é montado neste gate,
+    // que era estritamente fora de escopo.
+    assert.match(corpo, /redirectTo:\s*buildMagicLinkRedirectUrl\(next\)/)
+  })
+
+  it("select_account está dentro da mesma chamada a signInWithOAuth, não numa chamada nova", () => {
+    // Garante que queryParams e redirectTo pertencem às MESMAS `options` —
+    // não duas invocações do método (o que quebraria o fluxo: só o
+    // resultado da invocação usada em `data.url` importa).
+    const invocacoes = corpo.match(/\.signInWithOAuth\(/g) ?? []
+    assert.equal(invocacoes.length, 1, "esperada exatamente uma invocação de .signInWithOAuth(")
+  })
+})

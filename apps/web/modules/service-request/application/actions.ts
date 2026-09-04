@@ -24,6 +24,7 @@
  */
 
 import { revalidatePath } from "next/cache"
+import { after } from "next/server"
 import { updateProfessionalTrust } from "@/modules/trust-engine/application/update-professional-trust"
 import { requireAuth } from "@/modules/identity/application/get-session"
 import { findTutorProfileByUserId } from "@/modules/tutor/infrastructure/repository"
@@ -345,12 +346,17 @@ export async function createServiceRequestAction(
     })
 
     // ── Push best-effort — a solicitação JÁ está persistida acima ────────────
-    // Roda depois da escrita e nunca lança (a própria função engole tudo), no
-    // mesmo espírito de `recordRequestAudit`. Falha de push não pode impedir a
-    // criação, causar rollback, nem tocar Trust/Relationship/Agenda.
-    // O destinatário (profissional) é resolvido server-side lá dentro, a partir
-    // da própria request — nunca vem do client.
-    await notifyRequestCreated(request.id)
+    // GATE-3-REQUEST-LATENCY-001: agendado via `after()`, não mais `await`ado
+    // no caminho crítico. `dispatchPush` pode levar até ~6s no pior caso (rede
+    // instável: 3 tentativas de até 3s cada, ver PUSH_RETRY_DEADLINE_MS) — e
+    // `Promise.allSettled` sobre N devices não multiplica isso, mas ainda
+    // segurava a resposta ao Tutor pelo tempo do dispositivo mais lento. Como a
+    // própria função nunca lança (engole tudo, mesmo espírito de
+    // `recordRequestAudit`) e o destinatário é resolvido inteiramente
+    // server-side lá dentro, adiar para depois da resposta não muda o que é
+    // enviado nem quando o push CHEGA de verdade (best-effort, sempre foi) —
+    // só para de bloquear a Server Action que já persistiu a solicitação.
+    after(() => notifyRequestCreated(request.id))
 
     // Funil de convite — REQUEST_CREATED. Só credita a visita cujo
     // profissional é o MESMO desta request: um tutor que chegou pela landing
@@ -487,7 +493,12 @@ export async function acceptServiceRequestAction(
     // lança ConcurrentStatusChangeError antes desta linha. Conflito de agenda e
     // duração ausente também abortam antes. Nunca lança nem bloqueia o aceite.
     // O destinatário (tutor) é resolvido server-side a partir da request.
-    await notifyRequestAccepted(requestId)
+    //
+    // GATE-3-REQUEST-LATENCY-001: `after()`, não `await` — ver o comentário
+    // gêmeo em notifyRequestCreated acima para o porquê (mesmo mecanismo:
+    // rede/retry de push nunca deveria segurar a resposta ao Profissional que
+    // acabou de aceitar).
+    after(() => notifyRequestAccepted(requestId))
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -651,7 +662,10 @@ export async function startServiceRequestAction(
     // `transitionStatus` só escreve se o status ainda for ACCEPTED, então um
     // início concorrente que perca a corrida lança antes desta linha e não
     // notifica. Nunca lança nem bloqueia o início do atendimento.
-    await notifyServiceStarted(requestId)
+    //
+    // GATE-3-REQUEST-LATENCY-001: `after()`, não `await` — mesmo motivo dos
+    // demais eventos de Push neste arquivo.
+    after(() => notifyServiceStarted(requestId))
 
     revalidatePath("/tutor/requests")
     revalidatePath("/tutor")
@@ -752,7 +766,10 @@ export async function cancelServiceRequestAction(
     // Destinatário é sempre a OUTRA parte: quem cancelou não precisa ser
     // avisado do próprio ato. O ator vem do status de destino calculado no
     // servidor, nunca do client.
-    await notifyRequestCancelled(requestId, isTutor ? "tutor" : "professional")
+    //
+    // GATE-3-REQUEST-LATENCY-001: `after()`, não `await` — mesmo motivo dos
+    // demais eventos de Push neste arquivo.
+    after(() => notifyRequestCancelled(requestId, isTutor ? "tutor" : "professional"))
 
     // Recalcula Trust Score se cancelamento do profissional gerou TrustEvent (falha silenciosa)
     if (trustEvent) {
@@ -918,7 +935,10 @@ export async function completeServiceRequestAction(
     // ── Push best-effort — DEPOIS do commit de completeServiceRequestAtomic ──
     // A conclusão e o relacionamento já estão gravados; uma falha aqui não
     // reverte nada e não impede Trust nem a detecção de recorrência abaixo.
-    await notifyServiceCompleted(requestId)
+    //
+    // GATE-3-REQUEST-LATENCY-001: `after()`, não `await` — mesmo motivo dos
+    // demais eventos de Push neste arquivo.
+    after(() => notifyServiceCompleted(requestId))
 
     // Funil de convite — SERVICE_COMPLETED. Atribuído ao TUTOR da request
     // (`tutorUserId`), não a `session.id`: quem conclui é o profissional, e a

@@ -17,6 +17,7 @@
 
 import { revalidatePath } from "next/cache"
 import { unstable_rethrow } from "next/navigation"
+import { after } from "next/server"
 
 import { requireAuth } from "@/modules/identity/application/get-session"
 import { requireProfessionalContext } from "@/modules/professional-crm/application/require-professional"
@@ -535,7 +536,13 @@ export async function publishCareUpdateAction(
     //
     // Uma publicação = uma intenção de notificação, independentemente de
     // quantas fotos ela carregue. Nunca um push por mídia.
-    await notifyCareUpdatePublished(parsed.data.requestId)
+    //
+    // GATE-3-REQUEST-LATENCY-001: `after()`, não `await` — mesmo mecanismo dos
+    // eventos de Push do fluxo de Request (ver service-request/application/
+    // actions.ts): dispatchPush pode levar segundos em rede instável, e nada
+    // aqui precisa que o push termine antes de responder ao Profissional que
+    // acabou de publicar.
+    after(() => notifyCareUpdatePublished(parsed.data.requestId))
 
     revalidateCarePaths(parsed.data.requestId)
 

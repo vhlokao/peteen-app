@@ -116,3 +116,49 @@ export function formatBrazilianPhone(value: string): string {
   const excedente = digits.slice(MAX_DOMESTIC_DIGITS)
   return `${formatDomesticDigits(dominio)}${excedente}`
 }
+
+/**
+ * GATE-8-PARTNER-INPUT-MASKS-FIX-003 — validação compartilhada
+ *
+ * Até este fix, a contagem de dígitos (10-11, mesmo piso/teto do
+ * `.refine` dos schemas Zod de onboarding/portal) era verificada SÓ nos
+ * dois formulários que passam por Zod. O Admin (`PartnerForm.tsx` →
+ * `createPartnerAction`/`updatePartnerAction` → `repository.ts`) usa a
+ * mesma máscara para EXIBIR o campo, mas não tinha validação nenhuma no
+ * caminho de escrita — um valor que a máscara deixa visível-mas-inválido
+ * (ver `formatBrazilianPhone`, ramo de excedente) podia ser salvo do
+ * mesmo jeito, porque nada no Admin olhava a contagem de dígitos.
+ *
+ * `hasValidPartnerPhoneDigitCount` é a MESMA regra que já existia
+ * duplicada dentro do `.refine` de `modules/partners/schemas/index.ts` e
+ * `modules/partner-portal/domain/schemas.ts` — extraída para cá para não
+ * triplicar a regra ao adicionar o terceiro consumidor (Admin Server
+ * Actions, ver `modules/partners/application/actions.ts`). Os dois
+ * schemas Zod passam a importar esta função em vez de repetir o corpo do
+ * `.refine`; o padrão de caractere (`PHONE_CHAR_PATTERN`) continua vivendo
+ * duplicado nos dois arquivos (dívida pré-existente e já registrada,
+ * fora do escopo mínimo deste fix) — só é repetido aqui porque o Admin
+ * não passa por nenhum dos dois schemas Zod e precisa da mesma checagem
+ * de forma independente.
+ */
+const PHONE_CHAR_PATTERN = /^\+?[\d\s\-()]{8,20}$/
+
+/** A mesma contagem de dígitos que os schemas Zod de Partner já exigem (piso 10, teto 11). */
+export function hasValidPartnerPhoneDigitCount(phone: string): boolean {
+  const digits = extractPhoneDigits(phone).length
+  return digits >= MIN_DOMESTIC_DIGITS && digits <= MAX_DOMESTIC_DIGITS
+}
+
+/**
+ * Validação completa de telefone de Partner no boundary do Admin — vazio ou
+ * ausente é válido (campo opcional lá); um valor presente precisa satisfazer
+ * o mesmo padrão de caractere E a mesma contagem de dígitos que os schemas
+ * Zod de onboarding/portal já exigem, para que as três superfícies rejeitem
+ * exatamente as mesmas entradas.
+ */
+export function isValidOptionalPartnerPhone(phone: string | null | undefined): boolean {
+  if (phone === null || phone === undefined) return true
+  const trimmed = phone.trim()
+  if (trimmed === "") return true
+  return PHONE_CHAR_PATTERN.test(trimmed) && hasValidPartnerPhoneDigitCount(trimmed)
+}

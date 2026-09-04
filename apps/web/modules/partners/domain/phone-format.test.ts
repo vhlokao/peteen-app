@@ -22,7 +22,12 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
-import { formatBrazilianPhone, extractPhoneDigits } from "./phone-format.ts"
+import {
+  formatBrazilianPhone,
+  extractPhoneDigits,
+  hasValidPartnerPhoneDigitCount,
+  isValidOptionalPartnerPhone,
+} from "./phone-format.ts"
 
 describe("extractPhoneDigits", () => {
   it("remove tudo que não é dígito", () => {
@@ -161,5 +166,71 @@ describe("formatBrazilianPhone — GATE-8-FIX-002: entrada excedente não vira o
     // valor de 12/13 dígitos com prefixo 55 já foi resolvido por
     // stripBrazilCountryCode ANTES de chegar na checagem de excedente.
     assert.equal(formatBrazilianPhone("551199999999"), "(11) 9999-9999")
+  })
+})
+
+/**
+ * GATE-8-PARTNER-INPUT-MASKS-FIX-003 — validação compartilhada usada pelo
+ * boundary do Admin (createPartnerAction/updatePartnerAction), além dos
+ * schemas Zod de onboarding/portal.
+ */
+describe("hasValidPartnerPhoneDigitCount", () => {
+  it("10 dígitos (fixo com DDD) é válido", () => {
+    assert.equal(hasValidPartnerPhoneDigitCount("(11) 3333-4444"), true)
+  })
+
+  it("11 dígitos (celular com DDD) é válido", () => {
+    assert.equal(hasValidPartnerPhoneDigitCount("(11) 99999-9999"), true)
+  })
+
+  it("DDD 55 válido continua válido — o teto não penaliza DDD 55", () => {
+    assert.equal(hasValidPartnerPhoneDigitCount("(55) 99999-9999"), true)
+  })
+
+  it("9 dígitos totais é inválido — falta um dígito para DDD + número", () => {
+    assert.equal(hasValidPartnerPhoneDigitCount("999999999"), false)
+  })
+
+  it(">11 dígitos é inválido", () => {
+    assert.equal(hasValidPartnerPhoneDigitCount("119999999999"), false)
+  })
+})
+
+describe("isValidOptionalPartnerPhone — validação completa do boundary do Admin", () => {
+  it("vazio/undefined/null é válido — campo opcional no Admin", () => {
+    assert.equal(isValidOptionalPartnerPhone(undefined), true)
+    assert.equal(isValidOptionalPartnerPhone(null), true)
+    assert.equal(isValidOptionalPartnerPhone(""), true)
+    assert.equal(isValidOptionalPartnerPhone("   "), true)
+  })
+
+  it("(11) 99999-9999 é válido", () => {
+    assert.equal(isValidOptionalPartnerPhone("(11) 99999-9999"), true)
+  })
+
+  it("(11) 3333-4444 é válido", () => {
+    assert.equal(isValidOptionalPartnerPhone("(11) 3333-4444"), true)
+  })
+
+  it("DDD 55 válido continua válido", () => {
+    assert.equal(isValidOptionalPartnerPhone("(55) 99999-9999"), true)
+  })
+
+  it("9 dígitos totais é inválido", () => {
+    assert.equal(isValidOptionalPartnerPhone("99999999-9"), false)
+  })
+
+  it(">11 dígitos é inválido — mesmo valor que a máscara deixa visível sem esconder", () => {
+    // Exatamente o valor que `formatBrazilianPhone` produz para uma entrada
+    // de 12 dígitos sem DDI 55 reconhecível (ver describe de excedente
+    // acima) — é isso que precisa ser REJEITADO no boundary do Admin.
+    const valorDaMascara = formatBrazilianPhone("119999999999")
+    assert.equal(isValidOptionalPartnerPhone(valorDaMascara), false)
+  })
+
+  it("+55 válido vindo da UI (já normalizado pela máscara) continua aceito", () => {
+    const valorDaMascara = formatBrazilianPhone("+55 11 99999-9999")
+    assert.equal(valorDaMascara, "(11) 99999-9999")
+    assert.equal(isValidOptionalPartnerPhone(valorDaMascara), true)
   })
 })

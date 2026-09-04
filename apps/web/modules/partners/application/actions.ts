@@ -20,10 +20,33 @@ import {
   getPartnerDashboardMetrics,
 } from "../infrastructure/repository"
 import type { CreatePartnerInput, UpdatePartnerInput, PartnerAdminRow, PartnerPublicProfile, PartnerDashboardMetrics } from "../domain/types"
+import { isValidOptionalPartnerPhone } from "../domain/phone-format"
 
 type ActionResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: string }
+
+const INVALID_PHONE_ERROR =
+  "Telefone inválido — use um número BR com DDD (10 ou 11 dígitos)."
+
+/**
+ * GATE-8-PARTNER-INPUT-MASKS-FIX-003: `PartnerForm.tsx` (Admin) usa a mesma
+ * máscara das outras superfícies de Partner para EXIBIR o campo, mas — ao
+ * contrário do onboarding público e da edição autenticada — não passa por
+ * nenhum schema Zod antes de chegar aqui. Sem esta checagem, um valor que a
+ * máscara deixa visível-mas-inválido (telefone com mais dígitos do que um
+ * número BR comporta, ver `formatBrazilianPhone`) seguia direto para
+ * `repository.ts`, que só faz `.trim()` — nenhuma validação, chamando a
+ * action fora do formulário (ou um formulário nunca reforça client-side)
+ * também salvaria o valor inválido do mesmo jeito.
+ *
+ * `isValidOptionalPartnerPhone` é a MESMA regra (padrão de caractere +
+ * contagem de dígitos) que os schemas Zod de onboarding/portal já aplicam —
+ * ver modules/partners/domain/phone-format.ts.
+ */
+function validatePartnerPhoneOrError(phone: string | undefined): string | null {
+  return isValidOptionalPartnerPhone(phone) ? null : INVALID_PHONE_ERROR
+}
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
@@ -45,6 +68,10 @@ export async function createPartnerAction(
 ): Promise<ActionResult<{ id: string }>> {
   try {
     const user = await requireAdmin()
+
+    const phoneError = validatePartnerPhoneOrError(input.phone)
+    if (phoneError) return { ok: false, error: phoneError }
+
     const partner = await createPartner(input)
 
     await createAdminAudit({
@@ -73,6 +100,10 @@ export async function updatePartnerAction(
 ): Promise<ActionResult<void>> {
   try {
     const user = await requireAdmin()
+
+    const phoneError = validatePartnerPhoneOrError(input.phone)
+    if (phoneError) return { ok: false, error: phoneError }
+
     const partner = await updatePartner(id, input)
 
     await createAdminAudit({

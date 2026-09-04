@@ -41,6 +41,7 @@ import { z } from "zod"
 
 import { PARTNER_CATEGORIES } from "../domain/constants"
 import type { PartnerCategory } from "../domain/types"
+import { hasValidPartnerPhoneDigitCount } from "../domain/phone-format"
 
 /** URL opcional — vazio é ausência, não erro. */
 const urlOpcional = (rotulo: string) =>
@@ -86,17 +87,18 @@ export const PartnerOnboardingBusinessSchema = z.object({
   // entrada inválida/longa (não trunca mais silenciosamente para "parecer"
   // um número válido); este teto é o que faz essa entrada ser REJEITADA em
   // vez de aceita. Um telefone BR com DDD nunca passa de 11 dígitos.
+  //
+  // GATE-8-PARTNER-INPUT-MASKS-FIX-003: a contagem de dígitos (piso 10, teto
+  // 11) saiu do corpo do `.refine` e virou `hasValidPartnerPhoneDigitCount`
+  // (modules/partners/domain/phone-format.ts) — a MESMA regra agora também
+  // protege o Admin (createPartnerAction/updatePartnerAction), que não passa
+  // por este schema. Uma função só, três consumidores, em vez da regra
+  // reimplementada em cada um.
   phone: z
     .string()
     .trim()
     .regex(/^\+?[\d\s\-()]{8,20}$/, "Informe um telefone válido com DDD")
-    .refine(
-      (val) => {
-        const digitos = val.replace(/\D/g, "").length
-        return digitos >= 10 && digitos <= 11
-      },
-      { message: "Informe um telefone válido com DDD" }
-    ),
+    .refine(hasValidPartnerPhoneDigitCount, { message: "Informe um telefone válido com DDD" }),
 
   instagram: z.string().trim().max(100, "Usuário muito longo"),
 

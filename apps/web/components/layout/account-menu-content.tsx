@@ -24,6 +24,11 @@ import {
 } from "@/lib/navigation/app-navigation"
 import { executarLogout } from "@/lib/push/sign-out"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  accountHref,
+  buildAccountHrefComRetorno,
+  type AccountPersona,
+} from "@/modules/identity/domain/account-navigation"
 import { cn } from "@/lib/utils"
 import type { ActorNavSection } from "@/lib/navigation/navigation-types"
 import type { AppShellVariant, ShellSessionUser } from "@/types"
@@ -46,13 +51,19 @@ const itemClass =
 const sectionTitleClass = "px-2.5 pb-1 pt-2 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground/70"
 
 /**
- * Rota real de Conta/Configurações — só existe para tutor e profissional
- * nesta V0 (UX R1). Parceiro/admin continuam sem essa tela: o item some do
- * menu em vez de apontar para uma rota que não existe.
+ * Personas que têm tela real de Conta/Configurações — só tutor e profissional
+ * nesta V0 (UX R1). Parceiro/admin continuam sem: o item some do menu em vez
+ * de apontar para uma rota que não existe.
+ *
+ * GATE-11: a rota em si passou a ser construída por
+ * `buildAccountHrefComRetorno`, que carimba de ONDE o menu foi aberto. Conta é
+ * uma tela empurrada alcançável de qualquer lugar, e sem esse carimbo o botão
+ * Voltar dela não teria como saber para onde levar — cairia sempre na home,
+ * mesmo quem veio de uma solicitação aberta.
  */
-const CONTA_HREF_BY_VARIANT: Partial<Record<AppShellVariant, string>> = {
-  tutor: "/tutor/conta",
-  professional: "/professional/conta",
+const ACCOUNT_PERSONA_BY_VARIANT: Partial<Record<AppShellVariant, AccountPersona>> = {
+  tutor: "tutor",
+  professional: "professional",
 }
 
 function MenuSection({ section, pathname }: { section: ActorNavSection; pathname: string }) {
@@ -101,7 +112,10 @@ export function AccountMenuContent({ variant, user }: AccountMenuContentProps) {
     items: filterNavigationItems(section.items),
   }))
   const areaSwitchSection = getAreaSwitchSection(user.roles, variant)
-  const contaHref = CONTA_HREF_BY_VARIANT[variant]
+  const accountPersona = ACCOUNT_PERSONA_BY_VARIANT[variant]
+  const contaHref = accountPersona
+    ? buildAccountHrefComRetorno(accountPersona, pathname)
+    : undefined
 
   async function handleSignOut() {
     // Sequência canônica única (revogar push → unsubscribe → signOut local).
@@ -130,7 +144,7 @@ export function AccountMenuContent({ variant, user }: AccountMenuContentProps) {
         </div>
       </div>
 
-      <div className="max-h-[70vh] overflow-y-auto p-1.5">
+      <div className="max-h-[70dvh] overflow-y-auto p-1.5">
         {/* Minha área — navegação operacional do ator */}
         {actorSections.map((section) => (
           <MenuSection key={section.title} section={section} pathname={pathname} />
@@ -148,11 +162,21 @@ export function AccountMenuContent({ variant, user }: AccountMenuContentProps) {
         <div role="separator" className="mx-1.5 my-1 border-t border-border" />
         <div>
           <p className={sectionTitleClass}>Conta</p>
-          {contaHref ? (
+          {contaHref && accountPersona ? (
             <Menu.LinkItem
               closeOnClick
               render={<Link href={contaHref} />}
-              className={cn(itemClass, isNavigationItemActive(pathname, { label: "Conta", href: contaHref, icon: Settings }) && "bg-primary/10 text-primary")}
+              /* O estado ativo compara com a rota NUA (`accountHref`), não com
+                 `contaHref` — este agora carrega `?returnTo=…`, e a query faria
+                 a comparação de caminho falhar sempre. */
+              className={cn(
+                itemClass,
+                isNavigationItemActive(pathname, {
+                  label: "Conta",
+                  href: accountHref(accountPersona),
+                  icon: Settings,
+                }) && "bg-primary/10 text-primary"
+              )}
             >
               <Settings className="size-4 shrink-0 text-muted-foreground" />
               <span>Configurações</span>

@@ -42,6 +42,7 @@ import {
  */
 export function AccountSettingsPage({
   persona,
+  backHref,
   displayName,
   email,
   avatarUrl,
@@ -56,6 +57,13 @@ export function AccountSettingsPage({
    * prometia ao profissional eventos que são atos dele próprio.
    */
   persona: PushInvitePersona
+  /**
+   * GATE-11 — destino do Voltar. Resolvido no servidor por
+   * `resolveAccountBackHref`: Conta é um destino EMPURRADO, aberto a partir de
+   * qualquer rota, então a volta é a tela de origem quando ela pertence à área
+   * da persona — e a home da persona em qualquer outro caso.
+   */
+  backHref: string
   displayName: string
   email: string
   avatarUrl: string | null
@@ -73,7 +81,11 @@ export function AccountSettingsPage({
 
   return (
     <div className="page-container max-w-2xl space-y-6 pb-4">
-      <PageHeader title="Minha conta" description="Suas informações e preferências no Peteen." />
+      <PageHeader
+        title="Minha conta"
+        description="Suas informações e preferências no Peteen."
+        backHref={backHref}
+      />
 
       {/* Identidade — quem está logado, respondido antes de qualquer ação.
           O e-mail só aparecia no menu do avatar até aqui; numa tela chamada

@@ -363,26 +363,41 @@ function fonte(relativo: string): string {
     .replace(/^\s*\/\/.*$/gm, "")
 }
 
-describe("landing /p/[id] — autenticado sem persona não cai em /login", () => {
+/**
+ * A decisão de próximo passo saiu da página em GATE-12.
+ *
+ * Estes quatro casos continuam sendo os que importam, mas asserção sobre o
+ * TEXTO dos ternários da página deixou de ser a forma certa de protegê-los:
+ * agora eles são comportamento de `resolveInviteCta`, exercitado de verdade em
+ * invite-flow-e2e.test.ts (matriz completa + a jornada salto a salto). O que
+ * sobra aqui é o que só o arquivo da página pode garantir — que ela DELEGA em
+ * vez de decidir por conta própria, que é o que faria a matriz divergir de
+ * novo.
+ */
+describe("landing /p/[id] — a decisão vive no domínio, não na página", () => {
   const landing = fonte("app/p/[professionalId]/page.tsx")
 
-  it("tem um ramo para quem já autenticou mas ainda não é tutor", () => {
-    // Sem este ramo a pessoa ia para /login, o middleware via um usuário
-    // logado, redirecionava para /dashboard APAGANDO o next, e o convite
-    // morria no Discovery genérico.
-    assert.match(landing, /primaryRole === null/)
+  it("a página delega o próximo passo para a função pura", () => {
+    assert.match(landing, /resolveInviteCta\(/)
   })
 
-  it("esse ramo manda para o onboarding do tutor, não para /login", () => {
-    assert.match(landing, /\/onboarding\/tutor\?next=/)
+  it("a página não reimplementa a decisão em ternários próprios", () => {
+    // Era daqui que vinha o buraco: `negado`/outra persona caíam por omissão
+    // no ramo de /login, e o middleware apagava o next no caminho.
+    assert.doesNotMatch(landing, /primaryRole === null\s*$/m)
+    assert.doesNotMatch(landing, /const ctaHref =/)
+    assert.doesNotMatch(landing, /const ctaLabel =/)
   })
 
-  it("o next levado é a própria landing — ela reavalia o estado a cada volta", () => {
-    assert.match(landing, /encodeURIComponent\(landingPath\)/)
+  it("a página passa os três sinais que a regra precisa", () => {
+    assert.match(landing, /authenticated: ctx\.authenticated/)
+    assert.match(landing, /isTutor:/)
+    assert.match(landing, /primaryRole:/)
   })
 
-  it("tutor com persona continua indo direto ao fluxo de solicitação", () => {
-    assert.match(landing, /`\/discover\/\$\{professionalId\}`/)
+  it("sem href não há botão — o CTA que mentia foi removido", () => {
+    assert.match(landing, /cta\.href && cta\.label \?/)
+    assert.match(landing, /OUTRA_PERSONA_TITULO/)
   })
 })
 

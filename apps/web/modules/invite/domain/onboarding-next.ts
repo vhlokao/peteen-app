@@ -56,3 +56,39 @@ export function withNext(path: string, next: string | null): string {
 export function resolveOnboardingDestination(next: string | null): string {
   return next && isSafeRedirectPath(next) ? next : DEFAULT_ONBOARDING_DESTINATION
 }
+
+/**
+ * O onboarding vai terminar de volta num convite?
+ *
+ * Existe só para a COPY da tela de conclusão. O roteamento já estava certo —
+ * `resolveOnboardingDestination` devolvia `/p/<id>` — mas o texto e o botão
+ * continuavam os do fluxo genérico: "Vamos encontrar quem cuida dele com
+ * confiança?" e "Encontrar profissional".
+ *
+ * Quem entrou pelo link da Maria acabava de cadastrar conta e pet, e a última
+ * tela do cadastro oferecia procurar um profissional — como se a Maria não
+ * existisse. O botão levava de volta para ela, mas a promessa dizia o
+ * contrário, que é exatamente a sensação de marketplace genérico que este
+ * canal existe para evitar.
+ */
+export function terminaEmConvite(next: string | null): boolean {
+  const destino = resolveOnboardingDestination(next)
+  return destino.startsWith("/p/")
+}
+
+/** Copy da conclusão do onboarding, dependente de haver convite ou não. */
+export function onboardingConclusionCopy(next: string | null): {
+  descricao: string
+  cta: string
+} {
+  if (terminaEmConvite(next)) {
+    return {
+      descricao: "já está no seu perfil. Agora é só voltar e solicitar o atendimento.",
+      cta: "Voltar ao profissional",
+    }
+  }
+  return {
+    descricao: "já está no seu perfil. Vamos encontrar quem cuida dele com confiança?",
+    cta: "Encontrar profissional",
+  }
+}

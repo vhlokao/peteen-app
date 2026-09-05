@@ -45,7 +45,19 @@ const PORTAL_RETURN_RULES: Record<
       "/tutor/requests",
       "/tutor/pets",
     ],
-    prefixes: ["/tutor/requests/", "/tutor/professionals/"],
+    /**
+     * `/p/` — landing pública de convite (GATE-12).
+     *
+     * Sem ela, quem aceitava o convite de um profissional e abria o perfil
+     * dele tinha o botão Voltar caindo no `fallbackHref="/discover"`: um toque
+     * depois de aceitar um convite pessoal, o tutor era despejado na busca
+     * genérica, ao lado de todos os concorrentes de quem o convidou.
+     *
+     * Entra como PREFIXO porque o caminho carrega o id do profissional, e só
+     * na persona tutor — é a única de onde a landing de convite leva a algum
+     * lugar. Continua sendo allowlist: nada de caminho arbitrário.
+     */
+    prefixes: ["/tutor/requests/", "/tutor/professionals/", "/p/"],
   },
   professional: {
     exact: [

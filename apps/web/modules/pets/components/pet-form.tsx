@@ -12,7 +12,10 @@ import {
   createPetAction,
   updatePetAction,
 } from "@/modules/pets/application/actions"
-import { resolveOnboardingDestination } from "@/modules/invite/domain/onboarding-next"
+import {
+  onboardingConclusionCopy,
+  resolveOnboardingDestination,
+} from "@/modules/invite/domain/onboarding-next"
 import {
   SPECIES,
   SPECIES_LABELS,
@@ -455,6 +458,10 @@ export function OnboardingPetForm({ firstName = "", next = null }: OnboardingPet
   })
 
   const petName = watch("name")
+  // A conclusão fala do convite quando o destino É um convite. O roteamento já
+  // estava certo; era o texto que continuava oferecendo uma busca genérica a
+  // quem tinha acabado de chegar pelo link de alguém.
+  const conclusao = onboardingConclusionCopy(next)
 
   async function onSubmit(values: OnboardingPetFormValues) {
     setServerError(null)
@@ -499,8 +506,7 @@ export function OnboardingPetForm({ firstName = "", next = null }: OnboardingPet
           Prontinho{firstName ? `, ${firstName}` : ""}!
         </h2>
         <p className="mx-auto mb-5 max-w-[26ch] text-[13px] leading-relaxed text-[#6B6B63]">
-          {petName || "Seu pet"} já está no seu perfil. Vamos encontrar quem
-          cuida dele com confiança?
+          {petName || "Seu pet"} {conclusao.descricao}
         </p>
         <button
           type="button"
@@ -511,7 +517,7 @@ export function OnboardingPetForm({ firstName = "", next = null }: OnboardingPet
           className="w-full rounded-[14px] py-[15px] text-[14.5px] font-bold text-white transition active:scale-[.99]"
           style={{ background: NAVY }}
         >
-          Encontrar profissional
+          {conclusao.cta}
         </button>
       </section>
     )

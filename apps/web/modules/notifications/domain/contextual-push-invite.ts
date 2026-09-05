@@ -135,3 +135,118 @@ export function pushInviteDismissKey(
 ): string {
   return `peteen:push-invite:${persona}:${requestId}:${status}`
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMO o convite aparece — GATE-10-NOTIFICATIONS-UX-001
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// O DEFEITO QUE ESTA REGRA FECHA
+//
+// O portão anterior escondia o card em `ativo`, `sem-suporte` e
+// `nao-configurado` — e MOSTRAVA em `negado` e `ios-fora-da-tela-inicio`, com o
+// mesmo cabeçalho de benefício de sempre: "Receba avisos sobre sua solicitação
+// / Ative as notificações para saber quando o profissional responder".
+//
+// Logo abaixo desse texto, o `PushOptIn` renderizava "Notificações bloqueadas
+// no navegador". O card prometia exatamente o que o estado proibia. Para quem
+// bloqueou push, a Request repetia essa promessa em toda visita.
+//
+// A separação abaixo mantém o convite onde ele pode funcionar e troca o
+// cabeçalho por ORIENTAÇÃO onde não pode — sem fingir ativação e sem repetir
+// promessa.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ContextualInviteMode =
+  /** Há ativação real a propor: cabeçalho de benefício + CTA. */
+  | "oferecer"
+  /** Bloqueado ou iOS fora da Tela de Início: uma linha de orientação, sem CTA. */
+  | "orientar"
+  /** Nada a dizer aqui — push já funciona, ou não existe neste ambiente. */
+  | "silenciar"
+
+/**
+ * Estados observados pelo browser, na Request.
+ *
+ * Declarado aqui em vez de importado de `lib/push/client` para não inverter a
+ * direção da camada (domínio não depende de infraestrutura). O acoplamento
+ * continua verificado pelo compilador: `EstadoDoAmbientePush` precisa ser
+ * atribuível a este tipo no ponto de chamada, então um estado novo lá quebra a
+ * build aqui em vez de cair silenciosamente num `default`.
+ */
+export type AmbientePushObservado =
+  | "sem-suporte"
+  | "ios-fora-da-tela-inicio"
+  | "nao-configurado"
+  | "negado"
+  | "ativo"
+  | "permitido-sem-subscription"
+  | "desativado"
+
+export function resolveContextualInviteMode(
+  ambiente: AmbientePushObservado
+): ContextualInviteMode {
+  switch (ambiente) {
+    // Já resolvido neste aparelho. A Request não insiste — critério explícito
+    // do gate: "se notificações já estão ativas, a Request não fica insistindo".
+    case "ativo":
+      return "silenciar"
+
+    // Nada a oferecer E nada a orientar. "nao-configurado" é falha de operação
+    // nossa: mandar o usuário mexer em ajustes não resolveria, e culpar o
+    // navegador seria falso.
+    case "sem-suporte":
+    case "nao-configurado":
+      return "silenciar"
+
+    // Sem caminho de ativação a partir daqui, mas COM um caminho real a
+    // apontar. Uma linha, sem CTA, sem promessa.
+    case "negado":
+    case "ios-fora-da-tela-inicio":
+      return "orientar"
+
+    // `permitido-sem-subscription` entra em "oferecer" de propósito: o
+    // `PushOptIn` repara isso sozinho e o card se cala pelo callback de ativo.
+    case "desativado":
+    case "permitido-sem-subscription":
+      return "oferecer"
+  }
+}
+
+/**
+ * Uma linha só, para o modo `orientar`. O passo a passo completo vive em Minha
+ * conta — repetir três passos dentro da Request competiria com a ação que a
+ * pessoa veio executar, que é o oposto do que este card pode fazer.
+ *
+ * `texto` e `acao` são separados de propósito. Uma primeira versão embutia o
+ * destino na própria frase e o link ao lado repetia o nome — a linha saía como
+ * "…veja como liberar em Minha conta. Minha conta". O destino é sempre a mesma
+ * tela; o que muda é o que a pessoa vai encontrar lá, e é isso que o rótulo diz.
+ */
+export type ContextualOrientacao = {
+  texto: string
+  /** Rótulo do link para a Conta. */
+  acao: string
+}
+
+export function resolveContextualOrientacao(
+  ambiente: AmbientePushObservado
+): ContextualOrientacao | null {
+  if (ambiente === "negado") {
+    return {
+      texto: "As notificações estão bloqueadas neste aparelho.",
+      acao: "Ver como liberar",
+    }
+  }
+  if (ambiente === "ios-fora-da-tela-inicio") {
+    return {
+      texto: "No iPhone, os avisos funcionam com o Peteen na Tela de Início.",
+      acao: "Ver como instalar",
+    }
+  }
+  return null
+}
+
+/** Onde mora a superfície completa de notificações, por persona. */
+export function contaHrefDaPersona(persona: PushInvitePersona): string {
+  return persona === "tutor" ? "/tutor/conta" : "/professional/conta"
+}

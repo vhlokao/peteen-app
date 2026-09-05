@@ -45,6 +45,12 @@ import {
 import { repararPush, type MotivoFalhaReparo } from "@/lib/push/repair"
 import { limparOptOutLocal, marcarOptOutLocal } from "@/lib/push/opt-out"
 import { resolvePushHealthCopy, type SaudePush } from "../domain/push-health"
+import {
+  detectarPlataforma,
+  type PlataformaNotificacao,
+} from "../domain/notification-settings"
+import { NotificationSettingsView } from "./notification-settings-view"
+import type { PushInvitePersona } from "../domain/contextual-push-invite"
 import { unsubscribeFromPushAction } from "../application/push-actions"
 
 /**
@@ -69,6 +75,34 @@ type Fase =
 type Props = {
   /** NEXT_PUBLIC_VAPID_PUBLIC_KEY — pública por design. Vazia = push desligado. */
   vapidPublicKey: string
+  /**
+   * GATE-10 — quanto contexto o componente desenha ao redor da ação.
+   *
+   * `inline` (default) é o que sempre existiu: título do estado, detalhe e
+   * botão. É o que o convite contextual da Request precisa, porque lá o
+   * contexto já está no card que o embrulha.
+   *
+   * `settings` é a superfície de Conta: rótulo de estado, o que a pessoa
+   * recebe e, quando o estado tem saída, o passo a passo real. Opt-in para que
+   * a Request não herde um bloco de três passos competindo com o CTA dela.
+   */
+  apresentacao?: "inline" | "settings"
+  /**
+   * Só usado em `settings`: a lista do que a pessoa recebe é diferente por
+   * persona, porque os eventos enviados são diferentes. Ver
+   * `beneficiosDeNotificacao`.
+   */
+  persona?: PushInvitePersona
+  /**
+   * Chamado quando o estado observado passa a ser ACTIVE.
+   *
+   * Existe para o convite contextual conseguir se calar depois de a ativação
+   * dar certo. Sem isso, o card da Request ficava com o cabeçalho de convite
+   * ("Ative as notificações para…") acompanhado de "✓ Notificações ativadas" e
+   * de um botão "Desativar" — três mensagens contraditórias no meio de uma
+   * tela operacional.
+   */
+  aoFicarAtivo?: () => void
 }
 
 /** Mensagem para o que o reparo não conseguiu resolver sozinho. */
@@ -100,8 +134,32 @@ function mensagemDeFalha(motivo: MotivoFalhaReparo, detalhe?: string): string {
   }
 }
 
-export function PushOptIn({ vapidPublicKey }: Props) {
+export function PushOptIn({
+  vapidPublicKey,
+  apresentacao = "inline",
+  persona = "tutor",
+  aoFicarAtivo,
+}: Props) {
   const [fase, setFase] = useState<Fase>({ tipo: "carregando" })
+
+  /**
+   * Plataforma para a orientação de desbloqueio. `null` até o primeiro efeito:
+   * `navigator` não existe no servidor, e a orientação só aparece depois que o
+   * estado já foi observado — nunca antes.
+   */
+  const [plataforma, setPlataforma] = useState<PlataformaNotificacao | null>(null)
+  useEffect(() => {
+    setPlataforma(detectarPlataforma(navigator.userAgent, navigator.maxTouchPoints))
+  }, [])
+
+  /**
+   * Em ref, não em dependência: o convite contextual passa uma closure nova a
+   * cada render, e depender da identidade dela faria `sincronizar` mudar de
+   * identidade a cada render — reavaliando push em loop. Mesmo padrão do
+   * `useBackToClose` do visualizador de Momentos.
+   */
+  const aoFicarAtivoRef = useRef(aoFicarAtivo)
+  aoFicarAtivoRef.current = aoFicarAtivo
 
   /**
    * Trava SÍNCRONA contra double-click. `disabled` depende de re-render, o que
@@ -143,6 +201,11 @@ export function PushOptIn({ vapidPublicKey }: Props) {
       // NEEDS_REPAIR e a tela oferece o botão de reativar — sem inventar uma
       // mensagem de erro para uma tentativa que a pessoa nem sabe que houve.
     }
+
+    // Avisa o embrulho ANTES de renderizar o estado: quem depende disso (o
+    // convite contextual) desaparece inteiro, e não deve piscar um "✓ ativadas"
+    // no caminho.
+    if (saude.state === "ACTIVE") aoFicarAtivoRef.current?.()
 
     setFase({ tipo: "pronto", saude })
   }, [vapidPublicKey])
@@ -333,6 +396,22 @@ export function PushOptIn({ vapidPublicKey }: Props) {
   // que nenhum estado além de ACTIVE afirme que push está funcionando.
   const { saude } = fase
   const copy = resolvePushHealthCopy(saude)
+
+  // ── Superfície de Conta ───────────────────────────────────────────────────
+  // A pintura vive em NotificationSettingsView, sem estado próprio: é o que
+  // torna os cinco estados inspecionáveis sem precisar visitar cada um deles
+  // num navegador real — ver o cabeçalho daquele arquivo.
+  if (apresentacao === "settings") {
+    return (
+      <NotificationSettingsView
+        saude={saude}
+        plataforma={plataforma}
+        persona={persona}
+        aoAtivar={ativar}
+        aoDesativar={desativar}
+      />
+    )
+  }
 
   if (saude.state === "ACTIVE") {
     return (

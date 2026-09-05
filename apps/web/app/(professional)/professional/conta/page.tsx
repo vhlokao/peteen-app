@@ -12,6 +12,7 @@ export default async function ProfessionalContaPage() {
 
   return (
     <AccountSettingsPage
+      persona="professional"
       // Ver a nota equivalente na página do tutor sobre User vs Profile.
       displayName={profile.displayName}
       email={session.email}

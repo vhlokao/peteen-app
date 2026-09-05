@@ -322,9 +322,12 @@ export function resolvePushHealthCopy(saude: SaudePush): PushHealthCopy {
           detalhe: null,
         }
       }
+      // "notificações push" saiu em GATE-10: "push" é o nome do protocolo, não
+      // do que a pessoa recebe, e aqui ela está justamente diante da tela que
+      // deveria explicar a limitação sem jargão.
       return {
-        titulo: "Este navegador não oferece notificações push",
-        detalhe: null,
+        titulo: "Este navegador não oferece notificações",
+        detalhe: "Tente por outro navegador ou pelo celular.",
       }
 
     case "DISABLED":

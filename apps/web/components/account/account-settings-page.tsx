@@ -3,6 +3,7 @@ import { Bell, FileText, ShieldCheck, UserCircle } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { PageHeader } from "@/components/layout/page-header"
 import { PushOptInSection } from "@/modules/notifications/components/push-opt-in-section"
+import type { PushInvitePersona } from "@/modules/notifications/domain/contextual-push-invite"
 import { AccountSignOutButton } from "@/components/account/account-sign-out-button"
 import { LEGAL_LINK_LABELS, legalHref } from "@/modules/legal/domain/legal-documents"
 import {
@@ -40,6 +41,7 @@ import {
  * notificações push (preferência de verdade, com backend) e sair.
  */
 export function AccountSettingsPage({
+  persona,
   displayName,
   email,
   avatarUrl,
@@ -48,6 +50,12 @@ export function AccountSettingsPage({
   profileLabel,
   profileDescription,
 }: {
+  /**
+   * Qual conjunto de avisos esta conta realmente recebe. O dispatcher envia
+   * início/Diário/conclusão SÓ para o tutor — sem esta distinção, a tela
+   * prometia ao profissional eventos que são atos dele próprio.
+   */
+  persona: PushInvitePersona
   displayName: string
   email: string
   avatarUrl: string | null
@@ -95,15 +103,18 @@ export function AccountSettingsPage({
         />
       </SettingsGroup>
 
+      {/* GATE-10 — a linha não tem mais título nem descrição próprios.
+          Ela repetia, em duas frases, o que o controle abaixo já dizia com o
+          estado real ("Ativadas" / "Bloqueadas" / "Indisponíveis"), e empurrava
+          essa resposta para a terceira linha da seção. O ícone permanece porque
+          é o marcador visual do grupo; o texto agora é o estado.
+
+          Continua sendo `SettingsStaticRow` (não link): a linha hospeda o
+          próprio controle de ativação, e uma linha-link com botão dentro
+          criaria alvos aninhados. */}
       <SettingsGroup title="Notificações">
-        {/* Linha estática, não link: hospeda o próprio controle de ativação.
-            Uma linha-link com botão dentro criaria alvos aninhados. */}
-        <SettingsStaticRow
-          icon={Bell}
-          title="Notificações push"
-          description="Avisos sobre seus atendimentos neste aparelho."
-        >
-          <PushOptInSection />
+        <SettingsStaticRow icon={Bell}>
+          <PushOptInSection persona={persona} />
         </SettingsStaticRow>
       </SettingsGroup>
 

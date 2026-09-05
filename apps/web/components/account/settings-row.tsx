@@ -67,10 +67,25 @@ export function SettingsStaticRow({
   children,
 }: {
   icon: LucideIcon
-  title: string
+  /**
+   * Opcional desde GATE-10: quando o próprio controle já anuncia o assunto e o
+   * estado (a seção de notificações), um título de linha acima dele só repete a
+   * mesma frase com menos informação. Sem título, o ícone divide a linha com o
+   * controle em vez de ficar sozinho numa faixa vazia.
+   */
+  title?: string
   description?: string
   children?: React.ReactNode
 }) {
+  if (!title) {
+    return (
+      <div className="flex items-start gap-3 px-4 py-3.5">
+        <Icon className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0 flex-1">{children}</div>
+      </div>
+    )
+  }
+
   return (
     <div className="px-4 py-3.5">
       <div className="flex items-start gap-3">

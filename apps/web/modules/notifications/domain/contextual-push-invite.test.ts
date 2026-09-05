@@ -14,12 +14,17 @@ import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 
 import {
+  contaHrefDaPersona,
   isPushInviteEligible,
   PUSH_INVITE_CTA,
   PUSH_INVITE_DISMISS,
   pushInviteDismissKey,
+  resolveContextualInviteMode,
+  resolveContextualOrientacao,
   resolvePushInviteCopy,
+  type AmbientePushObservado,
 } from "./contextual-push-invite.ts"
+import { textoPrometeAviso } from "./notification-settings.ts"
 import type { RequestStatus } from "../../service-request/domain/types.ts"
 
 const TERMINAIS: RequestStatus[] = [
@@ -277,5 +282,105 @@ describe("item 16 — render NUNCA pede permissão", () => {
     for (const proibido of ["RATE_LIMIT", "applicationServerKey", "urlBase64", "PushManager"]) {
       assert.ok(!fonte.includes(proibido), `duplicou infraestrutura: ${proibido}`)
     }
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GATE-10 — modo do convite na Request
+//
+// O portão anterior era uma lista de `if`s no componente. `negado` e
+// `ios-fora-da-tela-inicio` não estavam em nenhuma lista de silêncio, então
+// herdavam por omissão o caminho do convite — e a Request passava a exibir
+// "Ative as notificações para saber quando o profissional responder" para
+// alguém cujo browser recusa qualquer ativação.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AMBIENTES: readonly AmbientePushObservado[] = [
+  "sem-suporte",
+  "ios-fora-da-tela-inicio",
+  "nao-configurado",
+  "negado",
+  "ativo",
+  "permitido-sem-subscription",
+  "desativado",
+]
+
+describe("GATE-10 — modo do convite contextual", () => {
+  it("push já ativo: a Request não insiste", () => {
+    assert.equal(resolveContextualInviteMode("ativo"), "silenciar")
+  })
+
+  it("ambiente sem push algum: silêncio, não erro genérico", () => {
+    assert.equal(resolveContextualInviteMode("sem-suporte"), "silenciar")
+    assert.equal(resolveContextualInviteMode("nao-configurado"), "silenciar")
+  })
+
+  it("bloqueado NÃO oferece ativação — orienta", () => {
+    assert.equal(resolveContextualInviteMode("negado"), "orientar")
+  })
+
+  it("iPhone fora da Tela de Início NÃO oferece ativação — orienta", () => {
+    assert.equal(resolveContextualInviteMode("ios-fora-da-tela-inicio"), "orientar")
+  })
+
+  it("os dois estados acionáveis oferecem", () => {
+    assert.equal(resolveContextualInviteMode("desativado"), "oferecer")
+    assert.equal(resolveContextualInviteMode("permitido-sem-subscription"), "oferecer")
+  })
+
+  it("todo ambiente tem um modo — nenhum herda comportamento por omissão", () => {
+    for (const a of AMBIENTES) {
+      const modo = resolveContextualInviteMode(a)
+      assert.ok(
+        modo === "oferecer" || modo === "orientar" || modo === "silenciar",
+        `${a} sem modo definido`
+      )
+    }
+  })
+})
+
+describe("GATE-10 — orientação contextual não promete aviso", () => {
+  it("existe exatamente para os dois estados que orientam", () => {
+    for (const a of AMBIENTES) {
+      const temTexto = resolveContextualOrientacao(a) !== null
+      assert.equal(
+        temTexto,
+        resolveContextualInviteMode(a) === "orientar",
+        `${a}: texto de orientação e modo discordam`
+      )
+    }
+  })
+
+  it("nenhum texto de orientação promete que a pessoa será avisada", () => {
+    for (const a of AMBIENTES) {
+      const texto = resolveContextualOrientacao(a)
+      if (!texto) continue
+      assert.equal(
+        textoPrometeAviso(`${texto.texto} ${texto.acao}`),
+        false,
+        `${a} promete aviso estando bloqueado`
+      )
+    }
+  })
+
+  it("o rótulo do link diz o que a pessoa vai encontrar — e não repete o destino", () => {
+    for (const a of ["negado", "ios-fora-da-tela-inicio"] as const) {
+      const o = resolveContextualOrientacao(a)!
+      assert.match(o.acao, /^Ver como /)
+      // A frase não pode nomear a tela: o link ao lado já é o destino.
+      assert.doesNotMatch(o.texto, /Minha conta/i, `${a} repete o destino na frase`)
+    }
+  })
+
+  it("bloqueado e iOS têm textos DIFERENTES — as causas são diferentes", () => {
+    assert.notDeepEqual(
+      resolveContextualOrientacao("negado"),
+      resolveContextualOrientacao("ios-fora-da-tela-inicio")
+    )
+  })
+
+  it("o destino da orientação é a Conta da própria persona", () => {
+    assert.equal(contaHrefDaPersona("tutor"), "/tutor/conta")
+    assert.equal(contaHrefDaPersona("professional"), "/professional/conta")
   })
 })

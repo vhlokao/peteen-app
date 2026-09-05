@@ -1,6 +1,7 @@
 /**
  * Módulo: notifications
- * Camada: components — ponte Server → Client do opt-in de push.
+ * Camada: components — ponte Server → Client da superfície de notificações em
+ * Minha conta.
  *
  * Server Component: lê a chave PÚBLICA do VAPID no servidor e a passa como prop.
  * A pública é publicável por design (é o `applicationServerKey` que o browser
@@ -10,23 +11,29 @@
  *
  * Quando a chave não está configurada, a prop chega vazia e o componente se
  * declara indisponível — nenhuma operação de domínio é afetada.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * GATE-10 — POR QUE ESTE ARQUIVO PERDEU O PRÓPRIO TÍTULO
+ *
+ * Ele renderizava "Notificações no dispositivo" + uma frase de valor genérica,
+ * dentro de uma linha que JÁ dizia "Notificações push" + "Avisos sobre seus
+ * atendimentos neste aparelho", acima de um `PushOptIn` que dizia pela terceira
+ * vez "Notificações desativadas — Receba avisos importantes sobre seus
+ * atendimentos".
+ *
+ * Três cabeçalhos e três frases quase idênticas, com a única informação que
+ * importava — o ESTADO — em terceiro lugar e no menor peso visual. A resposta
+ * ("está ligado?") passou a ser a primeira linha, e este arquivo virou o que
+ * sempre deveria ter sido: só a fronteira servidor→cliente.
  */
 
 import { PushOptIn } from "./push-opt-in"
+import type { PushInvitePersona } from "../domain/contextual-push-invite"
 
-export function PushOptInSection() {
+export function PushOptInSection({ persona }: { persona: PushInvitePersona }) {
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? ""
 
   return (
-    <div className="space-y-3">
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">Notificações no dispositivo</p>
-        <p className="text-sm text-muted-foreground">
-          Receba um aviso quando houver novidade nos seus atendimentos. Você pode
-          desativar quando quiser.
-        </p>
-      </div>
-      <PushOptIn vapidPublicKey={vapidPublicKey} />
-    </div>
+    <PushOptIn vapidPublicKey={vapidPublicKey} apresentacao="settings" persona={persona} />
   )
 }

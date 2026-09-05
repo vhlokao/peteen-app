@@ -19,6 +19,7 @@ export default async function TutorContaPage() {
 
   return (
     <AccountSettingsPage
+      persona="tutor"
       // `displayName` vem do TutorProfile (identidade da persona); `email` vem
       // do User (identidade da conta). São conceitos distintos e a tela os
       // mostra juntos de propósito — mas nunca os mistura como se fossem o

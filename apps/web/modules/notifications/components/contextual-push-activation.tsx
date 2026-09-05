@@ -33,14 +33,18 @@
  */
 
 import { useCallback, useEffect, useState } from "react"
-import { BellRing } from "lucide-react"
+import Link from "next/link"
+import { BellOff, BellRing } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { avaliarAmbientePush, type EstadoDoAmbientePush } from "@/lib/push/client"
 import type { RequestStatus } from "@/modules/service-request/domain/types"
 import {
+  contaHrefDaPersona,
   PUSH_INVITE_DISMISS,
   pushInviteDismissKey,
+  resolveContextualInviteMode,
+  resolveContextualOrientacao,
   resolvePushInviteCopy,
   type PushInvitePersona,
 } from "../domain/contextual-push-invite"
@@ -64,6 +68,18 @@ export function ContextualPushActivation({
   // aparece e some no primeiro frame é pior que um card que demora.
   const [ambiente, setAmbiente] = useState<EstadoDoAmbientePush | null>(null)
   const [dispensado, setDispensado] = useState(false)
+
+  /**
+   * A ativação deu certo enquanto este card estava aberto.
+   *
+   * `ambiente` é uma fotografia do mount e não se atualiza sozinha — sem este
+   * sinal, o card continuava com o cabeçalho de convite ("Ative as notificações
+   * para saber quando o profissional responder") logo acima de um "✓
+   * Notificações ativadas neste dispositivo" e de um botão "Desativar". Três
+   * mensagens contraditórias no meio de uma tela operacional.
+   */
+  const [ficouAtivo, setFicouAtivo] = useState(false)
+  const marcarAtivo = useCallback(() => setFicouAtivo(true), [])
 
   const copy = resolvePushInviteCopy(persona, status)
   const chaveDeDispensa = pushInviteDismissKey(persona, requestId, status)
@@ -105,13 +121,51 @@ export function ContextualPushActivation({
   if (!copy) return null
   if (dispensado) return null
   if (ambiente === null) return null
+  // Ativou agora, aqui dentro. O card sai de cena em vez de virar painel de
+  // controle de notificações no meio da Request.
+  if (ficouAtivo) return null
 
-  // Já resolvido: push funcionando neste dispositivo. Nada a oferecer.
-  if (ambiente === "ativo") return null
+  // GATE-10 — o QUE mostrar passou a ser decisão do domínio. O portão anterior
+  // era uma lista de `if`s no componente, e foi por isso que `negado` e
+  // `ios-fora-da-tela-inicio` caíram no caminho do convite: eles não estavam
+  // em nenhuma das listas de silêncio, então herdavam por omissão um cabeçalho
+  // que prometia exatamente o que aqueles estados proíbem.
+  const modo = resolveContextualInviteMode(ambiente)
 
-  // Ambiente sem push: silêncio. Mostrar um CTA que falharia é pior que nada,
-  // e "não configurado" é problema de operação, não do usuário.
-  if (ambiente === "sem-suporte" || ambiente === "nao-configurado") return null
+  if (modo === "silenciar") return null
+
+  // ── Orientar: sem promessa, sem CTA, uma linha ────────────────────────────
+  // Bloqueado ou iOS fora da Tela de Início. Há um caminho real, mas ele não
+  // começa aqui — e repetir os três passos dentro da Request competiria com a
+  // ação que a pessoa veio executar.
+  if (modo === "orientar") {
+    const orientacao = resolveContextualOrientacao(ambiente)
+    if (!orientacao) return null
+
+    return (
+      <section className="flex items-start gap-2.5 rounded-2xl border border-border/70 bg-muted/30 px-4 py-3">
+        <BellOff aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        <p className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+          {orientacao.texto}{" "}
+          <Link
+            href={contaHrefDaPersona(persona)}
+            className="font-medium text-foreground underline underline-offset-2"
+          >
+            {orientacao.acao}
+          </Link>
+        </p>
+        {/* Mesma dispensa do convite: quem já sabe que bloqueou não precisa
+            reler o aviso em cada visita à Request. */}
+        <button
+          type="button"
+          onClick={dispensar}
+          className="-my-1 shrink-0 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          Ocultar
+        </button>
+      </section>
+    )
+  }
 
   return (
     <section
@@ -134,8 +188,10 @@ export function ContextualPushActivation({
 
           <div className="mt-3">
             {/* Toda a ativação — permissão, service worker, subscription,
-                rate limit, iOS, denied — continua sendo do PushOptIn. */}
-            <PushOptIn vapidPublicKey={vapidPublicKey} />
+                rate limit, iOS, denied — continua sendo do PushOptIn.
+                `apresentacao` fica no default `inline`: o bloco de passos da
+                superfície de Conta competiria com o CTA da Request. */}
+            <PushOptIn vapidPublicKey={vapidPublicKey} aoFicarAtivo={marcarAtivo} />
           </div>
 
           {/* Dispensa discreta: botão real (não um "x" decorativo), com alvo

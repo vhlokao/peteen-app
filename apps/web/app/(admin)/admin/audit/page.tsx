@@ -37,8 +37,7 @@ export default async function AdminAuditPage({ searchParams }: Props) {
   const action = params.action
   const entityType = params.entityType
 
-  const result = await getAdminAuditAction({ action, entityType })
-  const logs = result.data ?? []
+  const logs = await getAdminAuditAction({ action, entityType })
 
   const fmt = (d: Date) =>
     format(new Date(d), "dd/MM/yy HH:mm:ss", { locale: ptBR })

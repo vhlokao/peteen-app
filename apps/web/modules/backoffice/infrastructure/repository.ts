@@ -38,12 +38,34 @@ import { calculateAllRiskScores } from "@/modules/antifraude/application/calcula
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 
-// safeCount — fallback 0 se o delegate não existir no client em cache (dev reload)
+/**
+ * Contagem do dashboard com tolerância ESTREITA — GATE-14.
+ *
+ * O que existia: `catch { return 0 }`, cego e silencioso. O comentário dizia
+ * proteger um caso específico de desenvolvimento (delegate ausente no client
+ * Prisma em cache depois de um hot-reload), mas o catch engolia TUDO. Um banco
+ * fora do ar em produção não derrubava a tela — pintava um dashboard inteiro de
+ * zeros: "Total de usuários: 0", "Solicitações: 0". Números de negócio
+ * afirmados com confiança a partir de uma falha, que é pior que erro nenhum:
+ * ninguém desconfia de um zero.
+ *
+ * Agora só o caso que o comentário descreve é tolerado. `TypeError` é a forma
+ * do delegate inexistente (`prisma.algo.count is not a function`) e continua
+ * caindo em 0 para não travar o desenvolvimento — mas AGORA aparece no log, em
+ * vez de sumir. Qualquer outro erro (Prisma, rede, timeout) sobe para
+ * `app/(admin)/admin/error.tsx`, que sabe dizer "falhou ao carregar".
+ */
 async function safeCount(fn: () => Promise<number>): Promise<number> {
   try {
     return await fn()
-  } catch {
-    return 0
+  } catch (err) {
+    if (err instanceof TypeError) {
+      console.warn("[admin] contagem indisponível (delegate ausente)", {
+        erro: String(err.message).slice(0, 120),
+      })
+      return 0
+    }
+    throw err
   }
 }
 
@@ -765,10 +787,22 @@ function resolveAvailabilityEntityLabel(
   return `Disponibilidade profissional · ${formatShortAuditId(entityId)}`
 }
 
+/**
+ * ERRO NÃO É VAZIO — ver a nota completa em `getAdminFlags`.
+ *
+ * GATE-14: esta função e `getAdminRiskData` ainda tinham o `catch { return [] }`
+ * que aquela nota diz ter sido removido — a correção anterior pegou flags e
+ * disputes e deixou estas duas para trás. Pior: o catch era CEGO, nem logava.
+ * Um banco fora do ar produzia "Nenhum registro" na trilha de auditoria — a
+ * tela de investigação afirmando, com confiança, que não havia o que investigar.
+ *
+ * A exceção agora sobe para `app/(admin)/admin/error.tsx`, que separa "falhou
+ * ao carregar" de "não há registros" e oferece tentar de novo.
+ */
 export async function getAdminAuditLogs(
   filter: AdminAuditFilter = {}
 ): Promise<AdminAuditRow[]> {
-  try {
+  {
     const [adminLogs, userLogs] = await Promise.all([
       prisma.adminAuditLog.findMany({
         where: {
@@ -1046,8 +1080,6 @@ export async function getAdminAuditLogs(
     return [...adminRows, ...userRows]
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, 500)
-  } catch {
-    return []
   }
 }
 
@@ -1055,8 +1087,9 @@ export async function getAdminAuditLogs(
 // RISK SCORES — Etapa 5.5
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** ERRO NÃO É VAZIO — mesma correção e mesmo motivo de `getAdminAuditLogs`. */
 export async function getAdminRiskData(): Promise<AdminRiskRow[]> {
-  try {
+  {
     const [riskResults, professionals] = await Promise.all([
       calculateAllRiskScores(),
       prisma.professionalProfile.findMany({
@@ -1074,7 +1107,5 @@ export async function getAdminRiskData(): Promise<AdminRiskRow[]> {
       score:       r.score,
       level:       r.level,
     }))
-  } catch {
-    return []
   }
 }

@@ -3,7 +3,6 @@ import { ptBR } from "date-fns/locale"
 
 import { getAdminFlagsAction } from "@/modules/backoffice/application/actions"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
-import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge"
 import { ResolveFlagButton } from "@/components/admin/ResolveFlagButton"
 import {
   FLAG_SEVERITY_LABELS,
@@ -40,8 +39,7 @@ export default async function AdminFlagsPage({ searchParams }: Props) {
   const severity   = params.severity
   const targetType = params.targetType
 
-  const result = await getAdminFlagsAction({ status, severity, targetType })
-  const flags = result.data ?? []
+  const flags = await getAdminFlagsAction({ status, severity, targetType })
 
   const fmt = (d: Date | null) =>
     d ? format(new Date(d), "dd/MM/yy HH:mm", { locale: ptBR }) : "—"

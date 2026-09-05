@@ -1,6 +1,5 @@
 import { getAdminRiskAction } from "@/modules/backoffice/application/actions"
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader"
-import { resolveRiskLevel } from "@/modules/antifraude/domain/risk-score"
 
 const LEVEL_COLORS: Record<string, string> = {
   LOW:      "bg-green-100 text-green-700",
@@ -17,8 +16,7 @@ const LEVEL_LABELS: Record<string, string> = {
 }
 
 export default async function AdminRiskPage() {
-  const result = await getAdminRiskAction()
-  const rows = result.data ?? []
+  const rows = await getAdminRiskAction()
 
   const highRisk = rows.filter((r) => r.score > 50).length
 

@@ -18,7 +18,22 @@ export default async function AdminDisputesPage({ searchParams }: Props) {
   const status = params.status
 
   const result = await getAdminDisputesListAction({ status })
-  const disputes = result.success ? result.data : []
+
+  /*
+   * GATE-14 — `result.success ? result.data : []` desenhava a MESMA tabela
+   * vazia para "não há disputas" e para "a consulta falhou". Numa tela de
+   * investigação isso é o pior desfecho possível: quem apura conclui que não há
+   * o que apurar.
+   *
+   * A action pertence ao módulo de disputas e mantém o `ActionResult`
+   * compartilhado — então quem traduz falha em falha é a página, lançando para
+   * a fronteira de erro do admin, que distingue os dois casos e oferece tentar
+   * de novo. A mensagem genérica da action já não carrega detalhe de query.
+   */
+  if (!result.success) {
+    throw new Error(result.error ?? "Falha ao carregar disputas.")
+  }
+  const disputes = result.data
 
   const fmt = (d: Date | null) =>
     d ? format(new Date(d), "dd/MM/yy HH:mm", { locale: ptBR }) : "—"

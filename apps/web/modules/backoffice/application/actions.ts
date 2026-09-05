@@ -212,60 +212,58 @@ export async function recalculateAllTrustAction(): Promise<
 
 // ── Flags — Etapa 5.5 ────────────────────────────────────────────────────────
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * GATE-14 — ONDE O SILENCIAMENTO TINHA SE ESCONDIDO
+ *
+ * Um gate anterior removeu o `catch { return [] }` do REPOSITÓRIO de flags e
+ * disputes, documentando que "deixar a exceção subir passou a ser a opção
+ * correta". A correção não chegou até aqui: estas actions continuavam
+ * capturando a exceção liberada e devolvendo `{ success: false, error }` — e as
+ * páginas faziam `result.data ?? []`, sem olhar `success` nem `error`.
+ *
+ * Resultado líquido: exatamente o mesmo bug de antes, uma camada acima. Banco
+ * fora do ar produzia tabela vazia sem aviso, e na tela de Risco produzia algo
+ * pior — "Total avaliados: 0" e "Alto risco: 0", dois números de negócio
+ * afirmados com confiança a partir de uma falha.
+ *
+ * Agora estas leituras devolvem o array direto e deixam a exceção subir para
+ * `app/(admin)/admin/error.tsx`, igual a `getAdminRequestsAction`,
+ * `getAdminReviewsAction` e `getAdminTrustDataAction` — que sempre foram assim,
+ * neste mesmo arquivo. Uma forma só para leitura de backoffice.
+ */
 export async function getAdminFlagsAction(
   filter: AdminFlagsFilter = {}
-): Promise<{ success: boolean; data?: AdminFlagRow[]; error?: string }> {
-  try {
-    await assertAdmin()
-    const data = await getAdminFlags(filter)
-    return { success: true, data }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
-  }
+): Promise<AdminFlagRow[]> {
+  await assertAdmin()
+  return getAdminFlags(filter)
 }
 
 // ── Disputes — Etapa 5.5 ─────────────────────────────────────────────────────
 
+/** Mesma correção e mesmo motivo de `getAdminFlagsAction`. */
 export async function getAdminDisputesAction(
   filter: AdminDisputesFilter = {}
-): Promise<{ success: boolean; data?: AdminDisputeRow[]; error?: string }> {
-  try {
-    await assertAdmin()
-    const data = await getAdminDisputes(filter)
-    return { success: true, data }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
-  }
+): Promise<AdminDisputeRow[]> {
+  await assertAdmin()
+  return getAdminDisputes(filter)
 }
 
 // ── Audit Log — Etapa 5.5 ────────────────────────────────────────────────────
 
+/** Mesma correção e mesmo motivo de `getAdminFlagsAction`. */
 export async function getAdminAuditAction(
   filter: AdminAuditFilter = {}
-): Promise<{ success: boolean; data?: AdminAuditRow[]; error?: string }> {
-  try {
-    await assertAdmin()
-    const data = await getAdminAuditLogs(filter)
-    return { success: true, data }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
-  }
+): Promise<AdminAuditRow[]> {
+  await assertAdmin()
+  return getAdminAuditLogs(filter)
 }
 
 // ── Risk Score — Etapa 5.5 ───────────────────────────────────────────────────
 
-export async function getAdminRiskAction(): Promise<{
-  success: boolean
-  data?:   AdminRiskRow[]
-  error?:  string
-}> {
-  try {
-    await assertAdmin()
-    const data = await getAdminRiskData()
-    return { success: true, data }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
-  }
+export async function getAdminRiskAction(): Promise<AdminRiskRow[]> {
+  await assertAdmin()
+  return getAdminRiskData()
 }
 
 // ── Recommendation Engine — Etapa 5.7 ────────────────────────────────────────

@@ -10,6 +10,10 @@ import { AdminStatusBadge } from "@/components/admin/AdminStatusBadge"
 import { SERVICE_TYPE_LABELS } from "@/modules/professional/domain/types"
 import { formatScheduledCivilDate, formatZonedTime } from "@/lib/date/zoned-datetime"
 import { canDisplayScheduledTime } from "@/modules/service-request/domain/schedule-precision"
+import {
+  countPendingSync,
+  resolveOperationalRequestStatus,
+} from "@/modules/backoffice/domain/request-operational-status"
 import type { AdminRequestRow } from "@/modules/backoffice/domain/types"
 import type { ServiceType } from "@/modules/professional/domain/types"
 
@@ -70,9 +74,35 @@ const COLUMNS = [
   {
     key: "status",
     header: "Status",
-    render: (row: AdminRequestRow) => (
-      <AdminStatusBadge type="request" value={row.status} />
-    ),
+    /*
+     * Mostra o estado OPERACIONAL, não a coluna crua.
+     *
+     * O cron de expiração roda 1x por dia (vercel.json) e a sincronização lazy
+     * só existe nas telas de tutor e profissional. Sem esta derivação, o
+     * Backoffice exibia "Pendente" por até ~23h para solicitações que o produto
+     * inteiro já tratava como vencidas — e quem investigava "por que ninguém
+     * respondeu?" concluía que ainda dava tempo.
+     *
+     * O marcador ao lado preserva o fato de que o banco ainda não foi
+     * atualizado: escondê-lo trocaria uma mentira por outra, e apagaria o único
+     * sinal visível de que o cron pode estar atrasado ou parado.
+     */
+    render: (row: AdminRequestRow) => {
+      const operacional = resolveOperationalRequestStatus(row)
+      return (
+        <span className="flex items-center gap-1.5">
+          <AdminStatusBadge type="request" value={operacional.effective} />
+          {operacional.pendingSync ? (
+            <span
+              title="Vencida pelo prazo, mas ainda gravada como PENDING. O cron de expiração roda 1x/dia."
+              className="cursor-help text-[0.65rem] text-muted-foreground"
+            >
+              não sincronizado
+            </span>
+          ) : null}
+        </span>
+      )
+    },
   },
   {
     key: "scheduledAt",
@@ -171,7 +201,22 @@ export default async function AdminRequestsPage({ searchParams }: RequestsPagePr
     requestId: requestId?.trim() || undefined,
   })
 
-  const temFiltro = Boolean(status || dias || requestId?.trim())
+  /*
+   * `serviceType` estava fora desta conta — e ele É um filtro: a action e a
+   * query sempre o aceitaram, faltava só o controle no formulário (adicionado
+   * abaixo). Com um filtro de serviço ativo e nenhum resultado, o estado vazio
+   * dizia "Nenhuma solicitação encontrada", afirmando que a base inteira estava
+   * vazia quando o que estava vazio era o recorte.
+   */
+  const temFiltro = Boolean(status || serviceType || dias || requestId?.trim())
+
+  /*
+   * Quantas linhas desta página venceram sem o banco saber. Só aparece quando é
+   * maior que zero — um contador permanentemente em "0" vira ruído que ninguém
+   * lê no dia em que ele mudar. Se este número não zerar depois das 09:00, o
+   * cron de expiração parou: hoje não existe nenhum outro alarme para isso.
+   */
+  const naoSincronizadas = countPendingSync(requests)
 
   return (
     <div>
@@ -180,6 +225,16 @@ export default async function AdminRequestsPage({ searchParams }: RequestsPagePr
         description="Histórico completo de solicitações de serviço."
         count={requests.length}
       />
+
+      {naoSincronizadas > 0 ? (
+        <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+          {naoSincronizadas === 1
+            ? "1 solicitação desta página venceu e ainda está gravada como PENDING."
+            : `${naoSincronizadas} solicitações desta página venceram e ainda estão gravadas como PENDING.`}{" "}
+          A expiração é escrita pelo cron diário (09:00) e pelas telas de tutor e
+          profissional. Nada aqui altera dados.
+        </p>
+      ) : null}
 
       <form method="GET" className="mb-4 flex flex-wrap items-center gap-3">
         <select
@@ -190,6 +245,22 @@ export default async function AdminRequestsPage({ searchParams }: RequestsPagePr
           {STATUS_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
+            </option>
+          ))}
+        </select>
+
+        {/* O filtro por serviço já existia na action e na query — só não tinha
+            controle. Quem quisesse usar precisava editar a URL à mão, e ao
+            fazê-lo caía no estado vazio errado (ver `temFiltro`). */}
+        <select
+          name="serviceType"
+          defaultValue={serviceType ?? ""}
+          className="rounded-md border bg-background px-3 py-1.5 text-sm outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="">Todos os serviços</option>
+          {(Object.keys(SERVICE_TYPE_LABELS) as ServiceType[]).map((tipo) => (
+            <option key={tipo} value={tipo}>
+              {SERVICE_TYPE_LABELS[tipo]}
             </option>
           ))}
         </select>

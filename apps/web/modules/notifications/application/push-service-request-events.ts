@@ -72,7 +72,8 @@ export async function notifyRequestCreated(requestId: string): Promise<void> {
       recipientUserId: ctx.professionalUserId,
       payload: buildPushPayload(
         "request_created",
-        professionalNotificationHref.request(requestId)
+        professionalNotificationHref.request(requestId),
+        requestId
       ),
     })
   } catch (err) {
@@ -112,7 +113,8 @@ export async function notifyRequestAccepted(requestId: string): Promise<void> {
       recipientUserId: ctx.tutorUserId,
       payload: buildPushPayload(
         "request_accepted",
-        tutorNotificationHref.request(requestId)
+        tutorNotificationHref.request(requestId),
+        requestId
       ),
     })
   } catch (err) {
@@ -142,7 +144,11 @@ export async function notifyServiceStarted(requestId: string): Promise<void> {
       eventType: "service_started",
       entityId: requestId,
       recipientUserId: ctx.tutorUserId,
-      payload: buildPushPayload("service_started", tutorNotificationHref.request(requestId)),
+      payload: buildPushPayload(
+        "service_started",
+        tutorNotificationHref.request(requestId),
+        requestId
+      ),
     })
   } catch (err) {
     console.error("[push] notify_service_started_failed", {
@@ -181,7 +187,11 @@ export async function notifyCareUpdatePublished(
       entityId: requestId,
       recipientUserId: ctx.tutorUserId,
       // Deep link direto no Diário — a Request só mostra o resumo (R0).
-      payload: buildPushPayload("care_update", tutorNotificationHref.diary(requestId)),
+      payload: buildPushPayload(
+        "care_update",
+        tutorNotificationHref.diary(requestId),
+        requestId
+      ),
     })
   } catch (err) {
     console.error("[push] notify_care_update_failed", {
@@ -211,7 +221,11 @@ export async function notifyServiceCompleted(requestId: string): Promise<void> {
       eventType: "service_completed",
       entityId: requestId,
       recipientUserId: ctx.tutorUserId,
-      payload: buildPushPayload("service_completed", tutorNotificationHref.request(requestId)),
+      payload: buildPushPayload(
+        "service_completed",
+        tutorNotificationHref.request(requestId),
+        requestId
+      ),
     })
   } catch (err) {
     console.error("[push] notify_service_completed_failed", {
@@ -254,11 +268,13 @@ export async function notifyRequestCancelled(
       payload: paraProfissional
         ? buildPushPayload(
             "request_cancelled_by_tutor",
-            professionalNotificationHref.request(requestId)
+            professionalNotificationHref.request(requestId),
+            requestId
           )
         : buildPushPayload(
             "request_cancelled_by_professional",
-            tutorNotificationHref.request(requestId)
+            tutorNotificationHref.request(requestId),
+            requestId
           ),
     })
   } catch (err) {

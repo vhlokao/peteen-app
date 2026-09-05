@@ -4,10 +4,19 @@ import "server-only"
  * Módulo: notifications
  * Camada: application — dispatcher genérico de Web Push.
  *
- * FOUNDATION V0.2: o dispatcher está completo, mas NENHUM evento de negócio
- * está conectado a ele. Nova solicitação, aceite, cancelamento, conclusão, Care
- * Timeline, disputa e eventos temporais permanecem fora, por decisão de escopo.
- * A única entrada hoje é o smoke de verificação do canal.
+ * EVENTOS CONECTADOS HOJE (auditado em GATE-13). O cabeçalho anterior dizia
+ * que NENHUM evento de negócio estava ligado e que a única entrada era o smoke
+ * — verdade em V0.2, falso desde a integração P0/R2B.3. Um comentário que
+ * descreve o oposto do código é pior que nenhum: manda quem investiga uma
+ * falha real procurar no lugar errado.
+ *
+ *   PROFISSIONAL  request_created, request_cancelled_by_tutor
+ *   TUTOR         request_accepted, service_started, care_update,
+ *                 service_completed, request_cancelled_by_professional
+ *
+ * Todos entram por `modules/notifications/application/push-service-request-events.ts`,
+ * cada um chamado de um único lugar e sempre dentro de `after()`. Disputa e
+ * eventos temporais continuam fora, por decisão de escopo.
  *
  * CONTRATOS INEGOCIÁVEIS:
  *

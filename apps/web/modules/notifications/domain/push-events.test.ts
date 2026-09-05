@@ -287,10 +287,41 @@ describe("buildPushPayload — payload fechado", () => {
     }
   })
 
-  it("caller NÃO controla title/body — só escolhe kind e rota", () => {
-    // A assinatura é (kind, rota). Não há terceiro parâmetro por onde injetar
-    // nome, pet, telefone ou qualquer dado de entidade.
-    assert.equal(buildPushPayload.length, 2)
+  it("caller NÃO controla title/body — nenhum argumento alcança a copy visível", () => {
+    /**
+     * A versão anterior deste teste checava `buildPushPayload.length === 2`:
+     * "não existe terceiro parâmetro por onde injetar nome, pet ou telefone".
+     *
+     * GATE-13 acrescentou um terceiro parâmetro (`entityId`) que alimenta APENAS
+     * a `tag` — chave de colapso do SO, nunca exibida. A aridade deixou de
+     * expressar a garantia, então o teste passou a verificar a garantia
+     * DIRETAMENTE, em vez do proxy: nenhum argumento, por mais hostil que seja,
+     * muda o que aparece na lockscreen.
+     */
+    const hostil = "Rex do João — (11) 99999-0000, Rua X 123"
+    for (const kind of PUSH_NOTIFICATION_KINDS) {
+      const limpo = buildPushPayload(kind, "/tutor/requests/abc", "abc")
+      const sujo = buildPushPayload(kind, "/tutor/requests/abc", hostil)
+
+      // O texto visível é idêntico — o terceiro argumento não o alcança.
+      assert.equal(sujo.title, limpo.title, kind)
+      assert.equal(sujo.body, limpo.body, kind)
+
+      // E não vaza para lugar nenhum que a pessoa leia.
+      assert.ok(!sujo.title.includes("João"), kind)
+      assert.ok(!sujo.body.includes("99999"), kind)
+      assert.ok(!sujo.url.includes("João"), kind)
+    }
+  })
+
+  it("o terceiro parâmetro só existe para escopar a tag", () => {
+    const a = buildPushPayload("request_accepted", "/tutor/requests/A", "A")
+    const b = buildPushPayload("request_accepted", "/tutor/requests/A", "B")
+    // Mesma rota, mesmo kind: a ÚNICA diferença possível é a tag.
+    assert.equal(a.title, b.title)
+    assert.equal(a.body, b.body)
+    assert.equal(a.url, b.url)
+    assert.notEqual(a.tag, b.tag)
   })
 
   it("mesma kind sempre produz a MESMA copy, independente da rota", () => {

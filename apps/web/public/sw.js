@@ -98,6 +98,25 @@ self.addEventListener("push", (event) => {
     self.registration.showNotification(title, {
       body,
       tag,
+      /*
+       * GATE-13 — substituir por tag NÃO pode ser silencioso.
+       *
+       * Sem `renotify`, quando uma notificação substitui outra de mesma tag o
+       * SO troca o conteúdo sem tocar, vibrar ou mostrar heads-up. Combinado
+       * com a tag por entidade, isso significa que a evolução de um MESMO
+       * atendimento (aceito → iniciado → concluído) atualizava a bandeja em
+       * silêncio: quem não tivesse aberto o aviso anterior nunca era alertado
+       * de que o atendimento tinha começado.
+       *
+       * Com `renotify: true`, cada mudança de estado real alerta de novo. O
+       * custo é o caso já documentado em dispatch-push.ts: um reenvio cujo
+       * primeiro envio foi aceito mas cuja resposta se perdeu volta a alertar.
+       * Retry só acontece em falha transitória de resposta ambígua — raro — e
+       * um re-alerta é muito mais barato que perder o aviso de início.
+       *
+       * Exige `tag`, que é sempre definida acima (com fallback "peteen").
+       */
+      renotify: true,
       // A URL viaja em `data`, nunca no corpo visível.
       data: { url },
       badge: undefined,

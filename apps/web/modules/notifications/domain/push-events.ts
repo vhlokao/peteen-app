@@ -256,21 +256,68 @@ const COPY_POR_KIND: Readonly<Record<PushNotificationKind, { title: string; body
 }
 
 /**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ESCOPO DA TAG POR ENTIDADE — GATE-13-NOTIFICATION-RELIABILITY-QA-001
+ *
+ * O DEFEITO: `tag` vinha SÓ da tabela de copy, e seis dos oito kinds usavam a
+ * mesma string literal `peteen-request`. Como o SO colapsa notificações de
+ * mesma tag, duas solicitações DIFERENTES produziam avisos que se substituíam
+ * na bandeja — e, pior, a substituição é SILENCIOSA (`renotify` é `false` por
+ * padrão): a segunda não toca, não vibra e não aparece como heads-up.
+ *
+ * O sintoma observável é exatamente "a notificação não chegou". Ela chegou: o
+ * push service aceitou, o SW executou, e o SO trocou uma pela outra sem avisar
+ * ninguém. O deep link da primeira sumia junto.
+ *
+ * A CORREÇÃO: a tag passa a carregar a ENTIDADE. Duas solicitações distintas
+ * nunca mais colidem. O que continua colapsando é o que sempre foi a intenção
+ * do mecanismo:
+ *
+ *   - reenvio do MESMO evento (o retry documentado em dispatch-push.ts) —
+ *     mesma entidade, mesma tag, substitui em vez de empilhar;
+ *   - a evolução de UMA solicitação (aceita → iniciada → concluída) —
+ *     uma notificação viva por atendimento, sempre no estado mais recente.
+ *
+ * `care_update` mantém a faixa própria (`peteen-care`), decisão já existente:
+ * novidade no Diário não pode substituir um aviso de conclusão.
+ *
+ * `entityId` é OPCIONAL para o `smoke`, que não tem entidade — e só para ele.
+ * Um teste percorre os kinds de negócio e falha se algum voltar a produzir tag
+ * sem escopo.
+ */
+function escoparTag(base: string, entityId?: string | null): string {
+  const id = entityId?.trim()
+  if (!id) return base
+  // Sem interpolação de dado do usuário: `entityId` é id interno (cuid), nunca
+  // nome, e-mail ou texto livre. A tag não é exibida — é chave de colapso.
+  return `${base}:${id}`
+}
+
+/**
  * ÚNICA forma de obter um PushPayload. A marca privada do tipo impede qualquer
  * literal montado fora daqui.
  */
-export function buildPushPayload(kind: PushNotificationKind, rota: string): PushPayload {
+export function buildPushPayload(
+  kind: PushNotificationKind,
+  rota: string,
+  entityId?: string | null
+): PushPayload {
   const copy = COPY_POR_KIND[kind]
   const payload = {
     title: copy.title,
     body: copy.body,
     url: sanitizeInternalRoute(rota),
-    tag: copy.tag,
+    tag: escoparTag(copy.tag, entityId),
   }
   // Único ponto de cast do módulo: aqui a marca é aplicada, depois de a copy
   // vir da tabela constante e a rota passar pelo parser.
   return payload as PushPayload
 }
+
+/** Kinds que SEMPRE têm entidade — todos menos o smoke técnico. */
+export const PUSH_KINDS_COM_ENTIDADE = PUSH_NOTIFICATION_KINDS.filter(
+  (k) => k !== "smoke"
+) as ReadonlyArray<Exclude<PushNotificationKind, "smoke">>
 
 /** Payload técnico de verificação do canal, sem evento de negócio. */
 export const SMOKE_PAYLOAD: PushPayload = buildPushPayload("smoke", PUSH_SMOKE_URL)

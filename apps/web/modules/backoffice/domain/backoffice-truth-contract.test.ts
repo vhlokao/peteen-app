@@ -156,10 +156,49 @@ describe("EXPIRED — o Backoffice mostra o estado operacional", () => {
     }
   })
 
-  it("o filtro de status continua consultando a coluna persistida", () => {
-    // A derivação é de EXIBIÇÃO. Filtrar por estado derivado exigiria a fórmula
-    // de vencimento dentro da query — engine nova, fora desta autorização.
-    assert.match(REPO, /filter\.status\s+\?\s+\{ status:\s+\{ equals: filter\.status/)
+  it("FIX-002 — o filtro de status obedece a MESMA verdade que a tabela exibe", () => {
+    // A versão anterior deste teste travava o oposto: "o filtro continua
+    // consultando a coluna persistida". Era a limitação que o gate deveria ter
+    // corrigido, congelada como se fosse decisão. O filtro `PENDING` devolvia
+    // linhas com badge `EXPIRED`, e o filtro `EXPIRED` escondia as vencidas não
+    // sincronizadas — justamente o caso que o gate existe para revelar.
+    assert.match(REPO, /isOperationalStatusFilter\(filter\.status\)/)
+    assert.match(REPO, /matchesOperationalStatus\(linha, filtro, agora\)/)
+  })
+
+  it("a query não reimplementa a fórmula de vencimento", () => {
+    assert.match(REPO, /pendingExpiryCandidateWindow\(agora\)/)
+
+    // Só o CORPO de `whereCandidatos` — o recorte por "últimos N dias" também
+    // multiplica por 24h logo abaixo e nada tem a ver com prazo de vencimento.
+    const inicio = REPO.indexOf("function whereCandidatos")
+    const corpo = REPO.slice(inicio, REPO.indexOf("\nasync function", inicio))
+    assert.ok(inicio > 0 && corpo.length > 0, "whereCandidatos não encontrada")
+    assert.ok(
+      !/60 \* 60 \* 1000|3600000|\* 24\b/.test(corpo),
+      "prazo recalculado dentro da query em vez de vir da janela oficial"
+    )
+  })
+
+  it("o recorte operacional NÃO é `take` seguido de filtro", () => {
+    // Filtrar depois de um lote fixo omitiria as linhas válidas e mais antigas
+    // logo após o corte. A coleta é em lotes com cursor.
+    assert.match(REPO, /coletarEmLotes\(\{/)
+    assert.match(REPO, /cursor: \{ id: depoisDe \}, skip: 1/)
+    assert.match(REPO, /ADMIN_REQUESTS_LOTE/)
+    assert.match(REPO, /ADMIN_REQUESTS_MAX_LOTES/)
+  })
+
+  it("a ordem da paginação tem desempate estável", () => {
+    // `createdAt` sozinho não é único: sem o `id`, a virada de cursor poderia
+    // pular ou repetir uma linha.
+    assert.match(REPO, /\{ createdAt: "desc" \},\s*\r?\n\s*\{ id: "desc" \}/)
+  })
+
+  it("count, estado vazio e aviso derivam do resultado final", () => {
+    const PAGINA = ler("app/(admin)/admin/requests/page.tsx")
+    assert.match(PAGINA, /count=\{requests\.length\}/)
+    assert.match(PAGINA, /countPendingSync\(requests\)/)
   })
 })
 

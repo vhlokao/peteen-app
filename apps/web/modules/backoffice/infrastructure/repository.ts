@@ -33,6 +33,13 @@ import type {
   AdminAuditFilter,
 } from "../domain/types"
 import { calculateAllRiskScores } from "@/modules/antifraude/application/calculate-risk-score"
+import {
+  coletarEmLotes,
+  isOperationalStatusFilter,
+  matchesOperationalStatus,
+  pendingExpiryCandidateWindow,
+  type OperationalStatusFilter,
+} from "../domain/request-operational-status"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DASHBOARD
@@ -346,6 +353,135 @@ export async function getAdminProfessionals(): Promise<AdminProfessionalRow[]> {
 // REQUESTS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * FILTRO POR STATUS OPERACIONAL — GATE-14-...-FIX-002
+ *
+ * `PENDING` e `EXPIRED` deixaram de ser lidos da coluna. O que a tela mostra e
+ * o que o filtro seleciona passaram a ser a MESMA pergunta, respondida pela
+ * mesma função.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE NÃO É `take: 300` SEGUIDO DE FILTRO
+ *
+ * O refino em memória só REMOVE linhas. Buscar 300 candidatos e descartar 40
+ * devolveria 260 — escondendo solicitações válidas e MAIS ANTIGAS que existiam
+ * logo depois do corte. Numa tela de investigação, omitir o registro antigo é
+ * exatamente perder o caso que se está procurando.
+ *
+ * Então a busca é em LOTES com cursor: lê, refina, e volta ao banco enquanto
+ * não completou o limite e ainda houver fonte. O `take` deixa de ser o teto do
+ * que pode ser examinado e passa a ser o teto do que é devolvido.
+ */
+
+/** Teto de linhas devolvidas à tela. Era o `take: 300` literal. */
+const ADMIN_REQUESTS_LIMITE = 300
+
+/**
+ * Tamanho do lote na busca por candidatos. Não é o teto da resposta — é quanto
+ * se lê por ida ao banco enquanto o refino em memória descarta falsos positivos.
+ */
+const ADMIN_REQUESTS_LOTE = 300
+
+/**
+ * Teto de idas ao banco. Trava de segurança, não parte do algoritmo: com o
+ * predicado de candidatos sendo quase exato (ver `pendingExpiryCandidateWindow`),
+ * a primeira volta basta em qualquer base realista. Existe para que um erro
+ * futuro no predicado vire lista curta, nunca laço infinito.
+ */
+const ADMIN_REQUESTS_MAX_LOTES = 20
+
+const ADMIN_REQUEST_SELECT = {
+  id:          true,
+  serviceType: true,
+  status:      true,
+  scheduledAt: true,
+  scheduledHasTime: true,
+  startedAt:   true,
+  completedAt: true,
+  createdAt:   true,
+  tutor:       { select: { displayName: true } },
+  professional:{ select: { displayName: true } },
+  pet:         { select: { name: true } },
+} as const
+
+/**
+ * Ordem estável para paginar por cursor.
+ *
+ * `createdAt` sozinho não é único — duas solicitações criadas no mesmo
+ * milissegundo teriam ordem indefinida entre lotes, e uma delas poderia ser
+ * pulada ou repetida na virada do cursor. O `id` desempata.
+ */
+const ADMIN_REQUESTS_ORDER = [
+  { createdAt: "desc" },
+  { id: "desc" },
+] as const
+
+/**
+ * Candidatos que o BANCO consegue pré-selecionar para cada filtro operacional.
+ *
+ * Os dois são superconjuntos deliberados — quem decide de verdade é
+ * `matchesOperationalStatus`, com a regra oficial. Ver a prova caso a caso em
+ * `pendingExpiryCandidateWindow`.
+ */
+function whereCandidatos(
+  filtro: OperationalStatusFilter,
+  agora: Date,
+  desde: Date | undefined
+) {
+  const janela = pendingExpiryCandidateWindow(agora)
+
+  if (filtro === "PENDING") {
+    // Operacionalmente pendente ⟹ ainda não venceu por idade. O contrapositivo
+    // é seguro: passou de 24h da criação, venceu — com ou sem agendamento.
+    return {
+      status: { equals: "PENDING" as never },
+      createdAt: { gt: janela.createdAtAteh, ...(desde ? { gte: desde } : {}) },
+    }
+  }
+
+  // EXPIRED: as já gravadas MAIS as PENDING candidatas a vencidas.
+  return {
+    ...(desde ? { createdAt: { gte: desde } } : {}),
+    OR: [
+      { status: { equals: "EXPIRED" as never } },
+      {
+        status: { equals: "PENDING" as never },
+        OR: [
+          { createdAt: { lte: janela.createdAtAteh } },
+          { scheduledAt: { lte: janela.scheduledAtAteh } },
+        ],
+      },
+    ],
+  }
+}
+
+async function buscarPorStatusOperacional(
+  filtro: OperationalStatusFilter,
+  comuns: Record<string, unknown>,
+  desde: Date | undefined
+) {
+  const agora = new Date()
+  const where = { ...comuns, ...whereCandidatos(filtro, agora, desde) }
+
+  return coletarEmLotes({
+    lerLote: (depoisDe) =>
+      prisma.serviceRequest.findMany({
+        where,
+        select: ADMIN_REQUEST_SELECT,
+        orderBy: [...ADMIN_REQUESTS_ORDER],
+        take: ADMIN_REQUESTS_LOTE,
+        ...(depoisDe ? { cursor: { id: depoisDe }, skip: 1 } : {}),
+      }),
+    // A decisão é do domínio. Esta camada não sabe o que "vencida" significa.
+    aceita: (linha) => matchesOperationalStatus(linha, filtro, agora),
+    idDe: (linha) => linha.id,
+    limite: ADMIN_REQUESTS_LIMITE,
+    tamanhoDoLote: ADMIN_REQUESTS_LOTE,
+    maxLotes: ADMIN_REQUESTS_MAX_LOTES,
+  })
+}
+
 export async function getAdminRequests(
   filter: AdminRequestsFilter = {}
 ): Promise<AdminRequestRow[]> {
@@ -357,31 +493,28 @@ export async function getAdminRequests(
       ? new Date(Date.now() - filter.dias * 24 * 60 * 60 * 1000)
       : undefined
 
-  const requests = await prisma.serviceRequest.findMany({
-    where: {
-      ...(filter.status      ? { status:      { equals: filter.status      as never } } : {}),
-      ...(filter.serviceType ? { serviceType: { equals: filter.serviceType as never } } : {}),
-      ...(desde ? { createdAt: { gte: desde } } : {}),
-      // `startsWith` e não `equals`: a lista exibe os 8 primeiros caracteres do
-      // id, e é esse prefixo que alguém copia de um relato de incidente.
-      ...(filter.requestId ? { id: { startsWith: filter.requestId } } : {}),
-    },
-    select: {
-      id:          true,
-      serviceType: true,
-      status:      true,
-      scheduledAt: true,
-      scheduledHasTime: true,
-      startedAt:   true,
-      completedAt: true,
-      createdAt:   true,
-      tutor:       { select: { displayName: true } },
-      professional:{ select: { displayName: true } },
-      pet:         { select: { name: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 300,
-  })
+  const operacional = isOperationalStatusFilter(filter.status)
+
+  /** Filtros que não dependem do status. Valem para os dois caminhos. */
+  const comuns = {
+    ...(filter.serviceType ? { serviceType: { equals: filter.serviceType as never } } : {}),
+    // `startsWith` e não `equals`: a lista exibe os 8 primeiros caracteres do
+    // id, e é esse prefixo que alguém copia de um relato de incidente.
+    ...(filter.requestId ? { id: { startsWith: filter.requestId } } : {}),
+  }
+
+  const requests = operacional
+    ? await buscarPorStatusOperacional(filter.status as OperationalStatusFilter, comuns, desde)
+    : await prisma.serviceRequest.findMany({
+        where: {
+          ...comuns,
+          ...(filter.status ? { status: { equals: filter.status as never } } : {}),
+          ...(desde ? { createdAt: { gte: desde } } : {}),
+        },
+        select: ADMIN_REQUEST_SELECT,
+        orderBy: [...ADMIN_REQUESTS_ORDER],
+        take: ADMIN_REQUESTS_LIMITE,
+      })
 
   return requests.map((r) => ({
     id:               r.id,

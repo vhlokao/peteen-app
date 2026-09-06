@@ -17,6 +17,7 @@ import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
 import {
+  COLETA_MAX_LINHAS_EXAMINADAS,
   coletarEmLotes,
   isOperationalStatusFilter,
   matchesOperationalStatus,
@@ -221,7 +222,12 @@ function fonteFalsa(itens: Item[], tamanhoDoLote: number) {
   }
 }
 
-async function coletar(itens: Item[], limite: number, lote: number, maxLotes = 20) {
+async function coletar(
+  itens: Item[],
+  limite: number,
+  lote: number,
+  maxLinhasExaminadas?: number
+) {
   const f = fonteFalsa(itens, lote)
   const r = await coletarEmLotes<Item>({
     lerLote: f.lerLote,
@@ -229,7 +235,7 @@ async function coletar(itens: Item[], limite: number, lote: number, maxLotes = 2
     idDe: (i) => i.id,
     limite,
     tamanhoDoLote: lote,
-    maxLotes,
+    ...(maxLinhasExaminadas !== undefined ? { maxLinhasExaminadas } : {}),
   })
   return { r, idas: f.idas }
 }
@@ -286,10 +292,112 @@ describe("coleta em lotes", () => {
     assert.equal(r.length, 300)
   })
 
-  it("respeita o teto de lotes em vez de rodar para sempre", async () => {
-    const itens: Item[] = Array.from({ length: 1000 }, (_, i) => ({ id: `i${i}`, ok: false }))
-    const { r, idas } = await coletar(itens, 300, 10, 5)
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX-003 — o teto de lotes era a mesma omissão, de volta
+//
+// A versão anterior parava no 20º lote e DEVOLVIA o que tinha. Havia até um
+// teste aqui ("respeita o teto de lotes em vez de rodar para sempre") que
+// congelava esse comportamento: ele afirmava que devolver `[]` com fonte cheia
+// era correto. Foi removido — travar uma limitação como se fosse decisão é o
+// erro que este gate já cometeu duas vezes.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("FIX-003 — nenhum teto arbitrário pode encurtar o recorte", () => {
+  it("reproduz o caso do review: 20+ lotes rejeitados e a válida DEPOIS", async () => {
+    // Exatamente o exemplo determinístico: 6.000 candidatos que o domínio
+    // rejeita, e a linha 6.001 ainda válida. Antes: `[]`. Agora: encontrada.
+    const itens: Item[] = [
+      ...Array.from({ length: 6000 }, (_, i) => ({ id: `rej${i}`, ok: false })),
+      { id: "linha-6001", ok: true },
+    ]
+    const { r, idas } = await coletar(itens, 300, 300)
+    assert.deepEqual(r.map((i) => i.id), ["linha-6001"])
+    assert.ok(idas > 20, `precisou passar do 20º lote: ${idas}`)
+  })
+
+  it("mais de 20 lotes com a fonte esgotando depois continua correto", async () => {
+    // 25 lotes cheios de rejeitados, fonte acaba, resultado vazio LEGÍTIMO.
+    const itens: Item[] = Array.from({ length: 7500 }, (_, i) => ({ id: `r${i}`, ok: false }))
+    const { r, idas } = await coletar(itens, 300, 300)
     assert.deepEqual(r, [])
-    assert.equal(idas, 5)
+    assert.ok(idas >= 25, `deveria ter varrido a fonte inteira: ${idas}`)
+  })
+
+  it("aceitas espalhadas muito além do antigo teto são todas encontradas", async () => {
+    const itens: Item[] = Array.from({ length: 9000 }, (_, i) => ({
+      id: `i${i}`,
+      ok: i % 1000 === 999,
+    }))
+    const { r } = await coletar(itens, 300, 300)
+    assert.equal(r.length, 9, "uma aceita a cada 1000, em 9000 linhas")
+  })
+
+  it("o limite de resultados continua sendo respeitado além do antigo teto", async () => {
+    const itens: Item[] = Array.from({ length: 10000 }, (_, i) => ({ id: `i${i}`, ok: i >= 6500 }))
+    const { r } = await coletar(itens, 300, 300)
+    assert.equal(r.length, 300)
+    assert.equal(r[0]!.id, "i6500")
+  })
+})
+
+describe("FIX-003 — anomalia LANÇA, nunca devolve parcial", () => {
+  it("cursor que não avança falha em vez de loopar ou devolver parcial", async () => {
+    // Fonte defeituosa: sempre o mesmo lote cheio, cursor nunca progride.
+    const lote: Item[] = Array.from({ length: 10 }, (_, i) => ({ id: `f${i}`, ok: false }))
+    await assert.rejects(
+      coletarEmLotes<Item>({
+        lerLote: async () => lote,
+        aceita: (i) => i.ok,
+        idDe: (i) => i.id,
+        limite: 300,
+        tamanhoDoLote: 10,
+      }),
+      (err: Error) => {
+        assert.equal(err.name, "ColetaEmLotesError")
+        assert.match(err.message, /cursor não avançou/i)
+        return true
+      }
+    )
+  })
+
+  it("cursor travado NÃO devolve as aceitas já coletadas — parcial é mentira", async () => {
+    // A fonte devolve uma linha aceita e depois trava. Devolver ["boa"] faria a
+    // tela afirmar um conjunto completo que não é.
+    const lote: Item[] = [{ id: "boa", ok: true }, { id: "trava", ok: false }]
+    await assert.rejects(
+      coletarEmLotes<Item>({
+        lerLote: async () => lote,
+        aceita: (i) => i.ok,
+        idDe: (i) => i.id,
+        limite: 300,
+        tamanhoDoLote: 2,
+      }),
+      { name: "ColetaEmLotesError" }
+    )
+  })
+
+  it("varredura absurda falha em vez de devolver recorte curto", async () => {
+    const itens: Item[] = Array.from({ length: 5000 }, (_, i) => ({ id: `i${i}`, ok: false }))
+    await assert.rejects(coletar(itens, 300, 100, 500), (err: Error) => {
+      assert.equal(err.name, "ColetaEmLotesError")
+      assert.match(err.message, /varredura excedeu/i)
+      return true
+    })
+  })
+
+  it("o teto de varredura é alto o bastante para não estorvar o uso real", async () => {
+    // A tabela inteira do piloto cabe muitas vezes aqui.
+    assert.ok(
+      COLETA_MAX_LINHAS_EXAMINADAS >= 100_000,
+      `teto baixo demais: ${COLETA_MAX_LINHAS_EXAMINADAS}`
+    )
+  })
+
+  it("uma fonte saudável e grande NÃO dispara nenhuma anomalia", async () => {
+    const itens: Item[] = Array.from({ length: 20000 }, (_, i) => ({ id: `i${i}`, ok: false }))
+    const { r } = await coletar(itens, 300, 300)
+    assert.deepEqual(r, [])
   })
 })

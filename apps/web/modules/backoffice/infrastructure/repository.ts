@@ -34,6 +34,7 @@ import type {
 } from "../domain/types"
 import { calculateAllRiskScores } from "@/modules/antifraude/application/calculate-risk-score"
 import {
+  COLETA_MAX_LINHAS_EXAMINADAS,
   coletarEmLotes,
   isOperationalStatusFilter,
   matchesOperationalStatus,
@@ -384,12 +385,20 @@ const ADMIN_REQUESTS_LIMITE = 300
 const ADMIN_REQUESTS_LOTE = 300
 
 /**
- * Teto de idas ao banco. Trava de segurança, não parte do algoritmo: com o
- * predicado de candidatos sendo quase exato (ver `pendingExpiryCandidateWindow`),
- * a primeira volta basta em qualquer base realista. Existe para que um erro
- * futuro no predicado vire lista curta, nunca laço infinito.
+ * FIX-003 — aqui existia `ADMIN_REQUESTS_MAX_LOTES = 20`, e o comentário dizia
+ * que ele faria "um erro futuro virar lista curta, nunca laço infinito".
+ *
+ * "Lista curta" era o problema, não a mitigação: 20 lotes de 300 candidatos
+ * todos rejeitados pelo domínio faziam a linha 6.001 — válida — desaparecer, e
+ * a tela respondia como se aquele fosse o conjunto completo.
+ *
+ * O teto agora é de linhas EXAMINADAS e serve só para detectar anomalia: ao ser
+ * atingido, `coletarEmLotes` LANÇA, e o erro sobe para
+ * `app/(admin)/admin/error.tsx`. A terminação normal não depende dele — vem do
+ * limite de resultados ou do esgotamento da fonte, com progresso provado pelo
+ * cursor.
  */
-const ADMIN_REQUESTS_MAX_LOTES = 20
+const ADMIN_REQUESTS_MAX_EXAMINADAS = COLETA_MAX_LINHAS_EXAMINADAS
 
 const ADMIN_REQUEST_SELECT = {
   id:          true,
@@ -478,7 +487,7 @@ async function buscarPorStatusOperacional(
     idDe: (linha) => linha.id,
     limite: ADMIN_REQUESTS_LIMITE,
     tamanhoDoLote: ADMIN_REQUESTS_LOTE,
-    maxLotes: ADMIN_REQUESTS_MAX_LOTES,
+    maxLinhasExaminadas: ADMIN_REQUESTS_MAX_EXAMINADAS,
   })
 }
 

@@ -207,7 +207,56 @@ export function pendingExpiryCandidateWindow(now: Date = new Date()): {
  *
  * Genérica e pura (o efeito fica todo em `lerLote`) para que a propriedade que
  * importa — "não omite" — seja testável com uma fonte falsa, sem banco.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * FIX-003 — O TETO DE LOTES ERA A MESMA MENTIRA, DE VOLTA
+ *
+ * A primeira versão parava no 20º lote e devolvia o que tinha coletado. Com
+ * lote de 300, bastavam 6.000 candidatos rejeitados pelo domínio em sequência
+ * para a linha 6.001 — válida — sumir, e a função responder como se aquele
+ * fosse o conjunto completo. Exatamente a classe de omissão que esta função
+ * existe para eliminar, reintroduzida na trava de segurança. Havia até um teste
+ * congelando o comportamento.
+ *
+ * Agora só DUAS condições encerram normalmente:
+ *   1. o limite de resultados foi atingido;
+ *   2. a fonte acabou (lote vazio, ou menor que o pedido).
+ *
+ * Nenhuma outra saída devolve lista. Qualquer anomalia LANÇA — porque numa tela
+ * de investigação, um recorte silenciosamente parcial é pior que um erro: o
+ * erro manda conferir, o parcial manda concluir.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * TERMINAÇÃO SEM TETO ARBITRÁRIO
+ *
+ * O laço termina porque o cursor PROVA progresso: cada volta exige que o último
+ * id do lote seja diferente do cursor que o pediu. Com ordem estável e fonte
+ * finita, isso garante avanço monotônico até o esgotamento.
+ *
+ * As duas anomalias que quebrariam essa garantia são detectadas e lançadas em
+ * vez de viradas em resultado:
+ *   - cursor que não avança (fonte repetindo o mesmo lote) → laço infinito;
+ *   - varredura absurda de linhas → sinal de que a ordem ou o cursor quebrou.
  */
+
+/** Anomalia de coleta. Nunca vira lista parcial — sobe para a fronteira de erro. */
+export class ColetaEmLotesError extends Error {
+  constructor(mensagem: string) {
+    super(mensagem)
+    this.name = "ColetaEmLotesError"
+  }
+}
+
+/**
+ * Teto de linhas EXAMINADAS (não de lotes, não de resultados).
+ *
+ * Não é condição de término: é detector de anomalia. Nenhuma varredura legítima
+ * do backoffice chega perto — a tabela inteira de solicitações do piloto cabe
+ * milhares de vezes aqui. Chegar a este número significa que o cursor ou a
+ * ordem quebraram, e a resposta certa é falhar ruidosamente.
+ */
+export const COLETA_MAX_LINHAS_EXAMINADAS = 100_000
+
 export async function coletarEmLotes<T>(params: {
   /** Lê o próximo lote depois do cursor. `undefined` no primeiro. */
   lerLote: (depoisDe: string | undefined) => Promise<T[]>
@@ -217,28 +266,57 @@ export async function coletarEmLotes<T>(params: {
   idDe: (item: T) => string
   limite: number
   tamanhoDoLote: number
-  /** Trava de segurança contra laço infinito, não parte do algoritmo. */
-  maxLotes: number
+  /** Detector de anomalia. Ao ser atingido, LANÇA — nunca devolve parcial. */
+  maxLinhasExaminadas?: number
 }): Promise<T[]> {
-  const { lerLote, aceita, idDe, limite, tamanhoDoLote, maxLotes } = params
+  const {
+    lerLote,
+    aceita,
+    idDe,
+    limite,
+    tamanhoDoLote,
+    maxLinhasExaminadas = COLETA_MAX_LINHAS_EXAMINADAS,
+  } = params
+
   const aceitas: T[] = []
   let cursor: string | undefined
+  let examinadas = 0
 
-  for (let volta = 0; volta < maxLotes; volta++) {
+  for (;;) {
     const lote = await lerLote(cursor)
-    if (lote.length === 0) break
+
+    // ── Término normal 1: a fonte acabou ────────────────────────────────────
+    if (lote.length === 0) return aceitas
+
+    const ultimoId = idDe(lote[lote.length - 1]!)
+
+    // ── Anomalia: o cursor não avançou ──────────────────────────────────────
+    // A fonte devolveu um lote que termina onde o anterior terminou. Continuar
+    // seria reler o mesmo trecho para sempre; devolver o parcial seria mentir.
+    if (cursor !== undefined && ultimoId === cursor) {
+      throw new ColetaEmLotesError(
+        "cursor não avançou entre lotes — ordem instável ou fonte repetindo o mesmo trecho"
+      )
+    }
 
     for (const item of lote) {
       if (aceita(item)) aceitas.push(item)
+      // ── Término normal 2: o limite de resultados foi atingido ────────────
       if (aceitas.length === limite) return aceitas
     }
 
-    // Lote menor que o pedido só acontece quando a fonte acabou.
-    if (lote.length < tamanhoDoLote) break
-    cursor = idDe(lote[lote.length - 1]!)
-  }
+    // ── Término normal 1 (variante): lote menor que o pedido = fonte acabou ─
+    if (lote.length < tamanhoDoLote) return aceitas
 
-  return aceitas
+    examinadas += lote.length
+    if (examinadas >= maxLinhasExaminadas) {
+      throw new ColetaEmLotesError(
+        `varredura excedeu ${maxLinhasExaminadas} linhas sem esgotar a fonte — cursor ou ordem provavelmente quebrados`
+      )
+    }
+
+    cursor = ultimoId
+  }
 }
 
 /**

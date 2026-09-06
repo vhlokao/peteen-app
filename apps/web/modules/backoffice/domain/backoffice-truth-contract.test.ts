@@ -186,7 +186,26 @@ describe("EXPIRED — o Backoffice mostra o estado operacional", () => {
     assert.match(REPO, /coletarEmLotes\(\{/)
     assert.match(REPO, /cursor: \{ id: depoisDe \}, skip: 1/)
     assert.match(REPO, /ADMIN_REQUESTS_LOTE/)
-    assert.match(REPO, /ADMIN_REQUESTS_MAX_LOTES/)
+  })
+
+  it("FIX-003 — não existe teto de LOTES capaz de encurtar o recorte", () => {
+    // `ADMIN_REQUESTS_MAX_LOTES = 20` fazia a coleta parar no 20º lote e
+    // devolver o que tinha: com 6.000 candidatos rejeitados em sequência, a
+    // linha 6.001 válida sumia e a tela respondia como se o conjunto estivesse
+    // completo. O teto que restou é de linhas EXAMINADAS e LANÇA.
+    assert.ok(!/ADMIN_REQUESTS_MAX_LOTES/.test(REPO), "o teto de lotes voltou")
+    assert.ok(!/maxLotes/.test(REPO), "`maxLotes` voltou ao repositório")
+    assert.match(REPO, /maxLinhasExaminadas: ADMIN_REQUESTS_MAX_EXAMINADAS/)
+  })
+
+  it("a anomalia de coleta falha ruidosamente, sem devolver parcial", () => {
+    const DOMINIO = ler("modules/backoffice/domain/request-operational-status.ts")
+    assert.match(DOMINIO, /class ColetaEmLotesError/)
+    // As duas anomalias lançam.
+    assert.match(DOMINIO, /throw new ColetaEmLotesError\([\s\S]{0,160}cursor não avançou/)
+    assert.match(DOMINIO, /throw new ColetaEmLotesError\([\s\S]{0,160}varredura excedeu/)
+    // E o progresso é provado pelo cursor, não presumido.
+    assert.match(DOMINIO, /ultimoId === cursor/)
   })
 
   it("a ordem da paginação tem desempate estável", () => {

@@ -36,8 +36,8 @@ a topologia não estava escrita em lugar nenhum.
 
 | | PRODUÇÃO | DEMO |
 |---|---|---|
-| Aplicação | `www.peteen.com.br` | **a criar** — ver "Estado" |
-| Projeto Vercel | o atual, único hoje | dedicado, separado |
+| Aplicação | `www.peteen.com.br` | `peteen-demo.vercel.app` |
+| Projeto Vercel | `peteen-app`, ligado ao Git | `peteen-demo`, **sem Git** (deploy manual) |
 | Supabase (ref pública) | `aufnokufvhhtbrmtlclw` | o projeto que contém o dataset demo (`hxzlrfyel…`) |
 | Banco | o do projeto de produção | o do projeto demo |
 | `PETEEN_ENV` | **ausente** (= `production`, compatibilidade) | `demo` |
@@ -142,28 +142,66 @@ o script sequer recebe cliente capaz de escrever
 `runtimeEnvironment: "demo"` e o isolamento de push estão implementados e
 testados.
 
-**Infraestrutura: PENDENTE.** O deploy DEMO não foi criado — o executor do gate
-não tem acesso autenticado à Vercel (CLI instalada, sem sessão e sem token) e
-não deve autenticar-se como o dono da conta.
+**Infraestrutura: NO AR.** `peteen-demo` existe, com as 12 variáveis aplicadas
+**apenas ao target `production`** — deliberadamente nenhuma em `preview`, para
+não repetir aqui o compartilhamento de nomes que `peteen-app` tem entre os dois
+targets.
 
-O que falta, para quem tiver acesso:
+Provas colhidas no deploy:
 
-1. criar projeto Vercel `peteen-demo` no mesmo repositório/branch `main`, com o
-   mesmo Root Directory (`apps/web`) e região (`gru1`);
-2. definir as envs do DEMO — **todas com origem no projeto demo**, nenhuma
-   copiada de produção:
-   `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SUPABASE_URL`,
-   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
-   `DATABASE_URL`, `DIRECT_URL`, `ONBOARDING_SIGNING_SECRET`, `CRON_SECRET`,
-   `NEXT_PUBLIC_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`;
-3. **`PETEEN_ENV=demo`** — sem isso o DEMO se apresenta como produção;
-4. gerar um **par VAPID novo** para o DEMO (`web-push generate-vapid-keys`);
-5. adicionar a URL do DEMO às Redirect URLs do Supabase **do projeto demo**,
-   para Magic Link e OAuth;
-6. decidir sobre o cron (ver abaixo);
-7. rodar o smoke público e conferir, no bundle do DEMO, que
-   `NEXT_PUBLIC_SUPABASE_URL` aponta para a ref do DEMO e **não** para
-   `aufnokufvhhtbrmtlclw`.
+| O que | Como foi provado |
+|---|---|
+| Ambiente resolvido | `GET /api/environment` → `{"environment":"demo"}` |
+| Supabase isolado | bundle público do DEMO contém só `hxzlrfyel…`; a ref de PROD **não aparece** |
+| Região efetiva | `X-Vercel-Id: gru1::gru1` |
+| Credenciais são do DEMO | ref no host (URL/DB) e autenticação contra o projeto DEMO (chaves `sb_*`) |
+| VAPID | par novo, exclusivo — distinto do de PROD e do de desenvolvimento |
+
+**O que ainda falta, e depende de acesso ao Supabase:**
+
+1. adicionar `https://peteen-demo.vercel.app` às Redirect URLs do Supabase **do
+   projeto demo** — sem isso Magic Link e OAuth não completam;
+2. decidir sobre conectar o projeto ao Git (ver abaixo);
+3. QA físico de push com aparelho real.
+
+### Git — decisão pendente, de propósito
+O `peteen-demo` está **desconectado** do repositório. Deploy é manual:
+
+```
+VERCEL_ORG_ID=<team> VERCEL_PROJECT_ID=<projeto> npx vercel deploy --prod
+```
+
+Conectar ao `main` faria cada push publicar em PROD **e** DEMO. É o que mantém o
+DEMO honesto como espelho de produção, e por isso é o destino provável — mas
+muda o pipeline de produção, então exige decisão humana explícita, não é efeito
+colateral de um gate.
+
+### Região — dois campos diferentes, não confundir
+
+Há **duas** respostas para "em que região isto roda", e elas discordam de
+propósito:
+
+| Campo | Onde vive | Valor |
+|---|---|---|
+| Região padrão do projeto | configuração do projeto na Vercel (API: `serverlessFunctionRegion`) | `iad1` |
+| Região das funções do app | `apps/web/vercel.json` → `regions` | `gru1` |
+| **Região efetiva em runtime** | header `X-Vercel-Id` da resposta | **`gru1`**, em PROD e DEMO |
+
+`vercel.json` é versionado e viaja com o deploy, então vale para **qualquer**
+projeto que use este repositório — PROD e DEMO recebem `gru1` pelo mesmo
+arquivo. A região padrão do projeto é o que se aplica na ausência dessa
+configuração, e aqui ela não se aplica.
+
+Evidência, medida nos dois deploys:
+
+```
+peteen-demo.vercel.app   X-Vercel-Id: gru1::gru1::…
+www.peteen.com.br        X-Vercel-Id: gru1::gru1::…
+```
+
+**A efetiva só se afirma com evidência do deployment real.** Um relatório
+anterior deste gate declarou `iad1` como "a região" lendo só o campo da API —
+era metade da verdade, e a metade errada.
 
 ### Cron
 `vercel.json` está no repositório e vale para **qualquer** projeto Vercel que o

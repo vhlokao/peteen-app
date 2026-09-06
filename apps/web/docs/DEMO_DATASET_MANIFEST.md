@@ -6,6 +6,42 @@ misturar os dois. Atualizado a cada lote do Demo Data Cleanup. Nenhuma
 credencial, telefone pessoal ou e-mail pessoal desnecessário está listado
 aqui.
 
+## ONDE ESTE DATASET VIVE (verificado em GATE-16 — 06/09/2026)
+
+Este manifesto descrevia **o quê**, mas nunca **onde** — e essa lacuna já
+produziu erro real: relatórios de auditoria de gates anteriores apresentaram
+leituras deste banco como se fossem de PRODUÇÃO.
+
+O que a auditoria do GATE-16 verificou:
+
+- existem **dois projetos Supabase distintos**. Produção usa um deles — dá para
+  confirmar sem credencial nenhuma, porque `NEXT_PUBLIC_SUPABASE_URL` é público
+  por construção e aparece no bundle servido por `www.peteen.com.br`;
+- **este dataset demo vive no OUTRO projeto**, o mesmo apontado por
+  `.env.demo-rollback.local`. Todas as entidades listadas abaixo foram
+  encontradas nele;
+- **não existe deploy de DEMO.** Os 100 deployments registrados são
+  `Production`, e nenhum host de demo/staging resolve. O dataset só é alcançável
+  por execução local apontando `.env.local` para esse projeto.
+
+> **Antes de rodar qualquer script que escreva, confirme o destino.** Quem
+> decide em qual banco você escreve é o `DATABASE_URL` do seu `.env.local` — não
+> o nome do script, não `NODE_ENV`. Os scripts operacionais agora imprimem o
+> destino e recusam escrever sem `--target=<ref>` correspondente
+> (`scripts/lib/target-db-guard.mjs`). Rode com `--dry-run` primeiro: é ele que
+> mostra para onde você está apontando.
+
+## Drift observado (GATE-16, leitura somente)
+
+- **`cmr5occmz000154sczrah1uzw` não é mais `PENDING` — está `EXPIRED`.** É
+  drift esperado, não corrupção: o roteiro previa 1 PENDING, e a expiração
+  automática (cron diário + sincronização lazy — ver `request-expiry.ts`) alcança
+  qualquer PENDING antiga. **Consequência prática: o roteiro oficial de demo não
+  tem mais um caso PENDING vivo.** Recriar um exige escrita, que o GATE-16 não
+  autorizou — fica como decisão de quem for preparar a próxima demonstração.
+- As demais entidades da tabela abaixo (profissional, parceiro, pets, as outras
+  4 solicitações, disputa conhecida) foram encontradas exatamente como descritas.
+
 ## Contas
 
 | Papel | Conta | Observação |

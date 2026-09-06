@@ -29,9 +29,21 @@ import { createClient } from "@supabase/supabase-js";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { exigirDestinoConfirmado } from "./lib/target-db-guard.mjs";
 
-if (process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production") {
-  console.error("Bloqueado: este script não deve rodar em ambiente de produção.");
+// GATE-16: o guard anterior checava NODE_ENV/VERCEL_ENV, que são undefined em
+// execução local — ou seja, nunca disparava justamente onde este script roda.
+// O que importa é o BANCO de destino. Ver scripts/lib/target-db-guard.mjs.
+try {
+  const { alvo, dryRun } = exigirDestinoConfirmado({
+    databaseUrl: process.env.DATABASE_URL,
+    argv: process.argv,
+  });
+  console.info(
+    `[destino] ${alvo.host} (ref: ${alvo.ref})${dryRun ? " — DRY RUN, nada será escrito" : " — CONFIRMADO para escrita"}`
+  );
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
   process.exit(1);
 }
 

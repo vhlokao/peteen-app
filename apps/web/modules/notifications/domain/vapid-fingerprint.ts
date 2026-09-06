@@ -94,8 +94,25 @@ export function vapidFingerprintFromPublicKey(publicKeyBase64: string): string {
 // Elegibilidade — a regra que o dispatcher aplica
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Estágio do runtime. Metade da identidade — a outra é o fingerprint. */
-export type PushRuntimeEnvironment = "production" | "preview" | "development"
+/**
+ * Estágio do runtime. Metade da identidade — a outra é o fingerprint.
+ *
+ * GATE-16-...-003 acrescentou `demo`. A coluna `runtimeEnvironment` é
+ * `VARCHAR(16)` no schema, então o valor novo cabe **sem migration** — e é por
+ * isso que a identidade de ambiente foi resolvida por string desde o começo.
+ *
+ * `demo` não é um estágio da plataforma: o deploy de produção do projeto DEMO
+ * também recebe `VERCEL_ENV=production`. É a identidade de NEGÓCIO, resolvida
+ * por `PETEEN_ENV` — ver `lib/env/peteen-environment.ts`. Sem essa distinção,
+ * o DEMO se apresentaria como produção e ficaria elegível a entregar push em
+ * subscriptions legadas de usuários reais.
+ *
+ * A regra de elegibilidade não precisou mudar para acomodá-lo: ela compara os
+ * dois ambientes por igualdade, então `demo` × `production` já diverge nos dois
+ * sentidos, e o caminho de legado (`legacy_producao`) continua exigindo
+ * `production` literal — DEMO nunca herda a permissão de tentar.
+ */
+export type PushRuntimeEnvironment = "production" | "demo" | "preview" | "development"
 
 /**
  * Identidade completa do ambiente que está criando ou consumindo subscriptions.

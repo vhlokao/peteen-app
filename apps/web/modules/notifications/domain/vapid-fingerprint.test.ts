@@ -341,3 +341,113 @@ describe("robustez — nenhuma combinação lança e nada relaxa", () => {
     }
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GATE-16-DEMO-ENV-FOUNDATION-003 — DEMO é um ambiente próprio
+//
+// O deploy de produção do projeto Vercel DEMO também recebe
+// `VERCEL_ENV=production`. Sem `demo` como valor de primeira classe, o sender
+// do DEMO se apresentaria como produção e ficaria elegível pelo caminho de
+// legado a tentar entregar em subscriptions de usuários reais.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("GATE-16 — isolamento DEMO × PRODUCTION no push", () => {
+  const FP_A = "a".repeat(64)
+  const FP_B = "b".repeat(64)
+
+  it("subscription de DEMO NÃO é elegível para sender de produção", () => {
+    const r = avaliarElegibilidade({
+      subscriptionFingerprint: FP_A,
+      subscriptionEnvironment: "demo",
+      senderFingerprint: FP_A,
+      senderEnvironment: "production",
+    })
+    assert.equal(r.eligible, false)
+    assert.equal(r.motivo, "environment_divergente")
+  })
+
+  it("subscription de produção NÃO é elegível para sender de DEMO", () => {
+    const r = avaliarElegibilidade({
+      subscriptionFingerprint: FP_A,
+      subscriptionEnvironment: "production",
+      senderFingerprint: FP_A,
+      senderEnvironment: "demo",
+    })
+    assert.equal(r.eligible, false)
+    assert.equal(r.motivo, "environment_divergente")
+  })
+
+  it("a divergência vale MESMO com a mesma chave VAPID", () => {
+    // Cenário real se alguém reaproveitasse o par de PROD no DEMO: o
+    // fingerprint bateria, e só o eixo de ambiente impediria o desastre.
+    // (Reaproveitar VAPID é proibido — este teste é a segunda barreira.)
+    for (const [sub, sender] of [
+      ["demo", "production"],
+      ["production", "demo"],
+    ] as const) {
+      const r = avaliarElegibilidade({
+        subscriptionFingerprint: FP_A,
+        subscriptionEnvironment: sub,
+        senderFingerprint: FP_A,
+        senderEnvironment: sender,
+      })
+      assert.equal(r.eligible, false, `${sub} × ${sender}`)
+    }
+  })
+
+  it("DEMO com DEMO e identidade completa é elegível", () => {
+    const r = avaliarElegibilidade({
+      subscriptionFingerprint: FP_B,
+      subscriptionEnvironment: "demo",
+      senderFingerprint: FP_B,
+      senderEnvironment: "demo",
+    })
+    assert.equal(r.eligible, true)
+    assert.equal(r.motivo, "identidade_compativel")
+  })
+
+  it("LEGADO em DEMO NÃO é tentado — a permissão de descobrir é só de produção", () => {
+    // `legacy_producao` existe porque só produção pode arriscar uma tentativa
+    // para provar pertencimento. DEMO não herda isso: uma linha sem identidade
+    // pode ser de um usuário real, e o DEMO não tem o direito de acordá-lo.
+    for (const parcial of [
+      { subscriptionFingerprint: null, subscriptionEnvironment: null },
+      { subscriptionFingerprint: FP_A, subscriptionEnvironment: null },
+      { subscriptionFingerprint: null, subscriptionEnvironment: "demo" },
+    ]) {
+      const r = avaliarElegibilidade({
+        ...parcial,
+        senderFingerprint: FP_A,
+        senderEnvironment: "demo",
+      })
+      assert.equal(r.eligible, false, JSON.stringify(parcial))
+      assert.equal(r.motivo, "legacy_fora_de_producao", JSON.stringify(parcial))
+    }
+  })
+
+  it("produção continua podendo tentar o legado — comportamento preservado", () => {
+    const r = avaliarElegibilidade({
+      subscriptionFingerprint: null,
+      subscriptionEnvironment: null,
+      senderFingerprint: FP_A,
+      senderEnvironment: "production",
+    })
+    assert.equal(r.eligible, true)
+    assert.equal(r.motivo, "legacy_producao")
+  })
+
+  it("nenhum par de ambientes DIFERENTES é elegível, em nenhum sentido", () => {
+    const ambientes = ["production", "demo", "preview", "development"] as const
+    for (const sub of ambientes) {
+      for (const sender of ambientes) {
+        const r = avaliarElegibilidade({
+          subscriptionFingerprint: FP_A,
+          subscriptionEnvironment: sub,
+          senderFingerprint: FP_A,
+          senderEnvironment: sender,
+        })
+        assert.equal(r.eligible, sub === sender, `${sub} × ${sender}`)
+      }
+    }
+  })
+})

@@ -153,11 +153,55 @@ describe("ERRO NÃO É ZERO no Growth", () => {
     assert.ok(!/\}\s*catch\s*\{/.test(REPO_GROWTH), "catch sem tratamento voltou")
   })
 
-  it("o guard que PERMANECE é sobre o Prisma Client, não sobre dados", () => {
-    // `hasGrowthDelegates` responde "este client foi gerado sem os modelos
-    // territoriais" — condição de build, comunicada em separado pela UI.
-    assert.match(REPO_GROWTH, /function hasGrowthDelegates\(\)/)
-    assert.match(REPO_GROWTH, /if \(!hasGrowthDelegates\(\)\)/)
+  it("FIX-002 — ausência de delegate também não pode virar zero", () => {
+    /**
+     * Este teste afirmava o contrário: que `hasGrowthDelegates()` era um
+     * "guard legítimo" porque a UI comunicaria a indisponibilidade em separado.
+     * Eu nunca verifiquei essa comunicação — ela não existia — e congelei a
+     * suposição como contrato. Delegate ausente devolvia `0/0/0` e `[]`, e a
+     * página desenhava isso como território.
+     *
+     * A regra agora é uma só, e vale para as duas origens (banco fora do ar e
+     * client sem os modelos): falha técnica nunca vira número de negócio.
+     */
+    assert.ok(
+      !/function hasGrowthDelegates\(\)/.test(REPO_GROWTH),
+      "o guard que convertia ausência de delegate em zero voltou"
+    )
+    assert.match(REPO_GROWTH, /function exigirRegionDelegate\(\)/)
+    assert.match(REPO_GROWTH, /function exigirNeighborhoodDelegate\(\)/)
+    assert.match(REPO_GROWTH, /exigirDelegate\(getRegionDelegate\(\), "Region"\)/)
+    assert.match(REPO_GROWTH, /exigirDelegate\(getNeighborhoodDelegate\(\), "Neighborhood"\)/)
+  })
+
+  it("FIX-002 — nenhuma leitura do Growth converte delegate ausente em 0 ou []", () => {
+    // As sete leituras que a missão lista, e qualquer outra que apareça depois:
+    // o padrão `if (!xDelegate) return []` não pode voltar.
+    assert.ok(
+      !/if \(!\w*[Dd]elegate\)\s*return\s*(\[\]|0|\{)/.test(REPO_GROWTH),
+      "voltou a converter delegate ausente em vazio/zero"
+    )
+    assert.ok(
+      !/[Dd]elegate\(\)\?\./.test(REPO_GROWTH),
+      "optional chaining em delegate deixa a ausência virar undefined em silêncio"
+    )
+  })
+
+  it("FIX-002 — o vazio LEGÍTIMO (delegate presente, base vazia) continua existindo", () => {
+    // Sem isto o fix teria trocado uma mentira por outra: não poder responder
+    // "não há regiões cadastradas" quando de fato não há.
+    assert.match(REPO_GROWTH, /if \(regions\.length === 0\) return \[\]/)
+  })
+
+  it("FIX-002 — Discovery público não é derrubado por delegate de admin", () => {
+    // `regionName` é opcional e não entra em nenhuma mensagem; a página consome
+    // só `localContext.messages`. Exigir o delegate aqui quebraria a busca do
+    // tutor por causa de um modelo que só o admin usa.
+    const inicio = REPO_GROWTH.indexOf("export async function getLocalDiscoveryContext")
+    const corpo = REPO_GROWTH.slice(inicio, REPO_GROWTH.indexOf("\nasync function", inicio))
+    assert.ok(inicio > 0 && corpo.length > 0)
+    assert.ok(!/exigirRegionDelegate|exigirNeighborhoodDelegate/.test(corpo))
+    assert.match(corpo, /const regionDelegate = getRegionDelegate\(\)/)
   })
 })
 

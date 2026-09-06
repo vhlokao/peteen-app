@@ -28,15 +28,15 @@ import type {
   UpdateNeighborhoodInput,
 } from "../domain/types"
 import { RECURRENCE_TRUSTED_THRESHOLD } from "../domain/constants"
+import {
+  exigirDelegate,
+  GROWTH_DELEGATE_UNAVAILABLE,
+} from "../domain/delegate-availability"
 import { slugifyTerritory } from "../domain/scoring"
 
-const GROWTH_DELEGATE_UNAVAILABLE =
-  "Módulo Growth Engine indisponível no Prisma Client. Execute `npx prisma generate` e reinicie o servidor (npm run dev)."
-
-function hasGrowthDelegates(): boolean {
-  const record = prisma as unknown as Record<string, unknown>
-  return record.region !== undefined && record.neighborhood !== undefined
-}
+// FIX-002: `hasGrowthDelegates()` foi removida. Ela existia só para converter
+// ausência de delegate em `0/[]` — que é exatamente o que este fix proíbe. Sem
+// nenhum chamador, sobraria como convite a repetir o padrão.
 
 function getRegionDelegate() {
   return (prisma as unknown as { region?: typeof prisma.region }).region ?? null
@@ -44,6 +44,39 @@ function getRegionDelegate() {
 
 function getNeighborhoodDelegate() {
   return (prisma as unknown as { neighborhood?: typeof prisma.neighborhood }).neighborhood ?? null
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * AUSÊNCIA DE DELEGATE NÃO É ZERO — GATE-15-...-FIX-002
+ *
+ * As ESCRITAS deste módulo (createRegion, updateRegion, createNeighborhood,
+ * updateNeighborhood) já lançavam `GROWTH_DELEGATE_UNAVAILABLE` quando o Prisma
+ * Client não expõe os modelos territoriais. As LEITURAS devolviam `0` e `[]`.
+ *
+ * Essa assimetria era o próprio diagnóstico: alguém já tinha decidido que
+ * lançar era o certo, e aplicou só de um lado. Do outro, `/admin/growth`
+ * pintava "Regiões cadastradas: 0", "Bairros cadastrados: 0" e "Nenhuma região
+ * cadastrada" — com a mesma cara de fato de negócio que os catches de banco
+ * removidos no GATE-15-001 produziam.
+ *
+ * A origem é diferente (client gerado sem os modelos, não banco fora do ar),
+ * mas para quem lê a tela a mentira é idêntica: uma falha técnica virou
+ * afirmação sobre o território.
+ *
+ * Agora as leituras do BACKOFFICE exigem o delegate e lançam. O erro sobe para
+ * `app/(admin)/admin/error.tsx` — o MESMO caminho da falha de banco, sem estado
+ * paralelo, e com a mensagem que já diz o que fazer (`prisma generate`).
+ *
+ * O que continua devolvendo vazio, e é legítimo: delegate PRESENTE e nenhuma
+ * linha cadastrada. Esse zero é um fato, e os testes separam os dois casos.
+ */
+function exigirRegionDelegate() {
+  return exigirDelegate(getRegionDelegate(), "Region")
+}
+
+function exigirNeighborhoodDelegate() {
+  return exigirDelegate(getNeighborhoodDelegate(), "Neighborhood")
 }
 
 // ── Overview ──────────────────────────────────────────────────────────────────
@@ -61,18 +94,17 @@ function getNeighborhoodDelegate() {
  * A exceção agora sobe para `app/(admin)/admin/error.tsx`, que separa "falhou
  * ao carregar" de "não há dados" e oferece tentar de novo.
  *
- * O guard que PERMANECE é outro e é legítimo: `hasGrowthDelegates()` responde
- * "este Prisma Client foi gerado sem os modelos territoriais" — condição de
- * build, não de dados, e que a UI já comunica em separado.
+ * FIX-002 — o GATE-15-001 defendeu aqui um segundo guard, dizendo que
+ * `hasGrowthDelegates()` era legítimo porque "a UI já comunica isso em
+ * separado". Ela não comunicava: delegate ausente devolvia `0/0/0` e a página
+ * desenhava esses zeros como território. A afirmação não tinha sido verificada,
+ * e virou teste — congelando a suposição como contrato. Ver
+ * `exigirRegionDelegate`.
  */
 export async function getGrowthOverviewMetrics(): Promise<GrowthOverviewMetrics> {
-  if (!hasGrowthDelegates()) {
-    return { citiesMonitored: 0, neighborhoodsMonitored: 0, regionsMonitored: 0 }
-  }
-
   {
-    const regionDelegate = getRegionDelegate()!
-    const neighborhoodDelegate = getNeighborhoodDelegate()!
+    const regionDelegate = exigirRegionDelegate()
+    const neighborhoodDelegate = exigirNeighborhoodDelegate()
 
     const [regions, neighborhoods, cities] = await Promise.all([
       regionDelegate.count(),
@@ -125,7 +157,11 @@ export async function getCityPresenceRows(): Promise<CityPresenceRow[]> {
       where: { deletedAt: null },
       _count: true,
     }),
-    getRegionDelegate()?.findMany({ select: { city: true, state: true } }) ?? [],
+    // FIX-002: era `getRegionDelegate()?.findMany(...) ?? []`. Sem o delegate,
+    // a lista vazia fazia TODA cidade sair com `hasStrategicRegion: false` —
+    // afirmando "não tem região estratégica" sobre um modelo que o client nem
+    // conhece. Agora exige o delegate; a resposta é falha, não negativa.
+    exigirRegionDelegate().findMany({ select: { city: true, state: true } }),
   ])
 
   const chave = (city: string, state: string) => `${city}|${state}`
@@ -180,8 +216,7 @@ export async function getCityPresenceRows(): Promise<CityPresenceRow[]> {
 }
 
 export async function getRegionGrowthRows(): Promise<RegionGrowthRow[]> {
-  const regionDelegate = getRegionDelegate()
-  if (!regionDelegate) return []
+  const regionDelegate = exigirRegionDelegate()
 
   {
     const regions = await regionDelegate.findMany({
@@ -283,8 +318,7 @@ export async function getRegionGrowthRows(): Promise<RegionGrowthRow[]> {
 // ── Heatmap por cidade ────────────────────────────────────────────────────────
 
 export async function getNeighborhoodHeatmap(cityFilter?: string): Promise<NeighborhoodHeatmapRow[]> {
-  const neighborhoodDelegate = getNeighborhoodDelegate()
-  if (!neighborhoodDelegate) return []
+  const neighborhoodDelegate = exigirNeighborhoodDelegate()
 
   {
     const where = cityFilter
@@ -365,8 +399,7 @@ export async function getNeighborhoodHeatmap(cityFilter?: string): Promise<Neigh
 }
 
 export async function getDistinctCitiesForHeatmap(): Promise<string[]> {
-  const neighborhoodDelegate = getNeighborhoodDelegate()
-  if (!neighborhoodDelegate) return []
+  const neighborhoodDelegate = exigirNeighborhoodDelegate()
 
   {
     const rows = await neighborhoodDelegate.findMany({
@@ -427,6 +460,26 @@ export async function getLocalDiscoveryContext(input: {
       : Promise.resolve(0),
   ])
 
+  /**
+   * ───────────────────────────────────────────────────────────────────────────
+   * FIX-002 — POR QUE AQUI NÃO SE EXIGE O DELEGATE
+   *
+   * Esta é a única leitura PÚBLICA do módulo: alimenta o `/discover` do tutor,
+   * não o backoffice. Exigir o delegate derrubaria a busca de quem só quer um
+   * profissional, por causa de um modelo que só o admin usa — quebrar o
+   * Discovery por precaução é pior que o problema.
+   *
+   * E aqui a ausência não pode virar afirmação falsa, que é o critério da
+   * missão. `regionName` só é resolvido quando `input.regionId` existe, é
+   * OPCIONAL, e **não entra em nenhuma mensagem**: a página consome apenas
+   * `localContext.messages`, e as três frases falam de cidade (ver o bloco de
+   * copy abaixo). Sem delegate, `region` fica `null` — exatamente o que já
+   * acontece hoje para 100% dos usuários, porque `regionId` está vazio em 21 de
+   * 21 perfis.
+   *
+   * Ou seja: o campo degrada para o mesmo valor que ele já tem na prática, sem
+   * produzir nenhuma afirmação territorial. Documentado em vez de corrigido.
+   */
   let regionName: string | null = null
   if (input.regionId) {
     const regionDelegate = getRegionDelegate()
@@ -654,10 +707,9 @@ export async function updateNeighborhood(id: string, data: UpdateNeighborhoodInp
 }
 
 export async function listRegionsForSelect() {
-  const regionDelegate = getRegionDelegate()
-  if (!regionDelegate) return []
-
-  return regionDelegate.findMany({
+  // FIX-002: devolvia [] sem o delegate, e o formulário de cadastro aparecia
+  // sem nenhuma região para escolher — como se não houvesse nenhuma.
+  return exigirRegionDelegate().findMany({
     select: { id: true, name: true, city: true, state: true },
     orderBy: [{ city: "asc" }, { name: "asc" }],
   })

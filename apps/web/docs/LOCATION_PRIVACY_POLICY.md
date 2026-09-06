@@ -45,13 +45,33 @@ Quando `lat`/`lng`/CEP passarem a ser coletados (V1+), valem as regras:
    faixa de distância ("~2 km"), nome de bairro/região.
 4. Toda projeção pública de perfil deve excluir explicitamente esses campos.
 
-### Risco conhecido registrado na auditoria V0
+### Risco da auditoria V0 — RESOLVIDO (verificado em GATE-15)
 
-`ProfessionalPublicProfile` (`modules/professional/domain/types.ts`) hoje
-**inclui** `lat`, `lng` e `serviceRadiusKm` na projeção "pública" (sempre
-`null`/default na prática, e nunca renderizados). Antes de qualquer coleta
-real desses campos (V1), essa projeção **deve ser estreitada** para
-removê-los — está listado como pré-requisito bloqueante na proposta V1.
+> Texto anterior desta seção afirmava que `ProfessionalPublicProfile`
+> **incluía** `lat`, `lng` e `serviceRadiusKm` e que a projeção "deve ser
+> estreitada". Isso ficou **stale**: o estreitamento já foi feito. A auditoria
+> do GATE-15 conferiu o código e a afirmação estava descrevendo um risco que
+> não existe mais — o tipo de divergência entre doc e código que faz alguém
+> gastar um gate reconsertando o que já está certo.
+
+Estado verificado hoje:
+
+- `ProfessionalPublicProfile` (`modules/professional/domain/types.ts`) é um
+  `Omit<..., "userId" | "phone" | "planExpiresAt" | "deletedAt" | "updatedAt" |
+  "lat" | "lng" | "serviceRadiusKm">` — os três campos geo estão **fora** do
+  tipo, com comentário citando este documento;
+- `findPublicProfessionalById` e `findPublicProfessionals`
+  (`modules/professional/infrastructure/repository.ts`) montam o objeto de
+  retorno campo a campo, em **allowlist explícita**. Nenhum dos dois devolve
+  `lat`, `lng`, `serviceRadiusKm`, `phone` ou `userId`;
+- há teste de contrato garantindo que a projeção pública não volte a carregar
+  geo interno (ver `test:location`).
+
+Nota de precisão, também verificada em PROD (somente leitura): `lat`/`lng`
+seguem em **0 de 21** perfis, como este documento afirma. Já
+`serviceRadiusKm` **não** é `null` — os 10 profissionais têm o `@default(10)`
+do schema. É um default nunca escolhido por ninguém e, sem coordenada, sem
+significado operacional: nenhuma query usa raio para filtrar ou ordenar.
 
 ## Regras para logs e observabilidade
 

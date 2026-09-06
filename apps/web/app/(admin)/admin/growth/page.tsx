@@ -60,27 +60,46 @@ export default async function AdminGrowthPage({
         description="Inteligência territorial — bairro → região → cidade. Onde concentrar aquisição e expansão."
       />
 
-      {/* Cards overview */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-3">
+      {/* ── Cards overview ──────────────────────────────────────────────────
+          GATE-15 — os três números vinham de DUAS verdades diferentes sob a
+          mesma palavra "monitoradas":
+
+            cidades  → presença REAL, contada dos perfis (city normalizada)
+            bairros  → linhas CADASTRADAS na tabela territorial
+            regiões  → linhas CADASTRADAS na tabela territorial
+
+          Medido em PROD: 4 cidades com presença real, 1 bairro e 2 regiões
+          cadastrados — e ZERO perfis associados a qualquer um deles. Lado a
+          lado e com o mesmo rótulo, isso lia como "a cobertura encolheu de 4
+          para 1", quando o que os dois últimos descrevem é o quanto da curadoria
+          territorial foi preenchida. As seções abaixo já separavam as duas
+          coisas; o topo da página, não. */}
+      <div className="mb-2 grid gap-3 sm:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-2xl font-black tabular-nums text-foreground">
             {overview.citiesMonitored}
           </p>
-          <p className="text-xs text-muted-foreground">Cidades monitoradas</p>
+          <p className="text-xs text-muted-foreground">Cidades com presença real</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-2xl font-black tabular-nums text-foreground">
             {overview.neighborhoodsMonitored}
           </p>
-          <p className="text-xs text-muted-foreground">Bairros monitorados</p>
+          <p className="text-xs text-muted-foreground">Bairros cadastrados</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-2xl font-black tabular-nums text-foreground">
             {overview.regionsMonitored}
           </p>
-          <p className="text-xs text-muted-foreground">Regiões monitoradas</p>
+          <p className="text-xs text-muted-foreground">Regiões cadastradas</p>
         </div>
       </div>
+
+      <p className="mb-6 text-xs text-muted-foreground">
+        O primeiro número vem dos perfis reais; os outros dois contam o que foi
+        cadastrado na camada estratégica. Bairro e região em zero significam
+        curadoria não preenchida — nunca ausência de usuários.
+      </p>
 
       <div className="mb-6">
         <CreateTerritoryForms regions={regions} />

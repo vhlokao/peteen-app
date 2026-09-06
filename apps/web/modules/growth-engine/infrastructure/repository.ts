@@ -48,12 +48,29 @@ function getNeighborhoodDelegate() {
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ERRO NÃO É ZERO — GATE-15, mesmo precedente do Gate 14
+ *
+ * Estas quatro leituras tinham `catch { return 0 / [] }`, cegos e sem log. Numa
+ * tela de INTELIGÊNCIA TERRITORIAL isso é a pior falha possível: um banco fora
+ * do ar não derrubava a página, pintava "Cidades monitoradas: 0" — e quem
+ * decide onde investir aquisição lê zero como fato de mercado, não como falha.
+ * Ninguém desconfia de um zero.
+ *
+ * A exceção agora sobe para `app/(admin)/admin/error.tsx`, que separa "falhou
+ * ao carregar" de "não há dados" e oferece tentar de novo.
+ *
+ * O guard que PERMANECE é outro e é legítimo: `hasGrowthDelegates()` responde
+ * "este Prisma Client foi gerado sem os modelos territoriais" — condição de
+ * build, não de dados, e que a UI já comunica em separado.
+ */
 export async function getGrowthOverviewMetrics(): Promise<GrowthOverviewMetrics> {
   if (!hasGrowthDelegates()) {
     return { citiesMonitored: 0, neighborhoodsMonitored: 0, regionsMonitored: 0 }
   }
 
-  try {
+  {
     const regionDelegate = getRegionDelegate()!
     const neighborhoodDelegate = getNeighborhoodDelegate()!
 
@@ -76,8 +93,6 @@ export async function getGrowthOverviewMetrics(): Promise<GrowthOverviewMetrics>
       neighborhoodsMonitored: neighborhoods,
       regionsMonitored:       regions,
     }
-  } catch {
-    return { citiesMonitored: 0, neighborhoodsMonitored: 0, regionsMonitored: 0 }
   }
 }
 
@@ -168,7 +183,7 @@ export async function getRegionGrowthRows(): Promise<RegionGrowthRow[]> {
   const regionDelegate = getRegionDelegate()
   if (!regionDelegate) return []
 
-  try {
+  {
     const regions = await regionDelegate.findMany({
       orderBy: [{ city: "asc" }, { name: "asc" }],
       include: { neighborhoods: { select: { id: true } } },
@@ -262,8 +277,6 @@ export async function getRegionGrowthRows(): Promise<RegionGrowthRow[]> {
     }
 
     return rows.sort((a, b) => b.healthScore - a.healthScore)
-  } catch {
-    return []
   }
 }
 
@@ -273,7 +286,7 @@ export async function getNeighborhoodHeatmap(cityFilter?: string): Promise<Neigh
   const neighborhoodDelegate = getNeighborhoodDelegate()
   if (!neighborhoodDelegate) return []
 
-  try {
+  {
     const where = cityFilter
       ? { city: { equals: cityFilter, mode: "insensitive" as const } }
       : {}
@@ -348,8 +361,6 @@ export async function getNeighborhoodHeatmap(cityFilter?: string): Promise<Neigh
     }
 
     return rows.sort((a, b) => b.healthScore - a.healthScore)
-  } catch {
-    return []
   }
 }
 
@@ -357,15 +368,13 @@ export async function getDistinctCitiesForHeatmap(): Promise<string[]> {
   const neighborhoodDelegate = getNeighborhoodDelegate()
   if (!neighborhoodDelegate) return []
 
-  try {
+  {
     const rows = await neighborhoodDelegate.findMany({
       select: { city: true },
       distinct: ["city"],
       orderBy: { city: "asc" },
     })
     return rows.map((r) => r.city)
-  } catch {
-    return []
   }
 }
 
@@ -430,20 +439,42 @@ export async function getLocalDiscoveryContext(input: {
     }
   }
 
+  /**
+   * ───────────────────────────────────────────────────────────────────────────
+   * GATE-15 — O QUE ESTAS FRASES PODEM AFIRMAR
+   *
+   * Duas correções, as duas com evidência medida em PROD:
+   *
+   * 1. PLURAL QUEBRADO, visível em produção. O código anexava sufixo em vez de
+   *    trocar a terminação, e a frase real era:
+   *      "2 profissionalis confiáveleis próximos de você"
+   *      "1 profissional confiável próximos de você"   ← singular + plural
+   *
+   * 2. "PRÓXIMOS DE VOCÊ" prometia proximidade que o dado não sustenta. A
+   *    contagem é `professionalProfile.count()` por IGUALDADE DE CIDADE (e
+   *    bairro em texto, quando houver) — não há distância, e `lat`/`lng` estão
+   *    em 0 de 21 perfis. Em São Paulo, "próximo" podia ser 40 km. A frase
+   *    passou a dizer o que a query realmente fez: mesma cidade.
+   *
+   * Pela mesma razão, "Região" e "Área" saíram: o recorte é a cidade, e
+   * `regionId` está vazio em 100% dos perfis — chamar a cidade de "região"
+   * empresta à frase a autoridade da camada estratégica, que aqui não existe.
+   */
   if (trustedNearby > 0) {
+    const plural = trustedNearby !== 1
     messages.push(
-      `${trustedNearby} profissional${trustedNearby !== 1 ? "is" : ""} confiável${trustedNearby !== 1 ? "eis" : ""} próximos de você`
+      `${trustedNearby} ${plural ? "profissionais confiáveis" : "profissional confiável"} em ${input.city}`
     )
   }
 
   const hasHighRecurrence = recurrenceRatio >= RECURRENCE_TRUSTED_THRESHOLD
   if (hasHighRecurrence) {
-    messages.push("Região com alta recorrência")
+    messages.push("Cidade com alta recorrência de atendimentos")
   }
 
   const communityRecommended = partnerEndorsements >= 2
   if (communityRecommended) {
-    messages.push("Área recomendada pela comunidade Peteen")
+    messages.push("Cidade com parceiros Peteen ativos")
   }
 
   return {

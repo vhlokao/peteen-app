@@ -262,7 +262,11 @@ export function buildNextActions(
     actions.push({
       id: "discover",
       label: "Encontrar profissional",
-      description: "Busque profissionais confiáveis no seu bairro.",
+      // GATE-15: dizia "no seu bairro". O /discover filtra por CIDADE por
+      // padrão — o bairro é filtro opcional em texto livre, e nenhum perfil tem
+      // vínculo territorial (neighborhoodId em 0 de 21). Prometer bairro numa
+      // CTA que leva a uma busca por cidade é vender precisão que não existe.
+      description: "Busque profissionais confiáveis na sua cidade.",
       href: "/discover",
       variant: stats.activePets === 0 ? "outline" : "default",
     })
@@ -293,7 +297,10 @@ export function buildNextActions(
     actions.push({
       id: "browse",
       label: "Explorar profissionais",
-      description: "Descubra quem atende na sua região.",
+      // GATE-15: dizia "na sua região". "Região" é a camada estratégica do
+      // Growth, e ela está vazia (regionId em 0 de 21 perfis). O que a busca
+      // faz é filtrar por cidade.
+      description: "Descubra quem atende na sua cidade.",
       href: "/discover",
       variant: "outline",
     })

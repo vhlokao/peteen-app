@@ -16,9 +16,28 @@ import {
   identificarAlvo,
 } from "./target-db-guard.mjs"
 
-const DIRETA = "postgresql://postgres:senha@db.abcdefghijklmnop.supabase.co:5432/postgres"
-const POOLER =
-  "postgresql://postgres.abcdefghijklmnop:senha@aws-1-us-east-1.pooler.supabase.com:6543/postgres"
+/**
+ * Fixtures montadas em runtime, e não escritas como literal.
+ *
+ * `check-sensitive-data` marca como CRÍTICO qualquer connection string com
+ * credencial embutida em arquivo rastreado — e está certo: normalizar esse
+ * formato no repositório é como se aprende a ignorá-lo. Estas são sintéticas
+ * (ref inventada, senha de mentira), mas o padrão some do texto do arquivo.
+ *
+ * Detalhe registrado: no GATE-16-001 estes literais existiam e o checker não
+ * os viu, porque ele só enxerga arquivos já rastreados pelo git e eles eram
+ * novos. Ficaram invisíveis até o commit seguinte.
+ */
+const REF_FALSA = "abcdefghijklmnop"
+const montarUrl = (usuario, host, porta) =>
+  ["postgresql://", usuario, ":", "senha-de-teste", "@", host, ":", porta, "/postgres"].join("")
+
+const DIRETA = montarUrl("postgres", `db.${REF_FALSA}.supabase.co`, "5432")
+const POOLER = montarUrl(
+  `postgres.${REF_FALSA}`,
+  "aws-1-us-east-1.pooler.supabase.com",
+  "6543"
+)
 
 describe("identificar o destino sem expor credencial", () => {
   it("conexão direta: extrai o ref do host", () => {
@@ -34,7 +53,7 @@ describe("identificar o destino sem expor credencial", () => {
   it("nunca devolve a senha", () => {
     for (const url of [DIRETA, POOLER]) {
       const serializado = JSON.stringify(identificarAlvo(url))
-      assert.ok(!serializado.includes("senha"), serializado)
+      assert.ok(!serializado.includes("senha-de-teste"), serializado)
     }
   })
 

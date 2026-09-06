@@ -7,11 +7,18 @@
  * senha aleatória de uso único).
  *
  * NÃO É executado automaticamente por nenhum build, deploy, seed ou CI —
- * requer invocação manual explícita.
- * NUNCA rodar contra um banco de produção sem revisão e aprovação explícita.
+ * requer invocação manual explícita — e agora exige confirmação do banco de
+ * destino, então a proteção deixou de depender da disciplina de quem roda.
  *
  * Uso:
- *   node scripts/create-seed-users.mjs
+ *   # 1. SEMPRE primeiro: mostra o destino e o plano, sem escrever nada.
+ *   node scripts/create-seed-users.mjs --dry-run
+ *
+ *   # 2. Só então, confirmando explicitamente o banco de destino:
+ *   node scripts/create-seed-users.mjs --target=<ref>
+ *
+ * Sem `--dry-run` e sem `--target`, a execução é BLOQUEADA — ver
+ * scripts/lib/target-db-guard.mjs.
  *
  * Requer no ambiente: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, DATABASE_URL.
  *
@@ -49,17 +56,23 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { exigirDestinoConfirmado } from "./lib/target-db-guard.mjs";
+import { protegerPrisma, protegerSupabaseAdmin } from "./lib/dry-run-clients.mjs";
+import { criarPersonaSemente } from "./lib/seed-persona.mjs";
 
 // GATE-16: o guard anterior checava NODE_ENV/VERCEL_ENV, que são undefined em
 // execução local — ou seja, nunca disparava justamente onde este script roda.
 // O que importa é o BANCO de destino. Ver scripts/lib/target-db-guard.mjs.
+// O guard decide o MODO. Daqui para baixo ninguém reinterpreta a flag: o modo
+// vira cliente protegido, e em dry-run o script não recebe capacidade de
+// escrever.
+let MODO;
 try {
-  const { alvo, dryRun } = exigirDestinoConfirmado({
+  MODO = exigirDestinoConfirmado({
     databaseUrl: process.env.DATABASE_URL,
     argv: process.argv,
   });
   console.info(
-    `[destino] ${alvo.host} (ref: ${alvo.ref})${dryRun ? " — DRY RUN, nada será escrito" : " — CONFIRMADO para escrita"}`
+    `[destino] ${MODO.alvo.host} (ref: ${MODO.alvo.ref})${MODO.dryRun ? " — DRY RUN, nada será escrito" : " — CONFIRMADO para escrita"}`
   );
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));
@@ -86,71 +99,40 @@ function comLocalizacaoNormalizada({ city, state, neighborhood }) {
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const prismaReal = new PrismaClient({ adapter });
 
-const supabaseAdmin = createClient(
+const supabaseReal = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   { auth: { autoRefreshToken: false, persistSession: false } }
 );
 
+// Em dry-run, o resto do arquivo NÃO recebe cliente capaz de escrever: leituras
+// passam, mutações lançam. É a rede embaixo do desvio explícito — se alguém
+// acrescentar uma escrita nova e esquecer de checar o modo, o resultado é erro
+// ruidoso, nunca um registro criado em silêncio.
+const prisma = protegerPrisma(prismaReal, { dryRun: MODO.dryRun });
+const supabaseAdmin = protegerSupabaseAdmin(supabaseReal, { dryRun: MODO.dryRun });
+
 /**
- * Cria Auth user + User (upsert por authId) + persona de negócio dentro de
- * uma única transação Prisma. Em caso de falha na transação após o Auth
- * user já ter sido criado, reverte deletando o Auth user (mesmo padrão do
- * create-isolated-admin.mjs).
+ * Adaptador fino para `criarPersonaSemente` (scripts/lib/seed-persona.mjs).
+ *
+ * A orquestração saiu deste arquivo porque ele tem efeitos no topo (dotenv,
+ * guard, Prisma, jiti) e não podia ser importado por um teste — e sem importar,
+ * não havia como PROVAR que --dry-run não escreve. Agora a garantia é testada
+ * com espiões, em vez de afirmada no comentário.
  */
 async function createSeedPersona({ label, email, activePrimaryRole, createPersonaRecords }) {
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    console.info(`[${label}] já existe (User id=${existing.id}, email=${email}) — pulando.`);
-    return;
-  }
-
-  const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+  return criarPersonaSemente({
+    prisma,
+    supabaseAdmin,
+    label,
     email,
-    password: SEED_PASSWORD,
-    email_confirm: true,
+    senha: SEED_PASSWORD,
+    activePrimaryRole,
+    criarRegistrosDaPersona: createPersonaRecords,
+    dryRun: MODO.dryRun,
   });
-
-  if (createErr || !created?.user) {
-    console.error(`[${label}] Falha ao criar usuário no Supabase Auth:`, createErr?.message);
-    return;
-  }
-
-  const authId = created.user.id;
-  console.info(`[${label}] Supabase Auth user criado. authId:`, authId);
-
-  try {
-    await prisma.$transaction(async (tx) => {
-      const user = await tx.user.upsert({
-        where: { authId },
-        create: {
-          authId,
-          email,
-          activePrimaryRole,
-          onboardingCompletedAt: new Date(),
-        },
-        update: {
-          email,
-          activePrimaryRole,
-          onboardingCompletedAt: new Date(),
-        },
-      });
-
-      await createPersonaRecords(tx, user);
-    });
-
-    console.info(`[${label}] User + persona criados com sucesso. email:`, email);
-  } catch (txErr) {
-    console.error(
-      `[${label}] Falha ao criar registros no Prisma — revertendo o usuário criado no Supabase Auth.`,
-      txErr
-    );
-    await supabaseAdmin.auth.admin.deleteUser(authId).catch((e) => {
-      console.error(`[${label}] Falha ao reverter o usuário do Supabase Auth. Remoção manual necessária. authId:`, authId, e);
-    });
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -290,10 +272,19 @@ try {
   await seedProfessional();
   await seedPartner();
 
-  console.info("\n=== SEED CONCLUÍDO ===");
-  console.info("Tutor:         tutor.seed@peteen.test / PeteenSeed2026!");
-  console.info("Profissional:  profissional.seed@peteen.test / PeteenSeed2026!");
-  console.info("Parceiro:      parceiro.seed@peteen.test / PeteenSeed2026!");
+  if (MODO.dryRun) {
+    console.info("\n=== DRY RUN CONCLUÍDO — nenhuma escrita realizada ===");
+    console.info(`Para executar de verdade: --target=${MODO.alvo.ref}`);
+    // A senha do seed NÃO é impressa em dry-run: não existe conta para acessar,
+    // e segredo que ninguém vai usar só vira material para vazar em log.
+  } else {
+    console.info("\n=== SEED CONCLUÍDO ===");
+    console.info(`Tutor:         tutor.seed@peteen.test / ${SEED_PASSWORD}`);
+    console.info(`Profissional:  profissional.seed@peteen.test / ${SEED_PASSWORD}`);
+    console.info(`Parceiro:      parceiro.seed@peteen.test / ${SEED_PASSWORD}`);
+  }
 } finally {
-  await prisma.$disconnect();
+  // Desconecta pelo cliente REAL: o proxy de dry-run existe só para barrar
+  // escrita, e encerrar a conexão não deve passar por ele.
+  await prismaReal.$disconnect();
 }

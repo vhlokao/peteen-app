@@ -43,7 +43,7 @@
     "test:routing": "node --experimental-strip-types --test modules/identity/domain/route-access.test.ts modules/identity/domain/post-login-destination.test.ts modules/identity/domain/account-navigation.test.ts components/account/account-settings-layout-contract.test.ts",
     "test:partner-discovery": "node --experimental-strip-types --test modules/partners/infrastructure/professional-search-city.test.ts",
     "test:professional-crm": "node --experimental-strip-types --test modules/professional-crm/domain/request-list-tab.test.ts",
-    "test:scripts": "node --test scripts/lib/target-db-guard.test.mjs"
+    "test:scripts": "node --test scripts/lib/target-db-guard.test.mjs scripts/lib/dry-run-contract.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

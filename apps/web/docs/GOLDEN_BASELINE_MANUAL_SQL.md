@@ -31,7 +31,27 @@ Cada bloco abaixo é rotulado com uma das quatro origens possíveis:
   schema Prisma. Este documento é a única fonte de verdade versionada.
 - **Default de plataforma Supabase** — já existe em qualquer projeto Supabase
   novo, antes de qualquer ação do time. Documentado aqui só para deixar claro
-  que não precisa ser recriado manualmente.
+  que não precisa ser recriado manualmente. **Este rótulo exige prova
+  independente** (observação de um projeto novo vazio, ou posse por
+  `supabase_admin`); ver a correção na seção 3 sobre o que acontece quando ele
+  é aplicado por suposição.
+
+## Nota: grants e default ACL não entram no baseline comum
+
+PROD e DEMO **divergem** aqui, e a divergência é legítima. Em DEMO, `anon` e
+`authenticated` têm `SELECT/INSERT/UPDATE/DELETE` nas 30 tabelas — contidos
+apenas por RLS. Em PROD, esses papéis têm somente
+`REFERENCES/TRIGGER/TRUNCATE`, sem CRUD algum: uma requisição via PostgREST
+falha antes mesmo de chegar à policy.
+
+Ou seja, **PROD é mais restritivo que DEMO**, e nenhum baseline deve
+uniformizar os dois — reproduzir os grants do DEMO em PROD seria enfraquecer
+produção. Por isso não há `GRANT`/`REVOKE` versionado neste documento nem nas
+migrations de segurança.
+
+O CRUD amplo do DEMO está registrado como achado de segurança **do DEMO**
+(GATE-015) e será tratado separadamente, alinhando o DEMO à postura de PROD —
+nunca o contrário.
 
 ## Ordem de aplicação do baseline
 
@@ -42,8 +62,8 @@ Em um projeto Supabase novo, vazio, nesta ordem exata:
    índices normais.
 2. Extensions (seção 1 abaixo).
 3. Os 2 índices únicos parciais (seção 2).
-4. RLS habilitado por tabela (seção 3) — na prática, redundante: ver nota da
-   seção 3 sobre `rls_auto_enable`.
+4. RLS habilitado por tabela (seção 3) — **obrigatório**, não redundante: ver
+   nota da seção 3 sobre `rls_auto_enable`.
 5. Funções custom + trigger (seção 5) — **antes** das policies, porque 27 das
    29 policies chamam `get_current_user_id()`.
 6. Buckets de Storage (seção 6).
@@ -115,18 +135,49 @@ CREATE UNIQUE INDEX IF NOT EXISTS verification_requests_one_pending_per_entity
 
 ## 3. RLS (Row Level Security)
 
-**Proveniência:** na prática, **default de plataforma Supabase** — não SQL
-manual. Todo projeto Supabase novo vem com um event trigger de banco
-(`ensure_rls`, disparado em `ddl_command_end`) que chama a função
-`rls_auto_enable()` e habilita RLS automaticamente em toda tabela nova criada
-em `public` — inclusive tabelas do próprio Prisma (`_prisma_migrations`
-incluída). Confirmado na Cutover Phase 1: `prisma db push` sozinho, sem
-nenhuma linha de `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` rodada
-manualmente, resultou nas 29 tabelas já com `relrowsecurity = true`.
+**Proveniência: `UNPROVEN` — e não deve ser assumida como default de
+plataforma.** Existe um event trigger de banco (`ensure_rls`, em
+`ddl_command_end`) que chama `rls_auto_enable()` e habilita RLS em toda tabela
+nova criada em `public` — inclusive as do próprio Prisma (`_prisma_migrations`
+incluída). Ele está presente **em PROD e em DEMO**, com corpo de função
+byte-idêntico (SHA-256 conferido no GATE-015).
 
-O script abaixo é mantido por completude e por ser idempotente
-(`ENABLE ROW LEVEL SECURITY` não falha se já habilitado) — mas não deve ser
-tratado como o mecanismo real de proteção; o event trigger de plataforma é.
+> **Correção (GATE-18-PHASE-A-017).** Este documento afirmava que
+> `ensure_rls`/`rls_auto_enable()` eram default garantido do Supabase, presente
+> em qualquer projeto novo. **Essa afirmação não estava provada e a evidência
+> disponível a contradiz:**
+>
+> - os 6 event triggers genuínos de plataforma pertencem a `supabase_admin` e
+>   têm função em `extensions`; `ensure_rls` pertence a `postgres` e sua função
+>   está em `public` — o mesmo perfil de `get_current_user_id()` e
+>   `handle_new_user()`, que este documento sempre classificou como SQL manual;
+> - o SQL das 27 migrations conhecidas (18 históricas recuperadas + 9 Prisma)
+>   foi lido integralmente: **nenhuma cria `ensure_rls`**;
+> - se o Supabase habilitasse RLS sozinho em toda tabela nova de `public`, os
+>   avisos de "RLS not enabled" do próprio dashboard deles não existiriam.
+>
+> A observação original — `prisma db push` na Cutover Phase 1 resultou nas 29
+> tabelas com `relrowsecurity = true` — é verdadeira e prova que **o gatilho
+> funcionou naquele projeto**. Não prova que ele viria de graça num projeto novo.
+> Um ambiente reconstruído sem ele nasceria com as tabelas SEM RLS, e sob o
+> default ACL do Supabase isso significa leitura e escrita abertas via anon key.
+>
+> **Consequência prática:** `ensure_rls` e `rls_auto_enable()` fazem parte do
+> estado desejado e agora têm source of truth executável no repositório
+> (`prisma/migrations/20260907140000_security_source_of_truth/`). A reconstrução
+> **não depende** de assumi-los como default de plataforma. Como o script é
+> idempotente, ele é inócuo caso a plataforma de fato os forneça.
+
+O script abaixo é **o mecanismo real de proteção**, não um complemento
+decorativo. É idempotente (`ENABLE ROW LEVEL SECURITY` não falha se já
+habilitado) e deve ser aplicado sempre, sem depender do event trigger: o
+gatilho é defesa em profundidade para tabelas *futuras*, e sua própria origem
+não está provada. Segurança de produção não se apoia num gatilho cuja
+existência num ambiente novo ninguém consegue garantir.
+
+Este script está versionado e executável em
+`prisma/migrations/20260907140000_security_source_of_truth/migration.sql`
+(seção 4 daquele arquivo), que cobre as 29 tabelas de domínio.
 
 ```sql
 ALTER TABLE public."admin_audit_logs" ENABLE ROW LEVEL SECURITY;
@@ -335,10 +386,12 @@ superfície, não lacuna.
   Peteen (mapeia `auth.uid()` para o `id` interno em `public.users`).
 - `handle_new_user()` — **SQL manual**, específico do domínio (cria a linha
   em `public.users` no cadastro).
-- `rls_auto_enable()` — **default de plataforma Supabase**. Já existe em
-  qualquer projeto novo, com corpo idêntico, antes de qualquer ação do time.
-  Incluída aqui só por completude do inventário (recriar não tem efeito,
-  `CREATE OR REPLACE` é idempotente).
+- `rls_auto_enable()` — **origem `UNPROVEN`; tratada como estado desejado do
+  produto.** Presente em PROD e DEMO com corpo byte-idêntico, mas ausente das 27
+  migrations conhecidas e com perfil de posse que não bate com o dos event
+  triggers de plataforma. **Obrigatória na reconstrução** enquanto a origem não
+  for provada — ver a nota de correção na seção 3. Recriar é inócuo
+  (`CREATE OR REPLACE` é idempotente).
 - Trigger `on_auth_user_created` — **SQL manual**, liga `handle_new_user()` ao
   evento de criação de usuário no Supabase Auth.
 
@@ -510,10 +563,10 @@ lacuna.
 | 29 tabelas, colunas, FKs, enums | Prisma (`schema.prisma`) |
 | `services_professionalId_serviceType_active_key` | Migration existente (`20260801120000_service_uniqueness_concurrency_safety`) |
 | `verification_requests_one_pending_per_entity` | **SQL manual — obrigatório** |
-| RLS habilitado (29 tabelas de domínio + `_prisma_migrations`) | Default de plataforma Supabase (`ensure_rls` / `rls_auto_enable`) |
+| RLS habilitado (29 tabelas de domínio) | **SQL manual — obrigatório** (migration `20260907140000_security_source_of_truth`). `_prisma_migrations` fica de fora de propósito: é metadado de ferramenta, hoje com RLS só como efeito colateral do `ensure_rls`. |
 | 29 policies de `public` | SQL manual |
 | `get_current_user_id()`, `handle_new_user()` | SQL manual |
-| `rls_auto_enable()` | Default de plataforma Supabase |
+| `rls_auto_enable()` + event trigger `ensure_rls` | **SQL manual — obrigatório**; origem `UNPROVEN` (ver seção 3) |
 | Trigger `on_auth_user_created` | SQL manual |
 | 5 buckets de Storage | SQL manual |
 | 10 policies de `storage.objects` | SQL manual |

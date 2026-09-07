@@ -5,9 +5,13 @@ aplicado, e como schema chega em cada ambiente**.
 
 Criado em GATE-18-MIGRATION-DEPLOY-FOUNDATION-001, corrigido em **FIX-002**
 (evidência de PROD, que inverteu as conclusões), **FIX-003** (validação
-semântica de FK/PK/UNIQUE e guardrail de final de linha) e **FIX-004** (CHECK
+semântica de FK/PK/UNIQUE e guardrail de final de linha), **FIX-004** (CHECK
 por expressão, e a classificação de checksum corrigida para não deixar o estado
-do worktree local esconder drift histórico do banco).
+do worktree local esconder drift histórico do banco) e **FIX-005** (a
+normalização de identificador do CHECK ficou insegura no FIX-004 — corrigida
+para nunca remover aspa de identificador com maiúscula; matriz final de
+checksums de PROD registrada, fechada por leitura direta via canal Supabase
+read-only).
 **Nada foi aplicado nem reconciliado** — a fase de escrita depende de aprovação
 humana (ver "Plano de baseline").
 
@@ -58,23 +62,41 @@ Não há `supabase_migrations.schema_migrations` — ou seja, as 18 migrations
 históricas que o DEMO registra **nunca foram registradas aqui**, ainda que seus
 efeitos existam (as tabelas de negócio estão lá; a aplicação roda).
 
-> **Procedência desta seção:** evidência levantada por quem tem acesso ao
-> projeto de produção e repassada ao gate. **Não foi verificada de forma
-> independente pelo executor**, cuja credencial local segue inválida
-> (`28P01`). Está registrada como reportada, não como medida — a distinção
-> importa exatamente num documento cujo tema é "tracking pode mentir".
+> **Procedência desta seção:** `_prisma_migrations` de PROD foi lida
+> diretamente por quem tem acesso ao projeto, por um canal Supabase
+> **somente-leitura**, e o resultado foi repassado ao gate — não é inferência
+> a partir do DEMO. **O executor não tem, e continua sem, uma credencial de
+> leitura própria e válida para PROD** (a local falha com `28P01`, provavelmente
+> rotacionada); isso fica registrado como dívida operacional (ver "Sem decisão
+> ainda"), mas **deixou de ser um blocker da verdade deste Gate** — a leitura já
+> aconteceu, por outro caminho, e está fechada.
 
-### O que falta confirmar em PROD
+### Matriz final de checksums — PROD (fechada)
 
-Uma consulta somente-leitura fecha o único ponto aberto (checksums):
+Todas as 9 migrations, lidas de `_prisma_migrations` em PROD: **`finished_at`
+preenchido em todas, nenhuma com `rolled_back_at`.**
 
-```sql
-select migration_name, checksum, finished_at, rolled_back_at
-  from _prisma_migrations
- order by started_at;
-```
+| Migration | Checksum em PROD | Classificação |
+|---|---|---|
+| `20250620120000_professional_availability_7_6` | `4d5febaf3940b4e0c9ecc2e4c3511973fde3b50536d6429d6eeb23a8e7461f18` | **`FORMAT_ONLY_CHECKSUM_DRIFT`** (banco=CRLF, canonical=LF) |
+| `20260730180000_agenda_foundation_v0_3` | LF canônico | `MATCH_CANONICAL` |
+| `20260801120000_service_uniqueness_concurrency_safety` | LF canônico | `MATCH_CANONICAL` |
+| `20260808120000_push_notifications_foundation_v0` | LF canônico | `MATCH_CANONICAL` |
+| `20260813120000_care_media_v0` | LF canônico | `MATCH_CANONICAL` |
+| `20260817020000_push_vapid_environment_isolation` | LF canônico | `MATCH_CANONICAL` |
+| `20260817030000_push_subscription_runtime_environment` | LF canônico | `MATCH_CANONICAL` |
+| `20260820120000_notification_read_state` | LF canônico | `MATCH_CANONICAL` |
+| `20260821120000_invite_visit_funnel` | LF canônico | `MATCH_CANONICAL` |
 
-Compare a coluna `checksum` com a tabela da seção "Matriz de checksums".
+**8 de 9 = `MATCH_CANONICAL`. A única exceção é `professional_availability_7_6`,
+e ela é `FORMAT_ONLY_CHECKSUM_DRIFT` — nunca `MATCH_CANONICAL` e nunca
+`CONTENT_CHECKSUM_DRIFT`.** O hash de PROD para ela bate exatamente com a forma
+CRLF calculada a partir do conteúdo atual (ver seção de checksums abaixo); as
+outras 8 nunca tiveram o problema de final de linha.
+
+Esta tabela fecha o ponto que ficava aberto em versões anteriores deste
+documento ("falta confirmar em PROD") — a consulta já foi rodada, por um canal
+de leitura que não é o do executor, e o resultado está registrado aqui.
 
 ---
 
@@ -117,9 +139,9 @@ expressão do CHECK" em `pg_constraint`. O lado do repositório extrai a mesma
 forma a partir do SQL da migration. Os dois passam pela MESMA normalização
 antes de comparar, para que não haja duas regras de "o que é cosmético":
 
-- aspas de **identificador** removidas (`"userId"` → `userId` — é o mesmo
-  identificador; Postgres sempre devolve entre aspas, a migration pode não
-  escrever assim);
+- **aspas de identificador removidas — SÓ quando comprovadamente seguro.** Ver
+  "A regra de identificador" logo abaixo: esta é a parte que o FIX-004 fez
+  errado e o FIX-005 corrigiu;
 - espaços em branco colapsados;
 - parênteses externos **redundantes** removidos — só quando comprovadamente
   redundantes (o primeiro `(` fecha exatamente no último caractere; remover
@@ -127,15 +149,45 @@ antes de comparar, para que não haja duas regras de "o que é cosmético":
 
 **Não normalizado, de propósito:** aspas simples (são literal de string —
 `'active'` e `active` são coisas diferentes), maiúsculas/minúsculas de
-identificador, e casts que o Postgres injeta (`(x)::integer`). Um falso
-`CONTENT_CHECKSUM_DRIFT`-equivalente para CHECK (que só pede revisão humana) é
-preferível a um falso PASS que esconderia uma expressão realmente diferente.
+identificador FORA da regra segura, e casts que o Postgres injeta
+(`(x)::integer`). Um falso `CONTENT_CHECKSUM_DRIFT`-equivalente para CHECK (que
+só pede revisão humana) é preferível a um falso PASS que esconderia uma
+expressão realmente diferente.
+
+##### A regra de identificador — corrigida no FIX-005
+
+**O FIX-004 removia aspas de QUALQUER identificador, e isso era inseguro.** No
+Postgres, um identificador SEM aspas é dobrado (fold) para minúsculas antes de
+resolver; um identificador COM aspas preserva o case exato. Logo:
+
+- `"userId"` (citado) resolve para a coluna `userId`;
+- `userId` (sem aspas) resolve para a coluna `userid`.
+
+Se ambas existirem como colunas distintas, **não são a mesma coluna** — e a
+versão anterior do normalizador as tornava indistinguíveis, removendo a aspa
+dos dois lados e produzindo um falso `PASS`.
+
+**A regra agora:** uma aspa só é removida quando o nome citado já é inteiramente
+minúsculo simples (`^[a-z_][a-z0-9_]*$`). Só nesse caso a equivalência é
+demonstrável sem depender de contexto: sem aspas, Postgres dobraria o
+identificador para exatamente esse mesmo nome, então `"foo"` e `foo` **sempre**
+resolvem para a mesma coluna. Qualquer identificador com maiúscula mantém as
+aspas na forma normalizada — o que faz `"userId"` continuar diferente de
+`userId` depois de normalizado, e a comparação reprova, como deve.
+
+A extração também deixou de usar um regex global e passou a percorrer a
+expressão caractere a caractere, respeitando limite de string literal — para
+que um caso adversarial como `status = 'ele disse "oi"'` nunca trate o `"oi"`
+dentro do literal como se fosse identificador.
 
 Testes negativos exigidos e verificados: mesmo nome/tabela com limite diferente
 (`b > 0` vs `b > 100`) reprova; coluna diferente (`b` vs `c`) reprova — a coluna
 faz parte da expressão, então o texto normalizado já captura a troca; diferença
 só de espaço em branco passa; CHECK ausente no banco reprova com uma única
-divergência.
+divergência; **`"userId"` citado vs `userId` sem aspas reprova; `"UserID"`
+citado vs `userid` sem aspas reprova; literal de string com aspa dupla dentro
+sobrevive intacto; identificador citado já minúsculo simples (`"foo"` vs `foo`)
+passa, com a equivalência demonstrada acima.**
 
 | Migration | Origem | Tracking | Efeito | Veredito |
 |---|---|---|---|---|
@@ -319,7 +371,9 @@ O estado do worktree é reportado **à parte**, num vocabulário próprio que n�
 se mistura com o do banco: `WORKTREE_CANONICAL_LF`, `WORKTREE_CRLF`,
 `WORKTREE_MIXED`.
 
-### Resultado com a matriz real de PROD (fornecida pelo orquestrador)
+### Detalhe da única exceção da matriz (ver "Matriz final de checksums — PROD" acima)
+
+Linha que o auditor produz para `professional_availability_7_6`:
 
 ```
 professional_availability_7_6   FORMAT_ONLY_CHECKSUM_DRIFT (banco=CRLF, canonical=LF) ⚠   worktree=WORKTREE_CRLF   finished
@@ -458,11 +512,14 @@ checkout novo já vem em LF; conferir com `npm run db:audit`, que reporta o fina
 de linha de cada arquivo.
 
 #### PROD e o checksum CRLF histórico
-**PROD fica como está.** Se o checksum gravado lá para
-`professional_availability_7_6` for o da forma CRLF, ele **permanece** — não se
-reescreve `_prisma_migrations` para "alinhar formato". A auditoria reconhece as
-duas formas como `MATCH`, então a divergência não gera alarme falso, e mexer no
-histórico de produção por estética é risco sem contrapartida.
+**PROD fica como está.** O checksum gravado lá para
+`professional_availability_7_6` **é** a forma CRLF, e ele **permanece** — não
+se reescreve `_prisma_migrations` para "alinhar formato". A auditoria classifica
+isso como `FORMAT_ONLY_CHECKSUM_DRIFT` — **não** `MATCH_CANONICAL` — mas essa
+classificação é exatamente o que diz "conteúdo idêntico, sem alarme de fato": é
+o retrato correto de um histórico legítimo em formato antigo, não um "bate
+igual" que apaga a diferença. Mexer no histórico de produção por estética
+continua sendo risco sem contrapartida.
 
 Isso vale enquanto ninguém precisar aplicar migration nova em PROD a partir de
 um checkout LF. Quando isso for necessário, a pergunta a responder primeiro é a

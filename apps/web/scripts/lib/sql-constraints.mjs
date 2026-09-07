@@ -73,23 +73,85 @@ function parenExternoRedundante(e) {
  * Normaliza uma expressão de CHECK para comparação — só o que é
  * COMPROVADAMENTE cosmético:
  *
- *   1. aspas de identificador (`"userId"` → `userId`) — Postgres sempre
- *      devolve identificadores entre aspas em `pg_get_constraintdef()`, a
- *      migration pode ou não escrever assim; é o MESMO identificador;
+ *   1. aspas de identificador removidas — SÓ quando comprovadamente seguro,
+ *      ver `removerAspasSegura` abaixo;
  *   2. espaços em branco colapsados;
  *   3. parênteses externos redundantes, removidos um nível por vez, e só
  *      quando a prova acima confirma que são redundantes.
  *
  * NÃO normaliza: aspas simples (são literal de string, não identificador —
  * `'active'` e `active` são coisas DIFERENTES), maiúsculas/minúsculas de
- * identificador, nem casts que o Postgres injeta (`(x)::integer`). Preferir
- * um falso `CONTENT_CHECKSUM_DRIFT` — que só pede revisão humana — a um falso
- * `MATCH` que esconderia uma expressão realmente diferente.
+ * identificador FORA da regra segura, nem casts que o Postgres injeta
+ * (`(x)::integer`). Preferir um falso `CONTENT_CHECKSUM_DRIFT` — que só pede
+ * revisão humana — a um falso `MATCH` que esconderia uma expressão
+ * realmente diferente.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O BUG QUE ISTO CORRIGE (GATE-18 FIX-005)
+ *
+ * A versão anterior removia aspas de QUALQUER identificador, inclusive
+ * `"userId"` → `userId`. Isso é inseguro: no Postgres, um identificador SEM
+ * aspas é dobrado (fold) para minúsculas antes de resolver — `userId` sem
+ * aspas resolve para a coluna `userid`. Um identificador COM aspas preserva o
+ * case exato — `"userId"` resolve para a coluna `userId`. Se ambas existirem
+ * como colunas distintas, `"userId"` e `userId` **não são a mesma coluna**, e
+ * o normalizador antigo as tornava indistinguíveis: um CHECK real sobre
+ * `"userId"` bateria, por engano, contra um CHECK sobre `userId`/`userid` de
+ * outra coluna.
+ *
+ * A correção remove aspas apenas quando o nome citado já é inteiramente
+ * minúsculo simples (`^[a-z_][a-z0-9_]*$`) — nesse caso, e SÓ nesse caso, a
+ * prova é direta: a forma sem aspas dobraria para exatamente o mesmo nome, então
+ * `"foo"` e `foo` resolvem para a MESMA coluna, sempre, sem depender de
+ * contexto. Qualquer identificador com maiúscula mantém as aspas na forma
+ * normalizada — o que faz `"userId"` continuar diferente de `userId` depois de
+ * normalizado, e a comparação reprova corretamente.
+ */
+function removerAspasSegura(nomeCitado) {
+  return /^[a-z_][a-z0-9_]*$/.test(nomeCitado)
+}
+
+/**
+ * Percorre a expressão caractere a caractere, nunca por regex global, para que
+ * uma aspa simples de string literal jamais seja tratada como identificador —
+ * mesmo num caso adjacente como `status = 'ele disse "oi"'`, onde um regex
+ * ingênuo enxergaria `"oi"` como identificador dentro do literal.
  */
 export function normalizarExpressao(expr) {
-  let e = expr.replace(/"([A-Za-z_][A-Za-z0-9_]*)"/g, "$1").trim().replace(/\s+/g, " ")
-  while (parenExternoRedundante(e)) e = e.slice(1, -1).trim()
-  return e
+  let saida = ""
+  let i = 0
+  while (i < expr.length) {
+    const c = expr[i]
+
+    if (c === "'") {
+      // Literal de string: copia verbatim, respeitando `''` como aspa escapada.
+      let j = i + 1
+      while (j < expr.length) {
+        if (expr[j] === "'" && expr[j + 1] === "'") { j += 2; continue }
+        if (expr[j] === "'") { j++; break }
+        j++
+      }
+      saida += expr.slice(i, j)
+      i = j
+      continue
+    }
+
+    if (c === '"') {
+      const fim = expr.indexOf('"', i + 1)
+      if (fim === -1) { saida += expr.slice(i); break } // aspa sem par: preserva o resto
+      const nomeCitado = expr.slice(i + 1, fim)
+      saida += removerAspasSegura(nomeCitado) ? nomeCitado : expr.slice(i, fim + 1)
+      i = fim + 1
+      continue
+    }
+
+    saida += c
+    i++
+  }
+
+  saida = saida.trim().replace(/\s+/g, " ")
+  while (parenExternoRedundante(saida)) saida = saida.slice(1, -1).trim()
+  return saida
 }
 
 /**

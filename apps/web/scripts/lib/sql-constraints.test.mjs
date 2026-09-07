@@ -197,6 +197,61 @@ describe("CHECK — normalização de expressão", () => {
   })
 })
 
+/**
+ * GATE-18 FIX-005 — o bug que este bloco trava.
+ *
+ * A versão anterior removia aspas de QUALQUER identificador. É inseguro:
+ * Postgres dobra (fold) identificador SEM aspas para minúsculas antes de
+ * resolver, mas preserva o case exato de um identificador COM aspas.
+ * `"userId"` e `userId` podem ser colunas DIFERENTES (a segunda resolve para
+ * `userid`) — remover a aspa cegamente as tornava indistinguíveis, um falso
+ * PASS semântico.
+ */
+describe("CHECK — identificador citado com maiúscula NUNCA perde a aspa (FIX-005)", () => {
+  it('"userId" citado vs userId sem aspas → permanecem DIFERENTES após normalizar', () => {
+    // Sem aspas, `userId` dobraria para `userid` — coluna potencialmente
+    // diferente de `"userId"`, que preserva o case exato.
+    const citado = normalizarExpressao('"userId" IS NOT NULL')
+    const semAspas = normalizarExpressao('userId IS NOT NULL')
+    assert.notEqual(citado, semAspas, '"userId" e userId não podem normalizar igual')
+  })
+
+  it('"UserID" citado vs userid sem aspas → permanecem DIFERENTES', () => {
+    const citado = normalizarExpressao('"UserID" > 0')
+    const semAspas = normalizarExpressao("userid > 0")
+    assert.notEqual(citado, semAspas)
+  })
+
+  it("consequência no comparador: REPROVA, não PASSA", () => {
+    const doRepo = { tipo: "CHECK", tabela: "t", colunas: [], expressao: normalizarExpressao('"userId" IS NOT NULL') }
+    const doBanco = { tipo: "CHECK", tabela: "t", colunas: [], expressao: normalizarExpressao("userId IS NOT NULL") }
+    const dif = compararConstraint(doRepo, doBanco)
+    assert.ok(dif.length > 0, '"userId" vs userId deveria reprovar no comparador real')
+  })
+
+  it("literal de string 'userId' nunca é tocado, mesmo perto de identificador citado", () => {
+    // Caso adversarial: aspa dupla DENTRO de um literal de aspa simples.
+    const e = normalizarExpressao(`status = 'userId' AND "userId" IS NOT NULL`)
+    assert.match(e, /'userId'/, "o literal precisa sobreviver intacto")
+    assert.match(e, /"userId"/, 'o identificador com maiúscula precisa continuar citado')
+  })
+
+  it("quoting IDÊNTICO nos dois lados → PASSA", () => {
+    assert.equal(normalizarExpressao('"userId" IS NOT NULL'), normalizarExpressao('"userId" IS NOT NULL'))
+  })
+
+  it("identificador citado já minúsculo simples PODE perder a aspa — equivalência comprovada", () => {
+    // `"foo"` citado e `foo` sem aspas resolvem para a MESMA coluna sempre:
+    // sem aspas, Postgres dobra `foo` para `foo` (já é minúsculo) — não há
+    // ambiguidade possível, ao contrário do caso com maiúscula.
+    assert.equal(normalizarExpressao('"foo" > 0'), normalizarExpressao("foo > 0"))
+  })
+
+  it("whitespace cosmético continua passando, mesmo com identificador citado", () => {
+    assert.equal(normalizarExpressao('"userId"   IS NOT NULL'), normalizarExpressao('"userId" IS NOT NULL'))
+  })
+})
+
 describe("CHECK — extração de dentro de `CHECK (...)`", () => {
   it("extrai o corpo, removendo só o wrapper CHECK", () => {
     assert.equal(expressaoDoCheck("CHECK (b > 0)"), "b > 0")

@@ -80,7 +80,7 @@ function fimDoLiteral(texto, inicio) {
  * normalizada, produzindo `ab` — que passaria, por engano, contra um
  * identificador genuinamente diferente de mesmo nome.
  */
-function fimDoIdentificadorCitado(texto, inicio) {
+export function fimDoIdentificadorCitado(texto, inicio) {
   let j = inicio + 1
   while (j < texto.length) {
     if (texto[j] === '"' && texto[j + 1] === '"') { j += 2; continue }
@@ -88,6 +88,83 @@ function fimDoIdentificadorCitado(texto, inicio) {
     j++
   }
   return -1
+}
+
+/**
+ * Devolve `sql` com o CONTEÚDO de literais e de blocos dollar-quoted trocado
+ * por espaços, preservando o comprimento e as aspas/tags delimitadoras.
+ *
+ * Para que serve: buscar palavras-chave SQL com regex sem cair dentro de texto
+ * que só *parece* SQL. É a correção do GATE-18 FIX-018 (BUG 2): o auditor lia
+ *
+ *   WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+ *
+ * e inventava uma tabela chamada `AS`, porque o regex de `CREATE TABLE` não
+ * sabia distinguir código de string. Mascarar antes de buscar resolve a classe
+ * inteira do problema, em vez de remendar aquele caso.
+ *
+ * Comprimento preservado de propósito: os índices do texto mascarado continuam
+ * apontando para as mesmas posições do texto original, então dá para LOCALIZAR
+ * no mascarado e LER no original — necessário para `CREATE POLICY`, cujo corpo
+ * é feito de literais que precisam ser lidos de verdade.
+ *
+ * Identificadores citados (`"Foo"`) NÃO são mascarados: são nomes de objeto,
+ * exatamente o que se quer capturar. Comentários não são tratados aqui —
+ * `semComentarios` já os remove antes.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * BLOCOS DOLLAR-QUOTED NÃO SÃO MASCARADOS — e isso é deliberado.
+ *
+ * A primeira versão deste fix mascarava `$$ … $$` junto com os literais. Parecia
+ * mais seguro e era pior: as migrations deste repositório declaram enums pelo
+ * padrão idempotente
+ *
+ *   DO $$ BEGIN
+ *     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'CareMediaType') THEN
+ *       CREATE TYPE "CareMediaType" AS ENUM ('PHOTO');
+ *     END IF;
+ *   END $$;
+ *
+ * e mascarar o bloco apagava um `CREATE TYPE` REAL. O auditor passou a reportar
+ * `care_media_v0` como 7/7 em vez de 8/8, perdendo o enum em silêncio — perder
+ * detecção de objeto real é exatamente o que este fix não pode fazer.
+ *
+ * Num bloco `DO`, o conteúdo é DDL que executa na hora da migration: é código,
+ * não texto. Os literais lá dentro continuam sendo mascarados normalmente, que
+ * é o comportamento correto.
+ *
+ * LIMITAÇÃO CONHECIDA E ACEITA: dollar quoting também serve para carregar DADOS
+ * (`SELECT $$it's fine$$`). Uma apóstrofe ímpar aí dentro faria o scanner de
+ * literais dessincronizar e mascarar demais. Nenhuma migration deste repositório
+ * usa dollar quoting assim, e a direção do erro é conservadora — mascarar demais
+ * faz o auditor ACUSAR ausência, nunca aprovar drift.
+ */
+export function mascararLiterais(sql) {
+  let saida = ""
+  let i = 0
+  while (i < sql.length) {
+    const c = sql[i]
+    if (c === "'") {
+      const fim = fimDoLiteral(sql, i)
+      const bruto = sql.slice(i, fim)
+      // mantém as aspas das pontas; o miolo vira espaço
+      saida += bruto.length >= 2
+        ? "'" + " ".repeat(bruto.length - 2) + (bruto.endsWith("'") ? "'" : " ")
+        : " ".repeat(bruto.length)
+      i = fim
+      continue
+    }
+    if (c === '"') {
+      const fim = fimDoIdentificadorCitado(sql, i)
+      if (fim === -1) { saida += sql.slice(i); break }
+      saida += sql.slice(i, fim)   // identificador preservado
+      i = fim
+      continue
+    }
+    saida += c
+    i++
+  }
+  return saida
 }
 
 /**

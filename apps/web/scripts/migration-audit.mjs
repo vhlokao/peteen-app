@@ -30,7 +30,8 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import pg from "pg"
 import { identificarAlvo } from "./lib/target-db-guard.mjs"
-import { constraintsDe, compararConstraint, ACAO_POR_CODIGO, expressaoDoCheck } from "./lib/sql-constraints.mjs"
+import { constraintsDe, compararConstraint, ACAO_POR_CODIGO, expressaoDoCheck, mascararLiterais } from "./lib/sql-constraints.mjs"
+import { policiesDe, compararPolicy, chaveDaPolicy } from "./lib/sql-policies.mjs"
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..")
 const PRISMA_DIR = join(RAIZ, "prisma", "migrations")
@@ -68,8 +69,27 @@ const capturar = (sql, re) => unico([...sql.matchAll(re)].map((m) => m[1]))
 export function objetosDe(sqlBruto) {
   const sql = semComentarios(sqlBruto)
 
+  /**
+   * Busca de ESTRUTURA roda sobre o SQL mascarado — GATE-18 FIX-018 (BUG 2).
+   *
+   * O regex de `CREATE TABLE` casava dentro de literais. Com
+   *
+   *   WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+   *
+   * no event trigger da migration de segurança, o auditor inventava uma
+   * tabela chamada `AS` e reportava efeito faltando que nunca existiu.
+   *
+   * `mascararLiterais` preserva o comprimento, então índices e capturas
+   * continuam válidos; identificadores citados não são tocados.
+   *
+   * ATENÇÃO: `buckets` continua lendo o texto ORIGINAL de propósito — o id do
+   * bucket É o literal (`VALUES ('avatars', ...)`). Mascarar ali apagaria
+   * justamente o valor que se quer capturar.
+   */
+  const mascarado = mascararLiterais(sql)
+
   const colunas = []
-  for (const bloco of sql.split(/;\s*/)) {
+  for (const bloco of mascarado.split(/;\s*/)) {
     const t = bloco.match(/ALTER TABLE(?:\s+IF EXISTS)?\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/i)
     if (!t) continue
     for (const m of bloco.matchAll(/ADD COLUMN(?:\s+IF NOT EXISTS)?\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi)) {
@@ -78,8 +98,8 @@ export function objetosDe(sqlBruto) {
   }
 
   const criacoes = [
-    ...sql.matchAll(/CREATE TABLE(\s+IF NOT EXISTS)?/gi),
-    ...sql.matchAll(/CREATE(?:\s+UNIQUE)?\s+INDEX(\s+IF NOT EXISTS)?/gi),
+    ...mascarado.matchAll(/CREATE TABLE(\s+IF NOT EXISTS)?/gi),
+    ...mascarado.matchAll(/CREATE(?:\s+UNIQUE)?\s+INDEX(\s+IF NOT EXISTS)?/gi),
   ]
 
   /**
@@ -92,12 +112,13 @@ export function objetosDe(sqlBruto) {
   const constraints = constraintsDe(sql)
 
   return {
-    tabelas: capturar(sql, /CREATE TABLE(?:\s+IF NOT EXISTS)?\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
+    tabelas: capturar(mascarado, /CREATE TABLE(?:\s+IF NOT EXISTS)?\s+(?:"?[A-Za-z_][A-Za-z0-9_]*"?\.)?"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
     colunas,
-    indices: capturar(sql, /CREATE(?:\s+UNIQUE)?\s+INDEX(?:\s+IF NOT EXISTS)?\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
+    indices: capturar(mascarado, /CREATE(?:\s+UNIQUE)?\s+INDEX(?:\s+IF NOT EXISTS)?\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
     constraints,
-    enums: capturar(sql, /CREATE TYPE\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
-    politicas: capturar(sql, /CREATE POLICY\s+"([^"]+)"/gi),
+    enums: capturar(mascarado, /CREATE TYPE\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
+    // Identidade (schema, tabela, nome) + semântica. Ver lib/sql-policies.mjs.
+    politicas: policiesDe(sql),
     buckets: capturar(sql, /storage\.buckets[\s\S]{0,300}?VALUES\s*\(\s*'([^']+)'/gi),
     /** Re-executável sem erro? `CREATE` sem `IF NOT EXISTS` falha na segunda vez. */
     idempotente: criacoes.every((m) => m[1]),
@@ -218,7 +239,12 @@ export function vereditoDe(item, estado) {
       ]
     }),
     ...item.enums.map((e) => [`enum ${e}`, estado.enums.has(e)]),
-    ...item.politicas.map((p) => [`policy ${p}`, estado.politicas.has(p)]),
+    // Policy passa só se EXISTE e faz a mesma coisa. Ver lib/sql-policies.mjs.
+    ...(item.politicas ?? []).map((p) => {
+      const dif = compararPolicy(p, estado.politicas.get(chaveDaPolicy(p)) ?? null)
+      const rotulo = `policy ${chaveDaPolicy(p)}`
+      return [dif.length === 0 ? rotulo : `${rotulo} — ${dif.join('; ')}`, dif.length === 0]
+    }),
     ...item.buckets.map((b) => [`bucket ${b}`, estado.buckets.has(b)]),
   ]
   const presentes = checks.filter(([, ok]) => ok).length
@@ -345,7 +371,40 @@ if (executadoDiretamente) {
     indices: await conjunto(`select indexname from pg_indexes where schemaname='public'`),
     constraints: await constraintsDoBanco(client),
     enums: await conjunto(`select typname from pg_type where typtype='e'`),
-    politicas: await seguro(`select policyname from pg_policies where schemaname='storage' and tablename='objects'`),
+    /**
+     * Policies de `public` E de `storage.objects` — GATE-18 FIX-018.
+     *
+     * Antes daqui só saía `storage.objects`, e só o nome. As 29 policies de
+     * `public` criadas pela migration de segurança da Fase A eram invisíveis:
+     * existiam no banco e o auditor as reportava como faltando.
+     *
+     * Restrito a esses dois schemas de propósito — varrer todos traria
+     * policies de plataforma que nenhuma migration deste repositório declara.
+     */
+    politicas: new Map(
+      (
+        await tentar(
+          `select schemaname, tablename, policyname, cmd, roles::text[] as roles,
+                  permissive, qual, with_check
+             from pg_policies
+            where schemaname = 'public'
+               or (schemaname = 'storage' and tablename = 'objects')`,
+          [],
+        )
+      ).map((r) => {
+        const p = {
+          schema: r.schemaname,
+          tabela: r.tablename,
+          nome: r.policyname,
+          comando: r.cmd,
+          papeis: r.roles ?? [],
+          permissiva: String(r.permissive).toUpperCase().startsWith('P') ? 'PERMISSIVE' : 'RESTRICTIVE',
+          usando: r.qual,
+          comCheck: r.with_check,
+        }
+        return [chaveDaPolicy(p), p]
+      }),
+    ),
     buckets: await seguro(`select id from storage.buckets`),
   }
 

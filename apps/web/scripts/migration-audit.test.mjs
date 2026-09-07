@@ -13,7 +13,7 @@
  */
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
-import { readdirSync, existsSync } from "node:fs"
+import { readdirSync, existsSync, readFileSync } from "node:fs"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -324,5 +324,150 @@ describe("veredito por efeito", () => {
     const v = vereditoDe(item, estado(["a"], ["i1"]))
     assert.equal(v.efeito, "PARCIAL")
     assert.deepEqual(v.faltando, ["idx i2"])
+  })
+})
+
+/**
+ * GATE-18 FIX-018 (BUG 2) — `CREATE TABLE` dentro de literal não é tabela.
+ *
+ * O auditor lia a cláusula do event trigger da migration de segurança
+ *
+ *   WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+ *
+ * e inventava uma tabela chamada `AS`, que naturalmente não existia no banco —
+ * produzindo efeito faltando que nunca deveria ter sido contado. Estes casos
+ * travam as duas direções: o falso positivo tem que sumir E o `CREATE TABLE`
+ * de verdade tem que continuar sendo detectado.
+ */
+describe("objetosDe — literais não são código (FIX-018)", () => {
+  const EVENT_TRIGGER = `
+    DO $do$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_event_trigger WHERE evtname = 'ensure_rls') THEN
+        CREATE EVENT TRIGGER ensure_rls
+          ON ddl_command_end
+          WHEN TAG IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+          EXECUTE FUNCTION public.rls_auto_enable();
+      END IF;
+    END
+    $do$;
+  `
+
+  it("a tabela fantasma AS não existe mais", () => {
+    assert.deepEqual(objetosDe(EVENT_TRIGGER).tabelas, [])
+  })
+
+  it("literal 'CREATE TABLE foo' não vira tabela", () => {
+    assert.deepEqual(objetosDe(`INSERT INTO log(m) VALUES ('CREATE TABLE foo');`).tabelas, [])
+  })
+
+  it("CREATE TABLE dentro de comentário não vira tabela", () => {
+    assert.deepEqual(objetosDe(`-- CREATE TABLE comentada (id int);\nSELECT 1;`).tabelas, [])
+    assert.deepEqual(objetosDe(`/* CREATE TABLE bloco (id int); */\nSELECT 1;`).tabelas, [])
+  })
+
+  it("CREATE TABLE real continua detectado — sem aspas, citado, qualificado e IF NOT EXISTS", () => {
+    assert.deepEqual(objetosDe(`CREATE TABLE foo (id int);`).tabelas, ["foo"])
+    assert.deepEqual(objetosDe(`CREATE TABLE "Foo" (id int);`).tabelas, ["Foo"])
+    assert.deepEqual(objetosDe(`CREATE TABLE public.foo (id int);`).tabelas, ["foo"])
+    assert.deepEqual(objetosDe(`CREATE TABLE IF NOT EXISTS "Foo" (id int);`).tabelas, ["Foo"])
+  })
+
+  it("aspa escapada antes de um CREATE TABLE real não desalinha o scanner", () => {
+    const sql = `SELECT 'it''s ok', 'CREATE TABLE fake'; CREATE TABLE real_t (id int);`
+    assert.deepEqual(objetosDe(sql).tabelas, ["real_t"])
+  })
+
+  it("literal e código na mesma migration: só o código conta", () => {
+    const sql = `${EVENT_TRIGGER}\nCREATE TABLE "de_verdade" (id int);`
+    assert.deepEqual(objetosDe(sql).tabelas, ["de_verdade"])
+  })
+
+  /**
+   * Controle de não-regressão do próprio fix: `buckets` extrai o id de DENTRO
+   * de um literal. Se a busca de buckets passasse a usar o texto mascarado —
+   * a mudança "óbvia" ao corrigir o BUG 2 — o valor sumiria em silêncio.
+   */
+  it("bucket continua sendo extraído do literal", () => {
+    const sql = `INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true);`
+    assert.deepEqual(objetosDe(sql).buckets, ["avatars"])
+  })
+})
+
+/**
+ * GATE-18 FIX-018 (BUG 1) — policy tem schema, tabela e corpo.
+ */
+describe("objetosDe — policies com identidade completa (FIX-018)", () => {
+  it("captura schema, tabela e nome, sem reduzir ao nome", () => {
+    const sql = `
+      CREATE POLICY "users: select own" ON public."users"
+        AS PERMISSIVE FOR SELECT TO public
+        USING (("authId" = ( SELECT auth.uid() AS uid)));
+      CREATE POLICY "avatars: owner update" ON storage."objects"
+        FOR UPDATE TO public
+        USING ((bucket_id = 'avatars'::text));
+    `
+    const p = objetosDe(sql).politicas
+    assert.equal(p.length, 2)
+    assert.equal(p[0].schema, "public")
+    assert.equal(p[0].tabela, "users")
+    assert.equal(p[1].schema, "storage")
+    assert.equal(p[1].tabela, "objects")
+    assert.match(p[1].usando, /'avatars'/)
+  })
+
+  it("vereditoDe reprova policy com corpo diferente (falso PASS guardrail)", () => {
+    const item = objetosDe(`CREATE POLICY "p" ON public."t" FOR SELECT TO public USING ((a = 1));`)
+    const real = {
+      schema: "public", tabela: "t", nome: "p", comando: "SELECT",
+      papeis: ["public"], permissiva: "PERMISSIVE", usando: "(a = 2)", comCheck: null,
+    }
+    const estado = {
+      tabelas: new Set(), colunas: new Set(), indices: new Set(), enums: new Set(),
+      buckets: new Set(), constraints: new Map(),
+      politicas: new Map([['public.t."p"', real]]),
+    }
+    const v = vereditoDe(item, estado)
+    assert.equal(v.efeito, "AUSENTE", "corpo diferente não pode contar como presente")
+    assert.ok(v.faltando[0].includes("USING"), `esperava drift de USING, veio: ${v.faltando[0]}`)
+  })
+})
+
+/**
+ * Trava da regressão que o próprio FIX-018 cometeu: mascarar blocos
+ * dollar-quoted apagava `CREATE TYPE` real declarado no padrão idempotente
+ * (`DO $$ … IF NOT EXISTS … CREATE TYPE … $$`), e `care_media_v0` caiu de 8/8
+ * para 7/7 sem que nada acusasse erro.
+ */
+describe("objetosDe — DDL dentro de DO $$ é DDL de verdade (FIX-018)", () => {
+  it("CREATE TYPE dentro de DO $$ continua sendo detectado", () => {
+    const sql = `
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'CareMediaType') THEN
+          CREATE TYPE "CareMediaType" AS ENUM ('PHOTO');
+        END IF;
+      END $$;
+    `
+    assert.deepEqual(objetosDe(sql).enums, ["CareMediaType"])
+  })
+
+  it("CREATE TABLE dentro de DO $$ continua sendo detectado", () => {
+    const sql = `DO $$ BEGIN CREATE TABLE "dentro_do_bloco" (id int); END $$;`
+    assert.deepEqual(objetosDe(sql).tabelas, ["dentro_do_bloco"])
+  })
+
+  it("literal DENTRO do bloco DO continua mascarado", () => {
+    const sql = `DO $$ BEGIN PERFORM 'CREATE TABLE falsa'; END $$;`
+    assert.deepEqual(objetosDe(sql).tabelas, [])
+  })
+
+  it("care_media_v0 declara o enum CareMediaType (caso real da regressão)", () => {
+    const f = join(DIR_MIGRATIONS, "20260813120000_care_media_v0", "migration.sql")
+    if (!existsSync(f)) return
+    assert.ok(
+      objetosDe(readFileSync(f, "utf8")).enums.includes("CareMediaType"),
+      "o enum de care_media_v0 sumiu do inventário",
+    )
   })
 })

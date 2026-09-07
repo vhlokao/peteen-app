@@ -12,8 +12,8 @@
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
+    "db:migrate": "node scripts/prisma-guard.mjs migrate dev",
+    "db:push": "node scripts/prisma-guard.mjs db push",
     "db:studio": "prisma studio",
     "test:location": "node --experimental-strip-types --test modules/location/domain/location.test.ts modules/location/domain/discovery-filter.test.ts modules/location/domain/location-truth-contract.test.ts modules/growth-engine/domain/delegate-availability.test.ts",
     "test:agenda": "node --experimental-strip-types --test lib/date/agenda-temporal.test.ts modules/service-request/domain/agenda-conflict.test.ts modules/service-request/domain/start-eligibility.test.ts",
@@ -43,7 +43,9 @@
     "test:routing": "node --experimental-strip-types --test modules/identity/domain/route-access.test.ts modules/identity/domain/post-login-destination.test.ts modules/identity/domain/account-navigation.test.ts components/account/account-settings-layout-contract.test.ts",
     "test:partner-discovery": "node --experimental-strip-types --test modules/partners/infrastructure/professional-search-city.test.ts",
     "test:professional-crm": "node --experimental-strip-types --test modules/professional-crm/domain/request-list-tab.test.ts",
-    "test:scripts": "node --test scripts/lib/target-db-guard.test.mjs scripts/lib/dry-run-contract.test.mjs"
+    "test:scripts": "node --test scripts/lib/target-db-guard.test.mjs scripts/lib/dry-run-contract.test.mjs scripts/prisma-guard.test.mjs scripts/migration-audit.test.mjs",
+    "db:migrate:status": "prisma migrate status",
+    "db:audit": "node scripts/migration-audit.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

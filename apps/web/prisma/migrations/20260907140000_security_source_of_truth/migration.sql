@@ -71,17 +71,37 @@ $function$;
 -- ---------------------------------------------------------------------------
 -- `auth.users` pertence a `supabase_auth_admin`, mas `postgres` tem privilegio
 -- TRIGGER sobre ela (verificado via has_table_privilege), entao esta migration
--- pode gerenciar o trigger. DROP + CREATE porque CREATE TRIGGER nao aceita
--- OR REPLACE em todas as versoes suportadas.
+-- pode gerenciar o trigger.
 --
--- UNICO ponto deste arquivo que NAO e transcricao literal do catalogo: o
--- `pg_get_triggerdef` emite `EXECUTE FUNCTION handle_new_user()` sem schema, o
--- que depende do search_path na hora da execucao. Aqui esta qualificado como
--- `public.handle_new_user()`. Nao muda comportamento -- a funcao so existe em
+-- POR QUE `CREATE OR REPLACE` E NAO `DROP` + `CREATE` (GATE-18 FIX-020)
+-- A primeira versao usava DROP TRIGGER IF EXISTS seguido de CREATE TRIGGER, e
+-- isso NAO aplicava em PROD nem em DEMO. Os dois comandos tem exigencias
+-- diferentes, e a assimetria e facil de nao enxergar:
+--
+--   CREATE TRIGGER  -> exige o privilegio TRIGGER   (postgres TEM)
+--   DROP TRIGGER    -> exige POSSE da tabela        (postgres NAO tem)
+--
+-- Com `IF EXISTS` e o trigger AUSENTE, o Postgres pula antes de checar dono, e
+-- por isso a migration passava num banco vazio. Com o trigger PRESENTE -- que e
+-- o caso de PROD e DEMO -- a checagem acontece e o comando falha com
+--   ERROR 42501: must be owner of relation users
+-- derrubando a migration inteira, ja que o Prisma a roda em transacao.
+--
+-- `CREATE OR REPLACE TRIGGER` (PostgreSQL 14+) faz o mesmo trabalho exigindo
+-- apenas o privilegio TRIGGER. Medido no GATE-020 com posse realista
+-- (auth.users pertencente a outro papel, executor NOSUPERUSER): funciona com o
+-- trigger ausente, com ele presente, na reaplicacao, sem duplicar, e SUBSTITUI
+-- de fato a funcao associada -- nao e um no-op silencioso.
+--
+-- O schema esta qualificado (`public.handle_new_user()`) de proposito: o
+-- `pg_get_triggerdef` emite a forma sem schema, que depende do search_path na
+-- hora da execucao. Qualificar nao muda comportamento -- a funcao so existe em
 -- `public` -- apenas remove a fragilidade em ambiente novo.
 
-DROP TRIGGER IF EXISTS "on_auth_user_created" ON auth.users;
-CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+CREATE OR REPLACE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
 
 -- ---------------------------------------------------------------------------
 -- 3. RLS AUTOMATICO EM TABELAS NOVAS (defesa em profundidade)

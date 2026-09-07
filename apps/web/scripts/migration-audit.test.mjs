@@ -471,3 +471,41 @@ describe("objetosDe — DDL dentro de DO $$ é DDL de verdade (FIX-018)", () => 
     )
   })
 })
+
+/**
+ * GATE-18 FIX-020 — o trigger de `auth.users` não pode voltar a usar DROP.
+ *
+ * `auth.users` pertence a `supabase_auth_admin`; a cadeia Prisma roda como
+ * `postgres`, que tem o privilégio TRIGGER mas NÃO a posse. As exigências dos
+ * dois comandos são diferentes, e a assimetria é fácil de não enxergar:
+ *
+ *   CREATE TRIGGER  -> exige privilégio TRIGGER  (postgres tem)
+ *   DROP TRIGGER    -> exige POSSE da tabela     (postgres não tem)
+ *
+ * Com `IF EXISTS` e o trigger ausente, o Postgres pula antes de checar dono —
+ * então a forma errada PASSA em banco vazio e FALHA em PROD/DEMO, onde o
+ * trigger já existe. Um teste que só rodasse contra banco novo não pegaria.
+ * Este é estático de propósito: trava o padrão no arquivo.
+ */
+describe("migration de segurança — trigger de auth.users (FIX-020)", () => {
+  const ARQ = join(DIR_MIGRATIONS, "20260907140000_security_source_of_truth", "migration.sql")
+
+  it("usa CREATE OR REPLACE TRIGGER", () => {
+    if (!existsSync(ARQ)) return
+    const sql = readFileSync(ARQ, "utf8")
+    assert.match(sql, /CREATE\s+OR\s+REPLACE\s+TRIGGER\s+on_auth_user_created/i)
+  })
+
+  it("NÃO usa DROP TRIGGER em auth.users", () => {
+    if (!existsSync(ARQ)) return
+    const sql = readFileSync(ARQ, "utf8").replace(/^--.*$/gm, "")
+    assert.doesNotMatch(sql, /DROP\s+TRIGGER[\s\S]{0,120}?\bauth\.users\b/i,
+      "DROP TRIGGER em auth.users exige posse da tabela e falha em PROD/DEMO")
+  })
+
+  it("aponta para public.handle_new_user com schema qualificado", () => {
+    if (!existsSync(ARQ)) return
+    const sql = readFileSync(ARQ, "utf8")
+    assert.match(sql, /EXECUTE\s+FUNCTION\s+public\.handle_new_user\(\)/i)
+  })
+})

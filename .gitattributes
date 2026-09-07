@@ -20,3 +20,16 @@
 # regra apenas impede que a árvore de trabalho divirja deles daqui para frente.
 **/prisma/migrations/**/migration.sql text eol=lf
 **/supabase/migrations/*.sql          text eol=lf
+
+# Histórico recuperado — GATE-18-RECONSTRUCTION-B0-HISTORY-CUSTODY-016
+#
+# `supabase/history/recovered/` guarda a transcrição literal das 18 migrations
+# históricas resgatadas de `supabase_migrations.schema_migrations` do DEMO.
+# O manifest registra o SHA-256 de cada arquivo, e essa garantia só sobrevive a
+# um clone novo se o git não converter final de linha: com `core.autocrlf=true`
+# (o caso desta máquina) a árvore de trabalho viraria CRLF e todo hash do
+# manifest passaria a divergir do arquivo em disco.
+#
+# As 18 vieram do banco em LF puro — nenhuma tem CRLF. Fixar `eol=lf` preserva
+# os bytes exatos em qualquer plataforma, que é a razão de o diretório existir.
+**/supabase/history/recovered/*.sql   text eol=lf

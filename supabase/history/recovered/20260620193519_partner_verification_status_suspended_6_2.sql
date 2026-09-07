@@ -1,0 +1,1 @@
+ALTER TYPE "PartnerVerificationStatus" ADD VALUE IF NOT EXISTS 'SUSPENDED';

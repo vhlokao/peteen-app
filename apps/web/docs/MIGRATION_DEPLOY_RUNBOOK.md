@@ -58,6 +58,70 @@ plano de baseline de ponta a ponta: **PROD não precisa de baseline nenhum; DEMO
 
 ---
 
+## Reconstrução de ambiente novo — procedimento
+
+Este é o caminho do **banco vazio até o estado equivalente ao vivo**. Cada passo
+foi validado em ambiente descartável (GATE-022 e GATE-023); o passo 8 acaba de
+ganhar fonte executável.
+
+> **O Gate 18 NÃO está fechado.** A Fase D — reconstrução completa apenas pelas
+> fontes versionadas, comparada por snapshot contra o estado vivo — continua
+> obrigatória. O que existe hoje são as peças validadas isoladamente e uma
+> sequência validada até a Fase A.
+
+| # | Passo | Fonte | Validado em |
+|---|---|---|---|
+| 1 | Provisionar projeto Supabase | plataforma (traz `auth`, `storage`, papéis) | — |
+| 2 | Aplicar o bootstrap relacional | `apps/web/prisma/bootstrap/current_relational_baseline.sql` | GATE-022 |
+| 3 | Aplicar os 2 índices únicos parciais | ver abaixo | GATE-022 |
+| 4 | Marcar as 9 migrations Prisma como aplicadas | `prisma migrate resolve --applied <nome>` | GATE-011 / GATE-022 |
+| 5 | Confirmar `prisma migrate status` | nenhuma das 9 pendente | GATE-022 |
+| 6 | Aplicar a segurança de `public` | `prisma/migrations/20260907140000_security_source_of_truth/` | GATE-019 / GATE-020 |
+| 7 | Aplicar as policies de Storage | `supabase/migrations/20260907140100_storage_security_forward_only.sql` | GATE-019 |
+| 8 | **Aplicar buckets e configuração** | `supabase/migrations/20260907150000_storage_buckets_source_of_truth.sql` | GATE-023 |
+| 9 | Migrations forward futuras | `prisma migrate deploy` | GATE-022 |
+
+### Passo 3 — os dois índices que o Prisma não gera
+
+`@@unique` não expressa cláusula `WHERE`, então `migrate diff` não emite estes
+dois. Sem eles, duas regras de negócio deixam de ser garantidas pelo banco:
+
+| Índice | Fonte |
+|---|---|
+| `services_professionalId_serviceType_active_key` | `prisma/migrations/20260801120000_service_uniqueness_concurrency_safety/migration.sql` |
+| `verification_requests_one_pending_per_entity` | `supabase/history/recovered/20260620180520_verification_request_pending_unique_6_2.sql` |
+
+### Passo 4 — por que `resolve` e nunca `deploy`
+
+Medido no GATE-021, aplicando cada uma das 9 sobre o baseline: **duas falham**.
+
+```
+20260820120000_notification_read_state -> 42P07 relation "notification_reads" already exists
+20260821120000_invite_visit_funnel     -> 42P07 relation "invite_visits" already exists
+```
+
+Ambas usam `CREATE TABLE` sem `IF NOT EXISTS`. As outras sete sobreviveriam por
+idempotência, mas não acrescentariam nada — o baseline já contém 100% dos
+objetos que as 9 declaram. **`baseline + migrate deploy` não funciona.**
+
+A ordem entre 3 e 4 também importa: uma vez marcadas como aplicadas, a migration
+que criaria `services_…_active_key` nunca roda.
+
+### Ordem entre 7 e 8
+
+Policies antes de buckets é seguro — uma policy de `storage.objects` não exige
+que o bucket exista. O inverso também funciona. O que **não** pode acontecer é
+parar no 7: sem o passo 8 não há bucket nenhum, e todo upload falha mesmo com as
+policies corretas.
+
+### Ambientes existentes
+
+**Nada disso se aplica a DEMO ou PROD.** Os dois já têm as 29 tabelas, as 9
+migrations registradas, a segurança e os 5 buckets. Este procedimento serve a
+ambiente novo; ambiente existente evolui só por migrations forward.
+
+---
+
 ## Estado — PROD
 
 **Rastreado pelo Prisma e íntegro.** As 9 migrations do repositório estão em

@@ -1,0 +1,22 @@
+# Final de linha das migrations — GATE-18-MIGRATION-DEPLOY-FOUNDATION-FIX-003
+#
+# O Prisma grava em `_prisma_migrations.checksum` o SHA-256 do conteúdo de
+# `migration.sql` BYTE A BYTE. Final de linha, portanto, muda o checksum: o
+# mesmo arquivo conferido de um checkout LF e de um checkout CRLF produz dois
+# hashes diferentes, com conteúdo idêntico.
+#
+# Este repositório é desenvolvido no Windows, onde o git converte para CRLF na
+# árvore de trabalho por padrão. Foi assim que
+# `20250620120000_professional_availability_7_6` acabou em CRLF localmente
+# enquanto as outras oito seguem em LF — divergência de FORMATO que aparece
+# como divergência de checksum e é indistinguível, à primeira vista, de alguém
+# ter editado uma migration já aplicada.
+#
+# O escopo é deliberadamente estreito: SÓ `migration.sql`. Uma regra ampla
+# (`* text=auto`) renormalizaria o repositório inteiro e produziria um diff
+# gigante sem relação com o problema.
+#
+# Isto NÃO altera conteúdo histórico: os blobs versionados já estão em LF — a
+# regra apenas impede que a árvore de trabalho divirja deles daqui para frente.
+**/prisma/migrations/**/migration.sql text eol=lf
+**/supabase/migrations/*.sql          text eol=lf

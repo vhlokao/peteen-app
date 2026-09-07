@@ -13,8 +13,30 @@
  */
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
+import { readdirSync, existsSync } from "node:fs"
+import { join, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 
-import { semComentarios, objetosDe, vereditoDe, checksumsDe } from "./migration-audit.mjs"
+const DIR_MIGRATIONS = join(dirname(fileURLToPath(import.meta.url)), "..", "prisma", "migrations")
+
+/** Nomes das migrations Prisma, lidos do disco — sem hardcodar a lista. */
+function nomesDeMigration() {
+  return readdirSync(DIR_MIGRATIONS)
+    .sort()
+    .filter((n) => existsSync(join(DIR_MIGRATIONS, n, "migration.sql")))
+}
+
+import {
+  semComentarios,
+  objetosDe,
+  vereditoDe,
+  checksumsDe,
+  classificarChecksum,
+  driftDeFormato,
+  CHECKSUM_OK,
+  CHECKSUM_CONTEUDO,
+  CHECKSUM_FORMATO,
+} from "./migration-audit.mjs"
 
 describe("comentários não são statements", () => {
   it("bloco ROLLBACK comentado não vira DDL", () => {
@@ -83,47 +105,77 @@ describe("idempotência", () => {
   })
 })
 
-describe("constraints e FKs entram no efeito", () => {
-  it("captura o nome de uma FK adicionada", () => {
+describe("constraints e FKs entram no efeito, com semântica", () => {
+  it("a FK vem descrita, não só nomeada", () => {
     const o = objetosDe(`
       ALTER TABLE "push_subscriptions"
         ADD CONSTRAINT "push_subscriptions_userId_fkey"
         FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE;
     `)
-    assert.deepEqual(o.constraints, ["push_subscriptions_userId_fkey"])
+    assert.equal(o.constraints.length, 1)
+    assert.deepEqual(o.constraints[0], {
+      nome: "push_subscriptions_userId_fkey",
+      tabela: "push_subscriptions",
+      tipo: "FOREIGN KEY",
+      colunas: ["userId"],
+      tabelaReferenciada: "users",
+      colunasReferenciadas: ["id"],
+      onDelete: "CASCADE",
+      onUpdate: "NO ACTION",
+    })
   })
 
-  it("DROP CONSTRAINT antes do ADD não vira objeto esperado", () => {
-    // Padrão de idempotência deste repositório: dropa e recria. O efeito
-    // esperado é UM: a constraint existir ao final.
+  it("PRIMARY KEY inline no CREATE TABLE entra no inventário", () => {
+    // A versão anterior só olhava `ADD CONSTRAINT` e não via PK nenhuma.
     const o = objetosDe(`
-      ALTER TABLE "t" DROP CONSTRAINT IF EXISTS "t_fk";
-      ALTER TABLE "t" ADD CONSTRAINT "t_fk" FOREIGN KEY ("a") REFERENCES "u"("id");
+      CREATE TABLE IF NOT EXISTS "care_media" (
+        "id" TEXT NOT NULL,
+        CONSTRAINT "care_media_pkey" PRIMARY KEY ("id")
+      );
     `)
-    assert.deepEqual(o.constraints, ["t_fk"])
+    assert.equal(o.constraints.length, 1)
+    assert.equal(o.constraints[0].tipo, "PRIMARY KEY")
+    assert.equal(o.constraints[0].nome, "care_media_pkey")
   })
 
-  it("uma constraint ausente no banco derruba o veredito para PARCIAL", () => {
+  it("constraint com semântica DIVERGENTE reprova, mesmo com o nome certo", () => {
+    // O ponto do FIX-003: nome igual e comportamento diferente não é "presente".
     const item = {
       tabelas: [], colunas: [], indices: [], enums: [], politicas: [], buckets: [],
-      constraints: ["fk_presente", "fk_ausente"],
+      constraints: [
+        {
+          nome: "t_fk", tabela: "t", tipo: "FOREIGN KEY", colunas: ["a"],
+          tabelaReferenciada: "u", colunasReferenciadas: ["id"],
+          onDelete: "CASCADE", onUpdate: "NO ACTION",
+        },
+      ],
     }
-    const v = vereditoDe(item, {
-      tabelas: new Set(), colunas: new Set(), indices: new Set(), enums: new Set(),
-      politicas: new Set(), buckets: new Set(), constraints: new Set(["fk_presente"]),
+    const estadoBase = {
+      tabelas: new Set(), colunas: new Set(), indices: new Set(),
+      enums: new Set(), politicas: new Set(), buckets: new Set(),
+    }
+
+    const iguais = vereditoDe(item, {
+      ...estadoBase,
+      constraints: new Map([["t_fk", { ...item.constraints[0] }]]),
     })
-    assert.equal(v.efeito, "PARCIAL")
-    assert.deepEqual(v.faltando, ["constraint fk_ausente"])
+    assert.equal(iguais.efeito, "PRESENTE")
+
+    const divergente = vereditoDe(item, {
+      ...estadoBase,
+      constraints: new Map([["t_fk", { ...item.constraints[0], onDelete: "NO ACTION" }]]),
+    })
+    assert.equal(divergente.efeito, "AUSENTE", "ON DELETE trocado tem de reprovar")
+    assert.match(divergente.faltando.join(" "), /ON DELETE/)
   })
 })
 
 describe("checksums no formato do Prisma", () => {
   it("LF e CRLF produzem hashes diferentes — e é por isso que ambos são reportados", () => {
     // Se este teste algum dia falhar, a comparação de checksum virou inútil.
-    const { disco, lf, difere } = checksumsDe("20250620120000_professional_availability_7_6")
+    const { disco, lf, crlf, difere } = checksumsDe("20250620120000_professional_availability_7_6")
     assert.equal(disco.length, 64)
-    assert.equal(lf.length, 64)
-    assert.equal(typeof difere, "boolean")
+    assert.notEqual(lf, crlf, "LF e CRLF do mesmo conteúdo têm de divergir")
     assert.equal(difere, disco !== lf)
   })
 
@@ -133,11 +185,63 @@ describe("checksums no formato do Prisma", () => {
   })
 })
 
+describe("classificação de divergência de checksum", () => {
+  const c = { disco: "a".repeat(64), lf: "b".repeat(64), crlf: "c".repeat(64) }
+
+  it("bate com qualquer forma do arquivo → MATCH, e diz qual forma", () => {
+    assert.equal(classificarChecksum(c.lf, c).classe, CHECKSUM_OK)
+    assert.equal(classificarChecksum(c.lf, c).forma, "LF")
+    assert.equal(classificarChecksum(c.crlf, c).forma, "CRLF")
+  })
+
+  it("não bate com nenhuma forma → CONTENT drift, não formato", () => {
+    // A distinção que importa: alguém editou o SQL, e isso é histórico
+    // corrompido — não um arquivo que trocou de final de linha.
+    assert.equal(classificarChecksum("f".repeat(64), c).classe, CHECKSUM_CONTEUDO)
+  })
+
+  it("sem registro no banco não é drift", () => {
+    assert.equal(classificarChecksum(null, c).classe, "SEM_REGISTRO")
+  })
+
+  /**
+   * Deliberadamente NÃO se afirma aqui que `professional_availability_7_6`
+   * está em CRLF.
+   *
+   * Estava, e é por isso que o `.gitattributes` com `eol=lf` foi adicionado.
+   * Mas um teste que exigisse CRLF quebraria exatamente quando o guardrail
+   * fizesse o seu trabalho — congelando como verdade um estado que existe para
+   * ser corrigido. O invariante durável é outro: seja qual for o final de
+   * linha, a divergência dessa migration nunca pode ser de CONTEÚDO.
+   */
+  it("nenhuma migration do repositório tem drift de CONTEÚDO contra si mesma", () => {
+    for (const nome of nomesDeMigration()) {
+      const c = checksumsDe(nome)
+      for (const forma of [c.disco, c.lf, c.crlf]) {
+        assert.notEqual(
+          classificarChecksum(forma, c).classe,
+          CHECKSUM_CONTEUDO,
+          `${nome}: uma forma do próprio arquivo foi classificada como conteúdo alterado`
+        )
+      }
+    }
+  })
+
+  it("quando há drift, ele é de FORMATO e nomeia o final de linha", () => {
+    for (const nome of nomesDeMigration()) {
+      const d = driftDeFormato(nome)
+      if (d === null) continue // já normalizada — o estado desejado
+      assert.equal(d.classe, CHECKSUM_FORMATO)
+      assert.ok(["CRLF", "MISTO"].includes(d.finalDeLinha), `final de linha inesperado: ${d.finalDeLinha}`)
+    }
+  })
+})
+
 describe("veredito por efeito", () => {
   const item = { tabelas: ["a"], colunas: [], indices: ["i1", "i2"], enums: [], politicas: [], buckets: [], constraints: [] }
   const estado = (t, i) => ({
     tabelas: new Set(t), colunas: new Set(), indices: new Set(i),
-    enums: new Set(), politicas: new Set(), buckets: new Set(), constraints: new Set(),
+    enums: new Set(), politicas: new Set(), buckets: new Set(), constraints: new Map(),
   })
 
   it("tudo presente → PRESENTE", () => {

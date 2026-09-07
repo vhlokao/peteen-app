@@ -3,8 +3,9 @@
 Fonte de verdade sobre **quem é dono de qual parte do schema, o que já foi
 aplicado, e como schema chega em cada ambiente**.
 
-Criado em GATE-18-MIGRATION-DEPLOY-FOUNDATION-001 e **corrigido em FIX-002**,
-quando evidência de PROD ficou disponível e inverteu boa parte das conclusões.
+Criado em GATE-18-MIGRATION-DEPLOY-FOUNDATION-001, corrigido em **FIX-002**
+(evidência de PROD, que inverteu as conclusões) e em **FIX-003** (validação semântica
+de constraints, classificação de checksum e guardrail de final de linha).
 **Nada foi aplicado nem reconciliado** — a fase de escrita depende de aprovação
 humana (ver "Plano de baseline").
 
@@ -87,19 +88,31 @@ Compare a coluna `checksum` com a tabela da seção "Matriz de checksums".
 ### Reconciliação por efeito
 
 Verificada pelos objetos que cada migration cria — tabelas, colunas, índices,
-**constraints e FKs**, enums, policies e buckets.
+**constraints e FKs (semanticamente)**, enums, policies e buckets.
+
+**Constraints são comparadas pelo que fazem, não pelo nome.** Conferir só o nome
+responde "existe algo chamado assim?", e uma FK apontando para a tabela certa
+com `ON DELETE NO ACTION` onde a migration pede `CASCADE` passaria — mudando o
+comportamento do banco quando uma linha pai é apagada. A comparação cobre: tipo,
+tabela dona, colunas locais (**na ordem**), tabela e colunas referenciadas,
+`ON DELETE` e `ON UPDATE`.
+
+Inclui também as constraints declaradas **inline em `CREATE TABLE`**, que é onde
+vivem todas as 6 primary keys criadas por estas migrations e que a versão
+anterior do auditor não enxergava. Total conferido: **13 constraints — 7 FKs e
+6 PKs.**
 
 | Migration | Origem | Tracking | Efeito | Veredito |
 |---|---|---|---|---|
-| `20250620120000_professional_availability_7_6` | prisma | não | 4/4 | UNTRACKED_BUT_PRESENT |
+| `20250620120000_professional_availability_7_6` | prisma | não | 5/5 | UNTRACKED_BUT_PRESENT |
 | `20260730180000_agenda_foundation_v0_3` | prisma | não | 4/4 | UNTRACKED_BUT_PRESENT |
 | `20260801120000_service_uniqueness_concurrency_safety` | prisma | não | 1/1 | UNTRACKED_BUT_PRESENT |
-| `20260808120000_push_notifications_foundation_v0` | prisma | não | 11/11 | UNTRACKED_BUT_PRESENT |
-| `20260813120000_care_media_v0` | prisma | não | 7/7 | UNTRACKED_BUT_PRESENT |
+| `20260808120000_push_notifications_foundation_v0` | prisma | não | 13/13 | UNTRACKED_BUT_PRESENT |
+| `20260813120000_care_media_v0` | prisma | não | 8/8 | UNTRACKED_BUT_PRESENT |
 | `20260817020000_push_vapid_environment_isolation` | prisma | não | 2/2 | UNTRACKED_BUT_PRESENT |
 | `20260817030000_push_subscription_runtime_environment` | prisma | não | 1/1 | UNTRACKED_BUT_PRESENT |
-| `20260820120000_notification_read_state` | prisma | não | 4/4 | UNTRACKED_BUT_PRESENT |
-| `20260821120000_invite_visit_funnel` | prisma | não | 6/6 | UNTRACKED_BUT_PRESENT |
+| `20260820120000_notification_read_state` | prisma | não | 5/5 | UNTRACKED_BUT_PRESENT |
+| `20260821120000_invite_visit_funnel` | prisma | não | 7/7 | UNTRACKED_BUT_PRESENT |
 | `20260720000000_avatars_bucket_rls_policies` | supabase | não | **1/3** | **PARTIAL_DRIFT** |
 | `20260813000000_care_media_private_bucket` | supabase | não | 1/1 | UNTRACKED_BUT_PRESENT |
 
@@ -176,12 +189,44 @@ no modelo e só aparece no catálogo.
 ## Matriz de checksums — 9 migrations Prisma
 
 O Prisma grava em `_prisma_migrations.checksum` o **SHA-256 hex do conteúdo de
-`migration.sql`**, byte a byte. Divergência de checksum faz o Prisma tratar a
-migration como **modificada** e recusar `migrate deploy`.
+`migration.sql`**, byte a byte.
 
 **Final de linha muda o hash.** Este repositório é editado no Windows e o git
 avisa "LF will be replaced by CRLF" a cada `add`. Por isso a matriz traz as duas
 formas: sem elas, um falso alarme de drift é indistinguível de um real.
+
+### O que o Prisma faz diante de checksum divergente — o que está PROVADO e o que não está
+
+Versões anteriores deste documento afirmavam que o Prisma **recusa**
+`migrate deploy` quando o checksum diverge. **Essa afirmação não foi
+verificada**, e por isso foi removida daqui.
+
+O que a evidência sustenta, extraída do binário do schema engine
+(`node_modules/prisma/build/schema_engine_bg.wasm`, Prisma 7.8.0):
+
+- existe o módulo `schema-engine/connectors/schema-connector/src/checksum.rs`;
+- existe o campo de diagnóstico `editedMigrationNames`, ao lado de
+  `databaseIsBehind`, `unappliedMigrationNames`, `historiesDiverge`,
+  `failedMigrationNames` e `hasMigrationsTable`;
+- existe a mensagem `` ` was modified after it was applied.``;
+- existe `Drift detected: Your database schema is not in sync with your
+  migration history.`;
+- a coluna `checksum` faz parte do schema de `_prisma_migrations` que o engine
+  cria.
+
+Ou seja: **o Prisma reconhece e reporta migrations editadas.** O que *não* foi
+provado é qual comando falha, com que severidade, e se há normalização de final
+de linha na comparação.
+
+**Por que não foi provado:** o teste exigiria aplicar migrations contra um banco
+descartável, e nesta máquina não há Docker nem Postgres local; rodar contra DEMO
+ou PROD está proibido pelo gate. Fica como verificação pendente, com o
+procedimento: subir um Postgres local, `migrate deploy`, alterar o final de
+linha de uma migration aplicada, rodar `migrate deploy` e `migrate status` de
+novo, e registrar a saída literal.
+
+Até lá, o plano trata a divergência como **potencialmente bloqueante** — que é a
+postura conservadora — sem afirmar que é.
 
 | Migration | SHA-256 (LF — forma canônica do git) | Disco == LF? |
 |---|---|---|
@@ -198,6 +243,44 @@ formas: sem elas, um falso alarme de drift é indistinguível de um real.
 Para os 9, o blob versionado no git **bate com a forma LF** — ela é a canônica.
 A única com CRLF na árvore de trabalho é `professional_availability_7_6`; seu
 hash em disco é `4d5febaf3940b4e0c9ecc2e4c3511973fde3b50536d6429d6eeb23a8e7461f18`.
+
+### Classificação: `FORMAT_ONLY_CHECKSUM_DRIFT / CRLF`
+
+`20250620120000_professional_availability_7_6` está classificada como
+**`FORMAT_ONLY_CHECKSUM_DRIFT`, final de linha `CRLF`**.
+
+O conteúdo é idêntico ao versionado — caractere a caractere, statement a
+statement. O que difere é só o final de linha da cópia na árvore de trabalho.
+Isso **não** é histórico corrompido.
+
+A auditoria distingue três casos, e a distinção é a razão de a classificação
+existir:
+
+| Classe | Significado | Reação correta |
+|---|---|---|
+| `MATCH` | bate com alguma forma do arquivo | nada |
+| `FORMAT_ONLY_CHECKSUM_DRIFT` | só o final de linha difere | normalizar o checkout |
+| `CONTENT_CHECKSUM_DRIFT` | não bate com nenhuma forma | **investigar**: alguém editou SQL já aplicado |
+
+Tratar os dois últimos como a mesma coisa leva a reações erradas e opostas:
+ignorar um drift real, ou "consertar" um falso alarme **reescrevendo uma
+migration já aplicada** — que é a única ação aqui capaz de corromper o histórico
+de verdade.
+
+**O que NÃO se faz:** editar `20250620120000_professional_availability_7_6`, e
+não mexer em `_prisma_migrations`. A migration histórica fica como está.
+
+### Guardrail: `.gitattributes`
+
+`/.gitattributes` fixa `eol=lf` **apenas** para `migration.sql` e para as
+migrations Supabase. Escopo estreito de propósito: uma regra ampla
+(`* text=auto`) renormalizaria o repositório inteiro e produziria um diff enorme
+sem relação com o problema.
+
+Verificado que não altera conteúdo histórico: `git add --renormalize` sobre as
+duas pastas de migrations não produziu **nenhuma** mudança de blob — os blobs já
+estavam em LF, e a regra só impede a árvore de trabalho de divergir deles daqui
+para frente.
 
 **Como comparar:** rode a consulta da seção "Estado — PROD" e confronte a coluna
 `checksum` com a coluna LF acima. `npm run db:audit` faz isso automaticamente
@@ -290,7 +373,7 @@ do repositório não têm um único statement destrutivo executável** — todos
 #### Fase 1 — snapshot
 Backup/PITR **confirmado** no projeto DEMO. Sem snapshot verificado, nada começa.
 
-#### Fase 2 — baseline do DEMO
+#### Fase 2 — baseline do DEMO, **a partir de um checkout LF**
 Para cada uma das 9, em ordem cronológica:
 ```
 npx prisma migrate resolve --applied <nome-da-migration>
@@ -299,10 +382,25 @@ npx prisma migrate resolve --applied <nome-da-migration>
 registra a migration como aplicada. É seguro **precisamente porque já provamos,
 por efeito, que os objetos existem**.
 
-Antes disso, conferir o final de linha de `professional_availability_7_6`: se o
-checkout local estiver com CRLF, o checksum gravado será o CRLF e divergirá de
-qualquer máquina com LF. Baselinear a partir de um checkout LF evita plantar
-essa divergência.
+**Pré-requisito explícito: rodar de um checkout com final de linha LF.** O
+checksum gravado é o do arquivo em disco no momento do baseline. Baselinear a
+partir de um checkout CRLF plantaria, no DEMO, uma divergência permanente contra
+toda máquina e CI que use LF — criando de propósito o problema que o
+`.gitattributes` acabou de resolver. Com o `.gitattributes` no lugar, um
+checkout novo já vem em LF; conferir com `npm run db:audit`, que reporta o final
+de linha de cada arquivo.
+
+#### PROD e o checksum CRLF histórico
+**PROD fica como está.** Se o checksum gravado lá para
+`professional_availability_7_6` for o da forma CRLF, ele **permanece** — não se
+reescreve `_prisma_migrations` para "alinhar formato". A auditoria reconhece as
+duas formas como `MATCH`, então a divergência não gera alarme falso, e mexer no
+histórico de produção por estética é risco sem contrapartida.
+
+Isso vale enquanto ninguém precisar aplicar migration nova em PROD a partir de
+um checkout LF. Quando isso for necessário, a pergunta a responder primeiro é a
+que ficou pendente acima: **o Prisma realmente bloqueia?** Sem essa resposta,
+não se decide se há algo a fazer.
 
 #### Fase 3 — validar
 `npm run db:audit` → todos os vereditos viram `TRACKED_AND_PRESENT`, e a seção

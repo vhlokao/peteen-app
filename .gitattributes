@@ -33,3 +33,11 @@
 # As 18 vieram do banco em LF puro — nenhuma tem CRLF. Fixar `eol=lf` preserva
 # os bytes exatos em qualquer plataforma, que é a razão de o diretório existir.
 **/supabase/history/recovered/*.sql   text eol=lf
+
+# Bootstrap relacional — GATE-18-PHASE-B-RELATIONAL-BASELINE-021
+#
+# O manifesto registra o SHA-256 do baseline, e a verificação proposta no README
+# é `prisma migrate diff | diff - baseline.sql`. Com `core.autocrlf=true` um
+# clone converteria o arquivo para CRLF e as duas coisas passariam a divergir sem
+# uma linha de SQL ter mudado — o mesmo problema que o histórico recuperado teve.
+**/prisma/bootstrap/*.sql   text eol=lf

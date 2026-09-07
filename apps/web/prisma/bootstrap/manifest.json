@@ -1,0 +1,158 @@
+{
+  "gate": "GATE-18-PHASE-B-RELATIONAL-BASELINE-021",
+  "classification": "CURRENT_RELATIONAL_BOOTSTRAP",
+  "automatic_execution": false,
+  "warning": "Este arquivo representa o estado relacional atual para reconstrucao de ambiente vazio. Ainda nao compoe a cadeia automatica de migrations.",
+  "generated_at": "2026-09-07T15:38:26.215Z",
+  "source": {
+    "schema": "apps/web/prisma/schema.prisma",
+    "schema_sha256": "8d12fba2eeff51a6dcc3f1c2ce9860176e7a2986887286cf1dd733cb6758bc10",
+    "command": "npx prisma migrate diff --from-empty --to-schema prisma/schema.prisma --script",
+    "prisma_version": "7.8.0",
+    "deterministic": true,
+    "line_endings": "LF"
+  },
+  "baseline": {
+    "path": "apps/web/prisma/bootstrap/current_relational_baseline.sql",
+    "sha256": "5131ee145512ee3c8dcadad00d87bffd40ba1fa25d8c3213a410b7b4b6666061",
+    "bytes": 39253
+  },
+  "object_counts": {
+    "tabelas": 29,
+    "enums": 30,
+    "colunas": 361,
+    "primary_keys": 29,
+    "foreign_keys": 45,
+    "unique_constraints": 0,
+    "check_constraints": 0,
+    "indices": 139,
+    "indices_unicos": 50
+  },
+  "reconciled_against": {
+    "environment": "DEMO",
+    "project_ref": "hxzlrfyelxmybghtbbxh",
+    "read_only": true,
+    "tables_match": "29/29",
+    "enums_match_values_and_order": "30/30",
+    "columns_identical": "361/361"
+  },
+  "known_completeness_gaps": [
+    {
+      "object": "services_professionalId_serviceType_active_key",
+      "kind": "partial unique index",
+      "reason": "Prisma @@unique nao expressa clausula WHERE; migrate diff nao gera",
+      "source": "prisma/migrations/20260801120000_service_uniqueness_concurrency_safety"
+    },
+    {
+      "object": "verification_requests_one_pending_per_entity",
+      "kind": "partial unique index",
+      "reason": "Prisma @@unique nao expressa clausula WHERE; migrate diff nao gera",
+      "source": "supabase/history/recovered/20260620180520_verification_request_pending_unique_6_2.sql"
+    }
+  ],
+  "sourceless_objects": {
+    "tabelas": [
+      "care_updates",
+      "partners",
+      "trust_connections"
+    ],
+    "enums": [
+      "CareUpdateCategory",
+      "PartnerCategory",
+      "TrustConnectionType",
+      "TrustSourceType",
+      "TrustTargetType"
+    ]
+  },
+  "excludes_non_relational": {
+    "CREATE POLICY": true,
+    "ENABLE ROW LEVEL SECURITY": true,
+    "CREATE FUNCTION": true,
+    "CREATE TRIGGER": true,
+    "CREATE EVENT TRIGGER": true,
+    "GRANT": true,
+    "REVOKE": true,
+    "ALTER DEFAULT PRIVILEGES": true,
+    "storage.": true,
+    "auth.": true,
+    "INSERT": true,
+    "UPDATE": true,
+    "DELETE": true,
+    "supabase_migrations": true,
+    "DROP TABLE": true
+  },
+  "prisma_migrations_interaction": [
+    {
+      "migration": "20250620120000_professional_availability_7_6",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": true,
+      "failure": null,
+      "objects_missing_from_baseline": []
+    },
+    {
+      "migration": "20260730180000_agenda_foundation_v0_3",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": true,
+      "failure": null,
+      "objects_missing_from_baseline": []
+    },
+    {
+      "migration": "20260801120000_service_uniqueness_concurrency_safety",
+      "contained_in_baseline": false,
+      "reapplies_over_baseline": true,
+      "failure": null,
+      "objects_missing_from_baseline": [
+        "indice services_professionalId_serviceType_active_key"
+      ]
+    },
+    {
+      "migration": "20260808120000_push_notifications_foundation_v0",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": true,
+      "failure": null,
+      "objects_missing_from_baseline": []
+    },
+    {
+      "migration": "20260813120000_care_media_v0",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": true,
+      "failure": null,
+      "objects_missing_from_baseline": []
+    },
+    {
+      "migration": "20260817020000_push_vapid_environment_isolation",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": true,
+      "failure": null,
+      "objects_missing_from_baseline": []
+    },
+    {
+      "migration": "20260817030000_push_subscription_runtime_environment",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": true,
+      "failure": null,
+      "objects_missing_from_baseline": []
+    },
+    {
+      "migration": "20260820120000_notification_read_state",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": false,
+      "failure": "relation \"notification_reads\" already exists",
+      "objects_missing_from_baseline": []
+    },
+    {
+      "migration": "20260821120000_invite_visit_funnel",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": false,
+      "failure": "relation \"invite_visits\" already exists",
+      "objects_missing_from_baseline": []
+    },
+    {
+      "migration": "20260907140000_security_source_of_truth",
+      "contained_in_baseline": true,
+      "reapplies_over_baseline": false,
+      "failure": "schema \"auth\" does not exist",
+      "objects_missing_from_baseline": []
+    }
+  ]
+}

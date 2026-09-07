@@ -65,6 +65,32 @@ function fimDoLiteral(texto, inicio) {
 }
 
 /**
+ * Percorre `texto` a partir de `inicio` (que aponta para a aspa dupla de
+ * abertura) e devolve o índice logo APÓS a aspa de fechamento — respeitando
+ * `""` como aspa dupla ESCAPADA dentro do identificador, exatamente como o
+ * Postgres exige (`"a""b"` é o identificador de nome `a"b`, uma coisa só).
+ * Devolve `-1` se não houver fechamento (aspa órfã) — mesma convenção de
+ * `String.indexOf`.
+ *
+ * Única implementação deste laço no arquivo. É a correção de um bug real do
+ * GATE-18 FIX-007: `tokenizarExpressao` e `parenExternoRedundante` reimplementavam
+ * essa busca cada um com `indexOf('"', i + 1)`, que trata a PRIMEIRA aspa de
+ * um par `""` como fechamento — `"a""b"` era lido como DOIS identificadores
+ * (`a` e `b`) em vez de um (`a"b`), e ambos podiam acabar sem aspa na forma
+ * normalizada, produzindo `ab` — que passaria, por engano, contra um
+ * identificador genuinamente diferente de mesmo nome.
+ */
+function fimDoIdentificadorCitado(texto, inicio) {
+  let j = inicio + 1
+  while (j < texto.length) {
+    if (texto[j] === '"' && texto[j + 1] === '"') { j += 2; continue }
+    if (texto[j] === '"') return j + 1
+    j++
+  }
+  return -1
+}
+
+/**
  * A dupla de parênteses mais externa de `e` é REDUNDANTE — isto é, o primeiro
  * `(` fecha exatamente no último caractere?
  *
@@ -88,8 +114,8 @@ function parenExternoRedundante(e) {
     const c = e[i]
     if (c === "'") { i = fimDoLiteral(e, i); continue }
     if (c === '"') {
-      const fim = e.indexOf('"', i + 1)
-      i = fim === -1 ? e.length : fim + 1
+      const fim = fimDoIdentificadorCitado(e, i)
+      i = fim === -1 ? e.length : fim
       continue
     }
     if (c === "(") profundidade++
@@ -106,52 +132,62 @@ function parenExternoRedundante(e) {
  * Normaliza uma expressão de CHECK para comparação — só o que é
  * COMPROVADAMENTE cosmético:
  *
- *   1. aspas de identificador removidas — SÓ quando comprovadamente seguro,
- *      ver `removerAspasSegura` abaixo;
- *   2. espaços em branco colapsados;
- *   3. parênteses externos redundantes, removidos um nível por vez, e só
- *      quando a prova acima confirma que são redundantes.
+ *   1. espaços em branco colapsados, e SÓ fora de literal/identificador citado;
+ *   2. parênteses externos redundantes, removidos um nível por vez, e só
+ *      quando a prova estrutural confirma que são redundantes.
  *
  * NÃO normaliza: aspas simples (são literal de string, não identificador —
- * `'active'` e `active` são coisas DIFERENTES), maiúsculas/minúsculas de
- * identificador FORA da regra segura, nem casts que o Postgres injeta
+ * `'active'` e `active` são coisas DIFERENTES), **aspas de identificador, em
+ * nenhum caso** (ver "Política final" abaixo), nem casts que o Postgres injeta
  * (`(x)::integer`). Preferir um falso `CONTENT_CHECKSUM_DRIFT` — que só pede
  * revisão humana — a um falso `MATCH` que esconderia uma expressão
  * realmente diferente.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * O BUG QUE ISTO CORRIGE (GATE-18 FIX-005)
+ * POLÍTICA FINAL DE IDENTIFICADOR CITADO (GATE-18 FIX-007)
  *
- * A versão anterior removia aspas de QUALQUER identificador, inclusive
- * `"userId"` → `userId`. Isso é inseguro: no Postgres, um identificador SEM
- * aspas é dobrado (fold) para minúsculas antes de resolver — `userId` sem
- * aspas resolve para a coluna `userid`. Um identificador COM aspas preserva o
- * case exato — `"userId"` resolve para a coluna `userId`. Se ambas existirem
- * como colunas distintas, `"userId"` e `userId` **não são a mesma coluna**, e
- * o normalizador antigo as tornava indistinguíveis: um CHECK real sobre
- * `"userId"` bateria, por engano, contra um CHECK sobre `userId`/`userid` de
- * outra coluna.
+ * Este módulo passou por duas tentativas de "remover aspa quando é seguro", e
+ * as DUAS esconderam um jeito de a mesma pergunta dar errado:
  *
- * A correção remove aspas apenas quando o nome citado já é inteiramente
- * minúsculo simples (`^[a-z_][a-z0-9_]*$`) — nesse caso, e SÓ nesse caso, a
- * prova é direta: a forma sem aspas dobraria para exatamente o mesmo nome, então
- * `"foo"` e `foo` resolvem para a MESMA coluna, sempre, sem depender de
- * contexto. Qualquer identificador com maiúscula mantém as aspas na forma
- * normalizada — o que faz `"userId"` continuar diferente de `userId` depois de
- * normalizado, e a comparação reprova corretamente.
- */
-function removerAspasSegura(nomeCitado) {
-  return /^[a-z_][a-z0-9_]*$/.test(nomeCitado)
-}
-
-/**
- * Divide a expressão em segmentos ANTES de normalizar qualquer coisa — é o que
- * torna as transformações seguras. Três tipos:
+ *   FIX-004  removia aspa de QUALQUER identificador citado. `"userId"` virava
+ *            `userId` — mas sem aspas o Postgres dobra (fold) para
+ *            minúsculas, resolvendo para `userid`. Coluna potencialmente
+ *            diferente, tratada como igual.
+ *
+ *   FIX-005  restringiu a remoção a identificador já minúsculo simples
+ *            (`^[a-z_][a-z0-9_]*$`), com a prova de que o fold não mudaria o
+ *            texto. A prova está certa sobre TEXTO — e errada sobre
+ *            SIGNIFICADO: `null` e `true` são minúsculos simples e NÃO SÃO
+ *            IDENTIFICADOR NENHUM sem aspas — são o literal NULL e o literal
+ *            booleano da linguagem. `"null" IS NOT NULL` testa uma coluna
+ *            chamada `null`; `null IS NOT NULL` testa o literal NULL contra
+ *            NULL, e é sempre falso. Removê-la trocou uma pergunta sobre dado
+ *            por uma pergunta sobre a linguagem.
+ *
+ * Provar essa distinção corretamente exigiria conhecer toda a gramática de
+ * palavras reservadas da versão exata do Postgres em uso — e uma lista
+ * caseira de keywords estaria sempre incompleta (a lista muda entre versões,
+ * e a mesma palavra pode ser reservada num contexto e não noutro).
+ *
+ * **A política final: NUNCA remover aspa de identificador citado.** Um
+ * identificador citado permanece citado, sempre, na forma normalizada — sem
+ * exceção para lowercase simples. O preço é aceito às claras: `"foo"` (citado)
+ * e `foo` (sem aspas) podem ser a MESMA coluna e ainda assim o comparador
+ * relatar um drift — falso negativo conservador. É o troca certo: entre
+ * marcar como diferente algo que é igual (pede revisão humana, nunca
+ * corrompe nada) e marcar como igual algo que é diferente (esconde o problema
+ * que esta ferramenta existe para achar), só o primeiro é aceitável.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * TRÊS TIPOS DE SEGMENTO
+ *
+ * A expressão é dividida em segmentos ANTES de normalizar qualquer coisa — é
+ * o que torna as transformações seguras:
  *
  *   "literal"  → um literal de aspa simples, TEXTO ORIGINAL completo (com as
  *                aspas), nunca tocado depois disto;
- *   "ident"    → um identificador entre aspas duplas, guardado SEM as aspas —
- *                quem consome decide se re-cita, pela regra do FIX-005;
+ *   "ident"    → um identificador entre aspas duplas, TEXTO ORIGINAL completo
+ *                (com as aspas), nunca tocado — ver a política acima;
  *   "outro"    → qualquer outro trecho de SQL (operadores, palavras-chave,
  *                identificadores sem aspas, espaços) — o único tipo onde
  *                colapsar espaço em branco é seguro.
@@ -197,7 +233,7 @@ function tokenizarExpressao(expr) {
 
     if (c === '"') {
       fecharOutro()
-      const fim = expr.indexOf('"', i + 1)
+      const fim = fimDoIdentificadorCitado(expr, i)
       if (fim === -1) {
         // Aspa sem par: não há identificador para fechar — preserva o resto
         // como texto comum em vez de inventar um limite que não existe.
@@ -205,8 +241,9 @@ function tokenizarExpressao(expr) {
         i = expr.length
         break
       }
-      tokens.push({ tipo: "ident", texto: expr.slice(i + 1, fim) })
-      i = fim + 1
+      // Texto ORIGINAL completo, aspas e tudo — a política final nunca as remove.
+      tokens.push({ tipo: "ident", texto: expr.slice(i, fim) })
+      i = fim
       continue
     }
 
@@ -220,9 +257,11 @@ function tokenizarExpressao(expr) {
 export function normalizarExpressao(expr) {
   const saida = tokenizarExpressao(expr)
     .map((t) => {
-      if (t.tipo === "literal") return t.texto // intocado — nem espaço, nem mais nada
-      if (t.tipo === "ident") return removerAspasSegura(t.texto) ? t.texto : `"${t.texto}"`
-      return t.texto.replace(/\s+/g, " ") // só aqui é seguro colapsar espaço
+      // "literal" e "ident" saem exatamente como entraram — ver "Política
+      // final de identificador citado" acima para o porquê de "ident" nunca
+      // perder a aspa, em nenhum caso.
+      if (t.tipo === "literal" || t.tipo === "ident") return t.texto
+      return t.texto.replace(/\s+/g, " ") // só "outro" pode colapsar espaço
     })
     .join("")
     .trim()

@@ -11,9 +11,12 @@ do worktree local esconder drift histórico do banco), **FIX-005** (a
 normalização de identificador do CHECK ficou insegura no FIX-004 — corrigida
 para nunca remover aspa de identificador com maiúscula; matriz final de
 checksums de PROD registrada, fechada por leitura direta via canal Supabase
-read-only) e **FIX-006** (o colapso de espaço em branco e a detecção de
+read-only), **FIX-006** (o colapso de espaço em branco e a detecção de
 parêntese externo ainda não eram quote-aware — corrigidos para nunca tocar o
-conteúdo de um literal de string).
+conteúdo de um literal de string) e **FIX-007** (a regra "minúsculo simples
+pode perder a aspa" do FIX-005 ainda dava falso PASS contra keyword/literal da
+linguagem como `null`/`true` — política final: **aspa de identificador citado
+nunca é removida**; e `"a""b"` deixou de ser lido como dois identificadores).
 **Nada foi aplicado nem reconciliado** — a fase de escrita depende de aprovação
 humana (ver "Plano de baseline").
 
@@ -141,84 +144,108 @@ expressão do CHECK" em `pg_constraint`. O lado do repositório extrai a mesma
 forma a partir do SQL da migration. Os dois passam pela MESMA normalização
 antes de comparar, para que não haja duas regras de "o que é cosmético":
 
-- **aspas de identificador removidas — SÓ quando comprovadamente seguro.** Ver
-  "A regra de identificador" logo abaixo: esta é a parte que o FIX-004 fez
-  errado e o FIX-005 corrigiu;
-- espaços em branco colapsados;
+- espaços em branco colapsados, e **só** fora de literal e de identificador
+  citado;
 - parênteses externos **redundantes** removidos — só quando comprovadamente
   redundantes (o primeiro `(` fecha exatamente no último caractere; remover
-  nunca muda o agrupamento).
+  nunca muda o agrupamento), e também só fora de literal/identificador citado.
 
-**Não normalizado, de propósito:** aspas simples (são literal de string —
-`'active'` e `active` são coisas diferentes), maiúsculas/minúsculas de
-identificador FORA da regra segura, e casts que o Postgres injeta
-(`(x)::integer`). Um falso `CONTENT_CHECKSUM_DRIFT`-equivalente para CHECK (que
-só pede revisão humana) é preferível a um falso PASS que esconderia uma
-expressão realmente diferente.
+**Não normalizado, em NENHUM caso:** aspas simples (são literal de string —
+`'active'` e `active` são coisas diferentes) e **aspas de identificador citado
+— ver a política final abaixo.** Um falso `CONTENT_CHECKSUM_DRIFT`-equivalente
+para CHECK (que só pede revisão humana) é preferível a um falso PASS que
+esconderia uma expressão realmente diferente.
 
-##### A regra de identificador — corrigida no FIX-005
+##### Política final de identificador citado — GATE-18 FIX-007
 
-**O FIX-004 removia aspas de QUALQUER identificador, e isso era inseguro.** No
-Postgres, um identificador SEM aspas é dobrado (fold) para minúsculas antes de
-resolver; um identificador COM aspas preserva o case exato. Logo:
+Este normalizador passou por duas tentativas de "remover a aspa quando é
+seguro", e as duas esconderam uma forma diferente de a mesma pergunta dar
+errado:
 
-- `"userId"` (citado) resolve para a coluna `userId`;
-- `userId` (sem aspas) resolve para a coluna `userid`.
+| Versão | Regra | O que ela provou | O que ela não provou |
+|---|---|---|---|
+| FIX-004 | remove aspa de qualquer identificador | nada — era só conveniente | se o texto sem aspas continuaria significando a mesma coisa |
+| FIX-005 | remove só se minúsculo simples (`^[a-z_][a-z0-9_]*$`) | que o *fold* do Postgres produziria o mesmo TEXTO | se esse texto, sem aspas, continuaria sendo IDENTIFICADOR |
 
-Se ambas existirem como colunas distintas, **não são a mesma coluna** — e a
-versão anterior do normalizador as tornava indistinguíveis, removendo a aspa
-dos dois lados e produzindo um falso `PASS`.
-
-**A regra agora:** uma aspa só é removida quando o nome citado já é inteiramente
-minúsculo simples (`^[a-z_][a-z0-9_]*$`). Só nesse caso a equivalência é
-demonstrável sem depender de contexto: sem aspas, Postgres dobraria o
-identificador para exatamente esse mesmo nome, então `"foo"` e `foo` **sempre**
-resolvem para a mesma coluna. Qualquer identificador com maiúscula mantém as
-aspas na forma normalizada — o que faz `"userId"` continuar diferente de
-`userId` depois de normalizado, e a comparação reprova, como deve.
-
-A extração deixou de usar regex global e passou a **tokenizar a expressão
-inteira antes de normalizar qualquer coisa** — três tipos de segmento: literal
-de aspa simples, identificador citado, e "resto" (todo o SQL comum: operadores,
-palavras-chave, identificadores sem aspas, espaço). Só o segmento "resto" tem
-espaço em branco colapsado; o texto de um segmento "literal" nunca passa por
-`.replace(/\s+/g, " ")` em lugar nenhum do código — é essa separação estrutural
-que torna a próxima correção possível.
-
-##### O bug de whitespace dentro de literal — corrigido no FIX-006
-
-**O FIX-005 já tokenizava por segmento, mas devolvia tudo concatenado numa
-única string e SÓ DEPOIS rodava o colapso de espaço sobre o resultado
-inteiro.** Esse `replace` não sabia que parte da string era literal — ele
-recolapsava espaço em branco que já estava DENTRO do literal preservado:
+O FIX-005 caiu exatamente no buraco que sobrou: `null` e `true` são minúsculos
+simples e **não são identificador nenhum sem aspas** — são o literal `NULL` e o
+literal booleano da linguagem SQL.
 
 ```
-status = 'a  b'    (dois espaços, dentro do valor)
-status = 'a b'     (um espaço)
+"null" IS NOT NULL     → testa a coluna chamada `null`
+null IS NOT NULL       → testa o literal NULL contra NULL — sempre falso
 ```
 
-são expressões **diferentes**, mas as duas normalizavam para
-`status = 'a b'`. Corrigido colapsando espaço **por segmento**, antes de juntar
-— o "resto" pode ser colapsado livremente porque nunca inclui texto de dentro
-de um literal.
+Duas perguntas completamente diferentes, e a versão anterior as tornava
+idênticas depois de normalizar.
 
-**A mesma lacuna existia em `parenExternoRedundante`**: a função contava `(` e
-`)` sem saber que alguns estavam dentro de um literal (`'assim (isto)'`) ou de
-um identificador citado. Corrigida para pular o conteúdo de literais e
-identificadores citados ao contar profundidade — usando a MESMA lógica de fim
-de literal que o tokenizador, para que as duas nunca discordem sobre onde um
-literal termina.
+Provar essa distinção corretamente exigiria conhecer toda a gramática de
+palavras reservadas da versão exata do Postgres em uso. Uma lista caseira de
+keywords estaria sempre incompleta — a lista muda entre versões, e a mesma
+palavra pode ser reservada num contexto e não noutro.
+
+**A política final: uma aspa de identificador citado NUNCA é removida.** Sem
+exceção para lowercase simples, sem lista de keywords. Um identificador citado
+sai da normalização exatamente como entrou.
+
+**O preço, aceito às claras:** `"foo"` (citado) e `foo` (sem aspas) podem ser a
+MESMA coluna, e ainda assim o comparador acusa divergência — falso negativo
+conservador. Entre marcar como diferente algo que é igual (pede revisão
+humana, nunca corrompe nada) e marcar como igual algo que é diferente (esconde
+o problema que esta ferramenta existe para achar), só o primeiro é aceitável.
+
+**Consequência prática mensurável:** `pg_get_constraintdef()` reserializa quase
+todo identificador entre aspas, mesmo quando a migration escreveu sem elas
+(`b` vira `"b"`). Um CHECK simples e correto, escrito sem aspas no repositório,
+tende a aparecer como `CONTENT_CHECKSUM_DRIFT`-equivalente contra o banco. Isso
+é esperado e documentado — cada ocorrência pede uma olhada humana.
+
+##### Aspa escapada `""` dentro de identificador citado — GATE-18 FIX-007
+
+Postgres representa uma aspa dupla DENTRO de um identificador citado
+duplicando-a: `"a""b"` é o identificador de nome `a"b` — uma coisa só.
+
+`tokenizarExpressao()` e `parenExternoRedundante()` localizavam o fim de um
+identificador citado com `indexOf('"', i + 1)`, que trata a PRIMEIRA aspa de um
+par `""` como fechamento. `"a""b"` era lido como **dois** identificadores
+(`a` e `b`), e — antes desta correção — ambos podiam perder a aspa e virar
+`ab`, que passaria, por engano, contra um identificador genuinamente diferente
+de mesmo nome.
+
+Corrigido com uma função única, `fimDoIdentificadorCitado`, irmã de
+`fimDoLiteral` (que já existia para o mesmo problema em literais de aspa
+simples) — reusada nos dois lugares que precisam saber onde um identificador
+citado termina, para que nunca discordem entre si.
+
+##### Três tipos de segmento
+
+A expressão é tokenizada **antes** de qualquer normalização — três tipos:
+
+- `literal` → texto original completo de um literal de aspa simples, nunca
+  tocado depois disto;
+- `ident` → texto original completo de um identificador citado (com as
+  aspas), nunca tocado — ver a política final acima;
+- `outro` → todo o resto (operadores, palavras-chave, identificador sem
+  aspas, espaço) — o único tipo onde colapsar espaço em branco é seguro.
+
+Um bug do FIX-005/FIX-006 veio de tokenizar corretamente mas ainda assim rodar
+`.replace(/\s+/g, " ")` sobre o resultado inteiro concatenado — recolapsando
+espaço que já estava dentro de um `literal` preservado
+(`status = 'a  b'` e `status = 'a b'` normalizavam igual). Corrigido colapsando
+espaço **por segmento**, antes de juntar.
 
 Testes negativos exigidos e verificados: mesmo nome/tabela com limite diferente
-(`b > 0` vs `b > 100`) reprova; coluna diferente (`b` vs `c`) reprova — a coluna
-faz parte da expressão, então o texto normalizado já captura a troca; diferença
+(`b > 0` vs `b > 100`) reprova; coluna diferente (`b` vs `c`) reprova; diferença
 só de espaço em branco **fora** do literal passa; CHECK ausente no banco
 reprova com uma única divergência; `"userId"` citado vs `userId` sem aspas
-reprova; `"UserID"` citado vs `userid` sem aspas reprova; identificador citado
-já minúsculo simples (`"foo"` vs `foo`) passa; **`status = 'a  b'` vs
-`status = 'a b'` reprova; `''` escapado e aspas duplas dentro do literal
-sobrevivem intactos; um `(` ou `)` dentro de um literal não interfere na
-detecção de parêntese externo redundante, para nenhum dos dois lados.**
+reprova; `"UserID"` citado vs `userid` sem aspas reprova; **`"null"` citado vs
+`null` (keyword) reprova; `"true"` citado vs `true` reprova; `"a""b"` é lido
+como UM identificador e reprova contra `ab`; identificador citado contendo
+`(`, `)`, espaço e `""` não interfere na contagem de parênteses;**
+`status = 'a  b'` vs `status = 'a b'` reprova; `''` escapado e aspas duplas
+dentro do literal sobrevivem intactos; um `(` ou `)` dentro de um literal não
+interfere na detecção de parêntese externo redundante, para nenhum dos dois
+lados.
 
 | Migration | Origem | Tracking | Efeito | Veredito |
 |---|---|---|---|---|

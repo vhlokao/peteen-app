@@ -181,8 +181,10 @@ describe("CHECK — normalização de expressão", () => {
     assert.equal(normalizarExpressao("b\n  >\t0"), "b > 0")
   })
 
-  it("remove aspas de IDENTIFICADOR, nunca de literal de string", () => {
-    assert.equal(normalizarExpressao('"status" > 0'), "status > 0")
+  it("NUNCA remove aspas de identificador citado (política final, FIX-007)", () => {
+    // "status" pode ser keyword/literal sem aspas em algum contexto futuro —
+    // a política é não remover, ponto, sem exceção para lowercase simples.
+    assert.equal(normalizarExpressao('"status" > 0'), '"status" > 0')
     // 'active' é literal — trocar aspas mudaria o que a expressão diz.
     assert.equal(normalizarExpressao("status = 'active'"), "status = 'active'")
   })
@@ -240,11 +242,16 @@ describe("CHECK — identificador citado com maiúscula NUNCA perde a aspa (FIX-
     assert.equal(normalizarExpressao('"userId" IS NOT NULL'), normalizarExpressao('"userId" IS NOT NULL'))
   })
 
-  it("identificador citado já minúsculo simples PODE perder a aspa — equivalência comprovada", () => {
-    // `"foo"` citado e `foo` sem aspas resolvem para a MESMA coluna sempre:
-    // sem aspas, Postgres dobra `foo` para `foo` (já é minúsculo) — não há
-    // ambiguidade possível, ao contrário do caso com maiúscula.
-    assert.equal(normalizarExpressao('"foo" > 0'), normalizarExpressao("foo > 0"))
+  it("FIX-007: mesmo minúsculo simples, a aspa NÃO é mais removida — falso drift aceito", () => {
+    // O FIX-005 assumia que `"foo"` citado e `foo` sem aspas eram sempre a
+    // mesma coluna, porque o fold produziria o mesmo TEXTO. A prova estava
+    // certa sobre texto e errada sobre SIGNIFICADO: `null`/`true` também são
+    // minúsculos simples e não são identificador nenhum sem aspas — são
+    // keyword/literal da linguagem (ver bloco de política final acima). Sem
+    // uma lista de keywords (sempre incompleta, e proibida pela missão), a
+    // única regra segura é não remover NUNCA. `"foo"` vs `foo` agora diverge
+    // — falso negativo conservador, aceito às claras.
+    assert.notEqual(normalizarExpressao('"foo" > 0'), normalizarExpressao("foo > 0"))
   })
 
   it("whitespace cosmético continua passando, mesmo com identificador citado", () => {
@@ -319,13 +326,102 @@ describe("CHECK — parênteses externos são quote-aware (FIX-006)", () => {
   })
 })
 
+/**
+ * GATE-18 FIX-007 — o achado que mostrou que a regra do FIX-005 estava errada.
+ *
+ * `^[a-z_][a-z0-9_]*$` prova que o fold produziria o mesmo TEXTO — nunca
+ * provou que o texto SEM aspas continuaria sendo um identificador. `null` e
+ * `true` são minúsculos simples e não são coluna nenhuma sem aspas: são o
+ * literal NULL e o literal booleano da gramática SQL.
+ *
+ *   "null" IS NOT NULL   → testa a coluna chamada `null`
+ *   null IS NOT NULL     → testa o literal NULL contra NULL (sempre falso)
+ *
+ * Duas perguntas completamente diferentes, e o normalizador anterior as
+ * tornava idênticas.
+ */
+describe("CHECK — identificador citado NUNCA perde a aspa, nem sendo keyword-shaped (FIX-007)", () => {
+  it('"null" citado vs null (keyword) → REPROVA', () => {
+    assert.notEqual(normalizarExpressao('"null" IS NOT NULL'), normalizarExpressao("null IS NOT NULL"))
+  })
+
+  it('"true" citado vs true (literal booleano) → REPROVA', () => {
+    assert.notEqual(normalizarExpressao('"true"'), normalizarExpressao("true"))
+  })
+
+  it('"user" citado vs user (identificador reservado em alguns contextos) → REPROVA', () => {
+    assert.notEqual(normalizarExpressao('"user" > 0'), normalizarExpressao("user > 0"))
+  })
+
+  it("consequência no comparador real: REPROVA, não PASSA", () => {
+    const doRepo = { tipo: "CHECK", tabela: "t", colunas: [], expressao: normalizarExpressao('"null" IS NOT NULL') }
+    const doBanco = { tipo: "CHECK", tabela: "t", colunas: [], expressao: normalizarExpressao("null IS NOT NULL") }
+    const dif = compararConstraint(doRepo, doBanco)
+    assert.ok(dif.length > 0, '"null" vs null deveria reprovar — são coisas semanticamente diferentes')
+  })
+})
+
+/**
+ * GATE-18 FIX-007 — segundo achado: `"a""b"` (identificador de nome `a"b`,
+ * UMA coisa) era lido como DOIS identificadores (`a` e `b`), porque
+ * `indexOf('"', i+1)` trata a primeira aspa de um par `""` como fechamento.
+ */
+describe('CHECK — aspa escapada `""` em identificador citado (FIX-007)', () => {
+  it('"a""b" é UM identificador — não dois', () => {
+    // Se fosse lido como dois, o resultado normalizado ficaria com uma aspa
+    // órfã ou dois tokens separados; deve permanecer um único bloco coeso.
+    const e = normalizarExpressao('"a""b" > 0')
+    assert.equal(e, '"a""b" > 0')
+  })
+
+  it('"a""b" vs ab → REPROVA (o identificador é a"b, não ab)', () => {
+    assert.notEqual(normalizarExpressao('"a""b" > 0'), normalizarExpressao("ab > 0"))
+  })
+
+  it('identificador citado com "(", ")", espaço e "" junto não interfere no contador de parênteses', () => {
+    // Mistura deliberada dos três riscos que este e o FIX-006 corrigiram.
+    const e = normalizarExpressao('("a (b)  c""d" > 0)')
+    assert.equal(e, '"a (b)  c""d" > 0', "o parêntese externo real sai; o identificador citado sai intacto")
+  })
+
+  it('identificador citado com "" sobrevive à normalização sem perda', () => {
+    assert.equal(normalizarExpressao('"a""b""c" > 0'), '"a""b""c" > 0')
+  })
+
+  it("string literal com aspas duplas dentro continua intacta (regressão FIX-006)", () => {
+    const e = normalizarExpressao(`status = 'ele disse "oi"'`)
+    assert.equal(e, `status = 'ele disse "oi"'`)
+  })
+})
+
 describe("CHECK — regressão do FIX-005, preservada", () => {
   it('"userId" citado vs userId sem aspas continua REPROVANDO', () => {
     assert.notEqual(normalizarExpressao('"userId" > 0'), normalizarExpressao("userId > 0"))
   })
 
-  it("identificador citado já minúsculo simples continua podendo normalizar", () => {
-    assert.equal(normalizarExpressao('"foo" > 0'), normalizarExpressao("foo > 0"))
+  it("FIX-007 substitui esta regra: minúsculo simples NÃO normaliza mais igual", () => {
+    // Ver "CHECK — política final de identificador citado" abaixo para o
+    // porquê: `null`/`true` também são minúsculos simples e não são
+    // identificador nenhum sem aspas.
+    assert.notEqual(normalizarExpressao('"foo" > 0'), normalizarExpressao("foo > 0"))
+  })
+})
+
+describe("CHECK — regressões obrigatórias do FIX-006, preservadas", () => {
+  it("status = 'a  b' vs status = 'a b' continua REPROVANDO", () => {
+    assert.notEqual(normalizarExpressao("status = 'a  b'"), normalizarExpressao("status = 'a b'"))
+  })
+
+  it("whitespace só fora do literal continua PASSANDO", () => {
+    assert.equal(normalizarExpressao("status  =  'a b'"), normalizarExpressao("status = 'a b'"))
+  })
+
+  it("'' dentro de literal continua preservado", () => {
+    assert.match(normalizarExpressao("status = 'it''s ok'"), /'it''s ok'/)
+  })
+
+  it("parênteses dentro de literal continuam ignorados pela contagem", () => {
+    assert.equal(normalizarExpressao("(status = '(a)')"), "status = '(a)'")
   })
 })
 
@@ -334,9 +430,11 @@ describe("CHECK — extração de dentro de `CHECK (...)`", () => {
     assert.equal(expressaoDoCheck("CHECK (b > 0)"), "b > 0")
   })
 
-  it("normaliza a forma típica que pg_get_constraintdef devolve", () => {
-    // Postgres reserializa com aspas de identificador e um parêntese extra.
-    assert.equal(expressaoDoCheck('CHECK ((\"b\" > 0))'), "b > 0")
+  it("remove o parêntese extra que pg_get_constraintdef costuma acrescentar, preservando a aspa do identificador", () => {
+    // Postgres reserializa com aspas de identificador e um parêntese extra —
+    // o parêntese (estrutural, redundante) é removido; a aspa (política
+    // final do FIX-007) não é.
+    assert.equal(expressaoDoCheck('CHECK (("b" > 0))'), '"b" > 0')
   })
 
   it("texto que não é CHECK(...) devolve null", () => {
@@ -379,10 +477,30 @@ describe("CHECK — os 4 testes negativos exigidos pelo FIX-004", () => {
   })
 })
 
-describe("CHECK — prova de ponta a ponta com forma real do Postgres", () => {
-  it("migration com aspas simples do repo == pg_get_constraintdef reformatado", () => {
+/**
+ * GATE-18 FIX-007 — a consequência prática mais visível da política final.
+ *
+ * `pg_get_constraintdef()` reserializa QUASE TODO identificador entre aspas,
+ * mesmo quando a migration escreveu sem elas (`b` vira `"b"`). Antes do
+ * FIX-007, essa reformatação passava despercebida (a aspa de um identificador
+ * minúsculo simples era removida dos dois lados). Agora não é mais removida —
+ * então um CHECK simples, comum, correto, tende a aparecer como divergência.
+ *
+ * Isto é o preço da política, pago às claras: falso drift conservador em vez
+ * de falso PASS. Cada ocorrência pede uma olhada humana; nenhuma esconde uma
+ * mudança real de coluna.
+ */
+describe("CHECK — consequência aceita: reformatação do Postgres agora gera drift conservador", () => {
+  it("migration sem aspas vs pg_get_constraintdef com aspas → REPROVA (antes: PASSAVA)", () => {
     const doRepo = constraintsDe(`CREATE TABLE "t" ("b" INT, CONSTRAINT "t_chk" CHECK (b > 0));`)[0]
     // Forma típica de saída do Postgres: identificador entre aspas + parêntese extra.
+    const doBanco = { tipo: "CHECK", tabela: "t", colunas: [], expressao: expressaoDoCheck('CHECK (("b" > 0))') }
+    const dif = compararConstraint(doRepo, doBanco)
+    assert.ok(dif.length > 0, "a política final aceita este falso drift de propósito")
+  })
+
+  it("quando as DUAS fontes já citam o identificador do mesmo jeito, continua passando", () => {
+    const doRepo = constraintsDe(`CREATE TABLE "t" ("b" INT, CONSTRAINT "t_chk" CHECK ("b" > 0));`)[0]
     const doBanco = { tipo: "CHECK", tabela: "t", colunas: [], expressao: expressaoDoCheck('CHECK (("b" > 0))') }
     assert.deepEqual(compararConstraint(doRepo, doBanco), [])
   })

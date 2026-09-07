@@ -48,6 +48,23 @@ const ACAO_PADRAO = "NO ACTION"
 const semAspas = (s) => String(s).replace(/"/g, "").trim()
 
 /**
+ * Percorre `texto` a partir de `inicio` (que aponta para uma aspa simples) e
+ * devolve o índice logo APÓS o literal — respeitando `''` como aspa escapada.
+ * Única implementação desse laço no arquivo; usada tanto pelo tokenizador
+ * quanto por `parenExternoRedundante`, para que as duas nunca discordem sobre
+ * onde um literal termina.
+ */
+function fimDoLiteral(texto, inicio) {
+  let j = inicio + 1
+  while (j < texto.length) {
+    if (texto[j] === "'" && texto[j + 1] === "'") { j += 2; continue }
+    if (texto[j] === "'") return j + 1
+    j++
+  }
+  return texto.length
+}
+
+/**
  * A dupla de parênteses mais externa de `e` é REDUNDANTE — isto é, o primeiro
  * `(` fecha exatamente no último caractere?
  *
@@ -55,16 +72,32 @@ const semAspas = (s) => String(s).replace(/"/g, "").trim()
  * profundidade zero no último caractere da string, ele envolve a expressão
  * INTEIRA, e removê-lo nunca muda o agrupamento — ao contrário de remover um
  * parêntese qualquer, que pode.
+ *
+ * QUOTE-AWARE (GATE-18 FIX-006): um `(` ou `)` dentro de um literal
+ * (`'assim (isto)'`) ou de um identificador citado (`"nome(estranho)"` — raro,
+ * mas legal em SQL) NÃO é parêntese de agrupamento nenhum. A versão anterior
+ * contava esses caracteres como se fossem, o que tanto podia impedir a
+ * remoção de um parêntese externo genuinamente redundante quanto — pior —
+ * fazer a contagem "fechar" num lugar errado dentro do literal.
  */
 function parenExternoRedundante(e) {
   if (!e.startsWith("(") || !e.endsWith(")")) return false
   let profundidade = 0
-  for (let i = 0; i < e.length; i++) {
-    if (e[i] === "(") profundidade++
-    else if (e[i] === ")") {
+  let i = 0
+  while (i < e.length) {
+    const c = e[i]
+    if (c === "'") { i = fimDoLiteral(e, i); continue }
+    if (c === '"') {
+      const fim = e.indexOf('"', i + 1)
+      i = fim === -1 ? e.length : fim + 1
+      continue
+    }
+    if (c === "(") profundidade++
+    else if (c === ")") {
       profundidade--
       if (profundidade === 0) return i === e.length - 1
     }
+    i++
   }
   return false
 }
@@ -112,44 +145,94 @@ function removerAspasSegura(nomeCitado) {
 }
 
 /**
- * Percorre a expressão caractere a caractere, nunca por regex global, para que
- * uma aspa simples de string literal jamais seja tratada como identificador —
- * mesmo num caso adjacente como `status = 'ele disse "oi"'`, onde um regex
- * ingênuo enxergaria `"oi"` como identificador dentro do literal.
+ * Divide a expressão em segmentos ANTES de normalizar qualquer coisa — é o que
+ * torna as transformações seguras. Três tipos:
+ *
+ *   "literal"  → um literal de aspa simples, TEXTO ORIGINAL completo (com as
+ *                aspas), nunca tocado depois disto;
+ *   "ident"    → um identificador entre aspas duplas, guardado SEM as aspas —
+ *                quem consome decide se re-cita, pela regra do FIX-005;
+ *   "outro"    → qualquer outro trecho de SQL (operadores, palavras-chave,
+ *                identificadores sem aspas, espaços) — o único tipo onde
+ *                colapsar espaço em branco é seguro.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O BUG QUE ISTO CORRIGE (GATE-18 FIX-006)
+ *
+ * A versão anterior já percorria a expressão caractere a caractere para
+ * preservar literais e decidir a aspa do identificador — mas devolvia tudo
+ * concatenado numa ÚNICA string, e só DEPOIS rodava
+ * `saida.trim().replace(/\s+/g, " ")` sobre o resultado inteiro. Esse
+ * `replace` não sabe que parte da string é literal: ele recolapsava espaço em
+ * branco QUE JÁ ESTAVA DENTRO do literal preservado.
+ *
+ *   status = 'a  b'   (dois espaços, dentro do valor)
+ *   status = 'a b'    (um espaço)
+ *
+ * são expressões DIFERENTES — mas as duas normalizavam para
+ * `status = 'a b'`. Tokenizar primeiro e colapsar espaço só no segmento
+ * "outro" elimina a possibilidade estrutural desse erro: o texto de um
+ * segmento "literal" nunca passa por `.replace(/\s+/g, " ")` em lugar nenhum
+ * do código.
  */
-export function normalizarExpressao(expr) {
-  let saida = ""
+function tokenizarExpressao(expr) {
+  const tokens = []
+  let outro = ""
+  const fecharOutro = () => {
+    if (outro) tokens.push({ tipo: "outro", texto: outro })
+    outro = ""
+  }
+
   let i = 0
   while (i < expr.length) {
     const c = expr[i]
 
     if (c === "'") {
-      // Literal de string: copia verbatim, respeitando `''` como aspa escapada.
-      let j = i + 1
-      while (j < expr.length) {
-        if (expr[j] === "'" && expr[j + 1] === "'") { j += 2; continue }
-        if (expr[j] === "'") { j++; break }
-        j++
-      }
-      saida += expr.slice(i, j)
-      i = j
+      fecharOutro()
+      const fim = fimDoLiteral(expr, i)
+      tokens.push({ tipo: "literal", texto: expr.slice(i, fim) })
+      i = fim
       continue
     }
 
     if (c === '"') {
+      fecharOutro()
       const fim = expr.indexOf('"', i + 1)
-      if (fim === -1) { saida += expr.slice(i); break } // aspa sem par: preserva o resto
-      const nomeCitado = expr.slice(i + 1, fim)
-      saida += removerAspasSegura(nomeCitado) ? nomeCitado : expr.slice(i, fim + 1)
+      if (fim === -1) {
+        // Aspa sem par: não há identificador para fechar — preserva o resto
+        // como texto comum em vez de inventar um limite que não existe.
+        tokens.push({ tipo: "outro", texto: expr.slice(i) })
+        i = expr.length
+        break
+      }
+      tokens.push({ tipo: "ident", texto: expr.slice(i + 1, fim) })
       i = fim + 1
       continue
     }
 
-    saida += c
+    outro += c
     i++
   }
+  fecharOutro()
+  return tokens
+}
 
-  saida = saida.trim().replace(/\s+/g, " ")
+export function normalizarExpressao(expr) {
+  const saida = tokenizarExpressao(expr)
+    .map((t) => {
+      if (t.tipo === "literal") return t.texto // intocado — nem espaço, nem mais nada
+      if (t.tipo === "ident") return removerAspasSegura(t.texto) ? t.texto : `"${t.texto}"`
+      return t.texto.replace(/\s+/g, " ") // só aqui é seguro colapsar espaço
+    })
+    .join("")
+    .trim()
+
+  return desfazerParenExternoRedundante(saida)
+}
+
+/** Remove parênteses externos redundantes, um nível por vez — ver a prova em `parenExternoRedundante`. */
+function desfazerParenExternoRedundante(e) {
+  let saida = e
   while (parenExternoRedundante(saida)) saida = saida.slice(1, -1).trim()
   return saida
 }

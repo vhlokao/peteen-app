@@ -252,6 +252,83 @@ describe("CHECK — identificador citado com maiúscula NUNCA perde a aspa (FIX-
   })
 })
 
+/**
+ * GATE-18 FIX-006 — o bug que este bloco trava.
+ *
+ * A versão anterior já preservava literais token a token, mas devolvia tudo
+ * concatenado numa única string e SÓ DEPOIS rodava
+ * `.replace(/\s+/g, " ")` sobre o resultado inteiro — recolapsando espaço em
+ * branco que já estava DENTRO do literal preservado. `status = 'a  b'` e
+ * `status = 'a b'` são expressões diferentes; as duas normalizavam igual.
+ */
+describe("CHECK — whitespace dentro de literal é INTOCÁVEL (FIX-006)", () => {
+  it("dois espaços vs um espaço DENTRO do literal → permanecem DIFERENTES", () => {
+    const dois = normalizarExpressao("status = 'a  b'")
+    const um = normalizarExpressao("status = 'a b'")
+    assert.notEqual(dois, um, "whitespace dentro do literal não pode ser cosmético")
+  })
+
+  it("consequência no comparador real: REPROVA, não PASSA", () => {
+    const doRepo = { tipo: "CHECK", tabela: "t", colunas: [], expressao: normalizarExpressao("status = 'a  b'") }
+    const doBanco = { tipo: "CHECK", tabela: "t", colunas: [], expressao: normalizarExpressao("status = 'a b'") }
+    const dif = compararConstraint(doRepo, doBanco)
+    assert.ok(dif.length > 0, "'a  b' vs 'a b' deveria reprovar no comparador real")
+  })
+
+  it("whitespace SÓ fora do literal continua cosmético → PASSA", () => {
+    assert.equal(normalizarExpressao("status  =  'a b'"), normalizarExpressao("status = 'a b'"))
+  })
+
+  it("aspa simples escapada (`''`) dentro do literal sobrevive intacta", () => {
+    const e = normalizarExpressao("status = 'it''s ok'")
+    assert.match(e, /'it''s ok'/, "o escape `''` precisa continuar presente e no lugar certo")
+  })
+
+  it("aspas duplas DENTRO do literal sobrevivem intactas, inclusive com espaço nelas", () => {
+    const e = normalizarExpressao(`status = 'ele disse  "oi  tudo bem"  '`)
+    assert.equal(e, `status = 'ele disse  "oi  tudo bem"  '`, "nada dentro do literal pode mudar")
+  })
+})
+
+describe("CHECK — parênteses externos são quote-aware (FIX-006)", () => {
+  it("um `(` dentro do literal não conta como abertura de agrupamento", () => {
+    // Sem quote-awareness, o "(" de dentro do literal poderia fechar a
+    // profundidade no lugar errado e destruir a prova de redundância.
+    const e = normalizarExpressao("(status = '(a)')")
+    assert.equal(e, "status = '(a)'", "o parêntese externo real deveria ser removido; o do literal, preservado")
+  })
+
+  it("um `)` isolado dentro do literal não interrompe a contagem prematuramente", () => {
+    const e = normalizarExpressao("(status = 'fecha) aqui')")
+    assert.equal(e, "status = 'fecha) aqui'")
+  })
+
+  it("parêntese genuinamente externo continua removível", () => {
+    assert.equal(normalizarExpressao("((b > 0))"), "b > 0")
+  })
+
+  it("parênteses que NÃO envolvem a expressão inteira continuam preservados", () => {
+    assert.equal(normalizarExpressao("(a > 0) AND (b > 0)"), "(a > 0) AND (b > 0)")
+  })
+
+  it("identificador citado contendo parêntese no nome não interfere na contagem", () => {
+    // Raro, mas legal em SQL: um nome de coluna citado pode conter qualquer
+    // caractere, inclusive parênteses.
+    const e = normalizarExpressao('("estranho(nome)" > 0)')
+    assert.equal(e, '"estranho(nome)" > 0')
+  })
+})
+
+describe("CHECK — regressão do FIX-005, preservada", () => {
+  it('"userId" citado vs userId sem aspas continua REPROVANDO', () => {
+    assert.notEqual(normalizarExpressao('"userId" > 0'), normalizarExpressao("userId > 0"))
+  })
+
+  it("identificador citado já minúsculo simples continua podendo normalizar", () => {
+    assert.equal(normalizarExpressao('"foo" > 0'), normalizarExpressao("foo > 0"))
+  })
+})
+
 describe("CHECK — extração de dentro de `CHECK (...)`", () => {
   it("extrai o corpo, removendo só o wrapper CHECK", () => {
     assert.equal(expressaoDoCheck("CHECK (b > 0)"), "b > 0")

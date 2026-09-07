@@ -7,11 +7,13 @@ Criado em GATE-18-MIGRATION-DEPLOY-FOUNDATION-001, corrigido em **FIX-002**
 (evidência de PROD, que inverteu as conclusões), **FIX-003** (validação
 semântica de FK/PK/UNIQUE e guardrail de final de linha), **FIX-004** (CHECK
 por expressão, e a classificação de checksum corrigida para não deixar o estado
-do worktree local esconder drift histórico do banco) e **FIX-005** (a
+do worktree local esconder drift histórico do banco), **FIX-005** (a
 normalização de identificador do CHECK ficou insegura no FIX-004 — corrigida
 para nunca remover aspa de identificador com maiúscula; matriz final de
 checksums de PROD registrada, fechada por leitura direta via canal Supabase
-read-only).
+read-only) e **FIX-006** (o colapso de espaço em branco e a detecção de
+parêntese externo ainda não eram quote-aware — corrigidos para nunca tocar o
+conteúdo de um literal de string).
 **Nada foi aplicado nem reconciliado** — a fase de escrita depende de aprovação
 humana (ver "Plano de baseline").
 
@@ -175,19 +177,48 @@ resolvem para a mesma coluna. Qualquer identificador com maiúscula mantém as
 aspas na forma normalizada — o que faz `"userId"` continuar diferente de
 `userId` depois de normalizado, e a comparação reprova, como deve.
 
-A extração também deixou de usar um regex global e passou a percorrer a
-expressão caractere a caractere, respeitando limite de string literal — para
-que um caso adversarial como `status = 'ele disse "oi"'` nunca trate o `"oi"`
-dentro do literal como se fosse identificador.
+A extração deixou de usar regex global e passou a **tokenizar a expressão
+inteira antes de normalizar qualquer coisa** — três tipos de segmento: literal
+de aspa simples, identificador citado, e "resto" (todo o SQL comum: operadores,
+palavras-chave, identificadores sem aspas, espaço). Só o segmento "resto" tem
+espaço em branco colapsado; o texto de um segmento "literal" nunca passa por
+`.replace(/\s+/g, " ")` em lugar nenhum do código — é essa separação estrutural
+que torna a próxima correção possível.
+
+##### O bug de whitespace dentro de literal — corrigido no FIX-006
+
+**O FIX-005 já tokenizava por segmento, mas devolvia tudo concatenado numa
+única string e SÓ DEPOIS rodava o colapso de espaço sobre o resultado
+inteiro.** Esse `replace` não sabia que parte da string era literal — ele
+recolapsava espaço em branco que já estava DENTRO do literal preservado:
+
+```
+status = 'a  b'    (dois espaços, dentro do valor)
+status = 'a b'     (um espaço)
+```
+
+são expressões **diferentes**, mas as duas normalizavam para
+`status = 'a b'`. Corrigido colapsando espaço **por segmento**, antes de juntar
+— o "resto" pode ser colapsado livremente porque nunca inclui texto de dentro
+de um literal.
+
+**A mesma lacuna existia em `parenExternoRedundante`**: a função contava `(` e
+`)` sem saber que alguns estavam dentro de um literal (`'assim (isto)'`) ou de
+um identificador citado. Corrigida para pular o conteúdo de literais e
+identificadores citados ao contar profundidade — usando a MESMA lógica de fim
+de literal que o tokenizador, para que as duas nunca discordem sobre onde um
+literal termina.
 
 Testes negativos exigidos e verificados: mesmo nome/tabela com limite diferente
 (`b > 0` vs `b > 100`) reprova; coluna diferente (`b` vs `c`) reprova — a coluna
 faz parte da expressão, então o texto normalizado já captura a troca; diferença
-só de espaço em branco passa; CHECK ausente no banco reprova com uma única
-divergência; **`"userId"` citado vs `userId` sem aspas reprova; `"UserID"`
-citado vs `userid` sem aspas reprova; literal de string com aspa dupla dentro
-sobrevive intacto; identificador citado já minúsculo simples (`"foo"` vs `foo`)
-passa, com a equivalência demonstrada acima.**
+só de espaço em branco **fora** do literal passa; CHECK ausente no banco
+reprova com uma única divergência; `"userId"` citado vs `userId` sem aspas
+reprova; `"UserID"` citado vs `userid` sem aspas reprova; identificador citado
+já minúsculo simples (`"foo"` vs `foo`) passa; **`status = 'a  b'` vs
+`status = 'a b'` reprova; `''` escapado e aspas duplas dentro do literal
+sobrevivem intactos; um `(` ou `)` dentro de um literal não interfere na
+detecção de parêntese externo redundante, para nenhum dos dois lados.**
 
 | Migration | Origem | Tracking | Efeito | Veredito |
 |---|---|---|---|---|

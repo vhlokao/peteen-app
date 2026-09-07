@@ -30,7 +30,7 @@ import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import pg from "pg"
 import { identificarAlvo } from "./lib/target-db-guard.mjs"
-import { constraintsDe, compararConstraint, ACAO_POR_CODIGO } from "./lib/sql-constraints.mjs"
+import { constraintsDe, compararConstraint, ACAO_POR_CODIGO, expressaoDoCheck } from "./lib/sql-constraints.mjs"
 
 const RAIZ = join(dirname(fileURLToPath(import.meta.url)), "..")
 const PRISMA_DIR = join(RAIZ, "prisma", "migrations")
@@ -106,12 +106,16 @@ export function objetosDe(sqlBruto) {
 
 /**
  * Checksums no formato que o Prisma grava: SHA-256 hex do conteúdo de
- * `migration.sql`, byte a byte.
+ * `migration.sql`, byte a byte — nas DUAS formas de final de linha que
+ * representam o MESMO conteúdo lógico.
  *
- * Devolve as DUAS formas porque final de linha muda o hash, e este repositório
- * é editado no Windows: o git avisa "LF will be replaced by CRLF" a cada `add`.
- * Uma migration aplicada a partir de um checkout com um final de linha e lida
- * a partir de outro produz hashes diferentes com o MESMO conteúdo.
+ * `lf` é a forma CANÔNICA do repositório, reforçada por `.gitattributes`
+ * (`eol=lf`). `crlf` é a mesma sequência de statements com `\n` → `\r\n` —
+ * não é "o que está em disco agora", é a outra forma **válida** que o mesmo
+ * conteúdo pode assumir. As duas são calculadas a partir do conteúdo LÓGICO,
+ * nunca dos bytes crus do arquivo: dois arquivos com o mesmo texto e finais de
+ * linha diferentes produzem exatamente estas duas mesmas hashes,
+ * independentemente de como o disco local está agora.
  */
 export function checksumsDe(nomeMigration) {
   const f = join(PRISMA_DIR, nomeMigration, "migration.sql")
@@ -119,50 +123,63 @@ export function checksumsDe(nomeMigration) {
   const lf = Buffer.from(bytes.toString("utf8").replace(/\r\n/g, "\n"), "utf8")
   const crlf = Buffer.from(lf.toString("utf8").replace(/\n/g, "\r\n"), "utf8")
   const sha = (b) => createHash("sha256").update(b).digest("hex")
-  return {
-    disco: sha(bytes),
-    lf: sha(lf),
-    crlf: sha(crlf),
-    difere: sha(bytes) !== sha(lf),
-    finalDeLinha: sha(bytes) === sha(lf) ? "LF" : sha(bytes) === sha(crlf) ? "CRLF" : "MISTO",
-  }
+  return { disco: sha(bytes), lf: sha(lf), crlf: sha(crlf), worktree: estadoDoWorktree(sha(bytes), sha(lf), sha(crlf)) }
 }
 
 /**
- * Classifica uma divergência de checksum.
+ * Estado do ARQUIVO NA ÁRVORE DE TRABALHO — eixo deliberadamente SEPARADO da
+ * classificação do checksum do banco (ver `classificarChecksum` abaixo).
  *
- * A distinção que importa: um checksum que não bate porque alguém EDITOU o SQL
- * é um problema de histórico. Um que não bate porque o arquivo trocou de final
- * de linha é um problema de FORMATO — o conteúdo é idêntico caractere a
- * caractere, e nenhum statement mudou.
+ * Isto existe por causa de um bug real do FIX-003: a classificação anterior
+ * aceitava a forma "disco" do arquivo atual como uma das formas válidas de
+ * MATCH. Depois que o `.gitattributes` normalizou o worktree para LF,
+ * `disco === lf` passou a valer para TODAS as migrations — inclusive
+ * `professional_availability_7_6`, cujo checksum em PROD é o CRLF histórico.
+ * O relatório passou a dizer "confere" para um banco que não mudou em NADA: o
+ * que mudou foi um arquivo diferente, no computador de quem rodou a auditoria.
  *
- * Tratar os dois como a mesma coisa leva a duas reações erradas e opostas:
- * ignorar um drift real, ou "consertar" um falso alarme reescrevendo uma
- * migration já aplicada — que é a única coisa que realmente corrompe o
- * histórico.
+ * Um auditor cujo veredito sobre o BANCO muda quando o WORKTREE muda não está
+ * medindo o banco. Por isso o estado do worktree é reportado à parte, nunca
+ * usado por `classificarChecksum`.
  */
-export const CHECKSUM_OK = "MATCH"
+export const WORKTREE_LF = "WORKTREE_CANONICAL_LF"
+export const WORKTREE_CRLF = "WORKTREE_CRLF"
+export const WORKTREE_MIXED = "WORKTREE_MIXED"
+
+function estadoDoWorktree(hashDisco, hashLf, hashCrlf) {
+  if (hashDisco === hashLf) return WORKTREE_LF
+  if (hashDisco === hashCrlf) return WORKTREE_CRLF
+  return WORKTREE_MIXED
+}
+
+/**
+ * Classifica o checksum GRAVADO NO BANCO contra o conteúdo CANÔNICO atual do
+ * arquivo — LF, mais sua forma CRLF equivalente. NUNCA recebe nem consulta o
+ * estado do worktree (ver o comentário de `estadoDoWorktree` acima).
+ *
+ * Quatro classes, e a diferença entre as duas do meio é o ponto inteiro deste
+ * módulo:
+ *
+ *   MATCH_CANONICAL              banco == LF (a forma que o repo considera certa)
+ *   FORMAT_ONLY_CHECKSUM_DRIFT   banco == CRLF do MESMO conteúdo, mas != LF
+ *   CONTENT_CHECKSUM_DRIFT       banco não bate com NENHUMA forma do conteúdo atual
+ *   SEM_REGISTRO                 nada gravado para esta migration
+ *
+ * Confundir `FORMAT_ONLY` com `CONTENT` leva a duas reações erradas e opostas:
+ * ignorar um drift de conteúdo real, ou "consertar" um falso alarme
+ * reescrevendo uma migration já aplicada — a única ação aqui capaz de
+ * corromper o histórico de verdade.
+ */
+export const CHECKSUM_MATCH_CANONICAL = "MATCH_CANONICAL"
 export const CHECKSUM_FORMATO = "FORMAT_ONLY_CHECKSUM_DRIFT"
 export const CHECKSUM_CONTEUDO = "CONTENT_CHECKSUM_DRIFT"
+export const CHECKSUM_SEM_REGISTRO = "SEM_REGISTRO"
 
-export function classificarChecksum(gravado, { disco, lf, crlf }) {
-  if (!gravado) return { classe: "SEM_REGISTRO" }
-  if (gravado === disco) return { classe: CHECKSUM_OK, forma: "disco" }
-  if (gravado === lf) return { classe: CHECKSUM_OK, forma: "LF" }
-  if (gravado === crlf) return { classe: CHECKSUM_OK, forma: "CRLF" }
-
-  // Não bate com nenhuma das formas do arquivo atual: o conteúdo mudou.
+export function classificarChecksum(gravado, { lf, crlf }) {
+  if (!gravado) return { classe: CHECKSUM_SEM_REGISTRO }
+  if (gravado === lf) return { classe: CHECKSUM_MATCH_CANONICAL }
+  if (gravado === crlf) return { classe: CHECKSUM_FORMATO, finalDeLinha: "CRLF" }
   return { classe: CHECKSUM_CONTEUDO }
-}
-
-/**
- * O arquivo local diverge da forma canônica do repositório (LF) apenas por
- * final de linha? Se sim, qualquer diferença de checksum contra um banco que
- * gravou a forma LF é FORMAT_ONLY — não é drift de conteúdo.
- */
-export function driftDeFormato(nomeMigration) {
-  const c = checksumsDe(nomeMigration)
-  return c.difere ? { classe: CHECKSUM_FORMATO, finalDeLinha: c.finalDeLinha } : null
 }
 
 export function inventario() {
@@ -226,6 +243,7 @@ async function constraintsDoBanco(client) {
            reftab.relname                   as tabela_referenciada,
            con.confdeltype                  as on_delete,
            con.confupdtype                  as on_update,
+           pg_get_constraintdef(con.oid)    as definicao,
            (select array_agg(a.attname::text order by k.ord)
               from unnest(con.conkey) with ordinality k(num, ord)
               join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.num
@@ -253,6 +271,10 @@ async function constraintsDoBanco(client) {
       colunasReferenciadas: r.colunas_referenciadas ?? [],
       onDelete: ACAO_POR_CODIGO[r.on_delete] ?? undefined,
       onUpdate: ACAO_POR_CODIGO[r.on_update] ?? undefined,
+      // `pg_get_constraintdef` devolve `CHECK (<expr>)` — mesma forma que o
+      // parser do repositório produz a partir do SQL da migration, então a
+      // MESMA função de normalização serve aos dois lados.
+      expressao: r.tipo === "c" ? expressaoDoCheck(r.definicao) : undefined,
     })
   }
   return mapa
@@ -415,7 +437,7 @@ if (executadoDiretamente) {
 
   // ── checksums ─────────────────────────────────────────────────────────────
   if (linhasPrisma?.length) {
-    console.info("\n═══ CHECKSUM: banco × arquivo do repositório ═══")
+    console.info("\n═══ CHECKSUM: banco × conteúdo canônico (LF) do repositório ═══")
     const porNome = new Map(linhasPrisma.map((r) => [r.migration_name, r]))
     for (const item of itens.filter((i) => i.origem === "prisma")) {
       const reg = porNome.get(item.nome)
@@ -424,21 +446,28 @@ if (executadoDiretamente) {
         continue
       }
       const c = checksumsDe(item.nome)
-      const { classe, forma } = classificarChecksum(reg.checksum, c)
+      const r = classificarChecksum(reg.checksum, c)
       const estadoReg =
         reg.rolled_back_at ? "ROLLED BACK ⚠" : reg.finished_at ? "finished" : "NÃO finalizada ⚠"
 
-      const rotulo =
-        classe === CHECKSUM_OK
-          ? `confere (${forma})${c.difere ? ` · arquivo local em ${c.finalDeLinha}` : ""}`
-          : `${classe} ⚠`
-      console.info(`  ${item.nome.padEnd(52)} ${rotulo.padEnd(38)} ${estadoReg}`)
+      const rotuloClasse =
+        r.classe === CHECKSUM_MATCH_CANONICAL
+          ? "MATCH_CANONICAL"
+          : r.classe === CHECKSUM_FORMATO
+            ? "FORMAT_ONLY_CHECKSUM_DRIFT (banco=CRLF, canonical=LF) ⚠"
+            : r.classe === CHECKSUM_CONTEUDO
+              ? "CONTENT_CHECKSUM_DRIFT ⚠"
+              : CHECKSUM_SEM_REGISTRO
 
-      if (classe === CHECKSUM_CONTEUDO) {
-        console.info(`      banco : ${reg.checksum}`)
-        console.info(`      LF    : ${c.lf}`)
-        console.info(`      CRLF  : ${c.crlf}`)
-        console.info(`      → não bate com NENHUMA forma do arquivo atual: o conteúdo mudou.`)
+      console.info(
+        `  ${item.nome.padEnd(52)} ${rotuloClasse.padEnd(56)} worktree=${c.worktree.padEnd(22)} ${estadoReg}`
+      )
+
+      if (r.classe === CHECKSUM_CONTEUDO) {
+        console.info(`      banco       : ${reg.checksum}`)
+        console.info(`      LF canônico : ${c.lf}`)
+        console.info(`      CRLF        : ${c.crlf}`)
+        console.info(`      → não bate com NENHUMA forma do conteúdo atual: investigar edição pós-aplicação.`)
       }
     }
   }

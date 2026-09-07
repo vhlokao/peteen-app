@@ -32,10 +32,13 @@ import {
   vereditoDe,
   checksumsDe,
   classificarChecksum,
-  driftDeFormato,
-  CHECKSUM_OK,
+  CHECKSUM_MATCH_CANONICAL,
   CHECKSUM_CONTEUDO,
   CHECKSUM_FORMATO,
+  CHECKSUM_SEM_REGISTRO,
+  WORKTREE_LF,
+  WORKTREE_CRLF,
+  WORKTREE_MIXED,
 } from "./migration-audit.mjs"
 
 describe("comentários não são statements", () => {
@@ -173,66 +176,130 @@ describe("constraints e FKs entram no efeito, com semântica", () => {
 describe("checksums no formato do Prisma", () => {
   it("LF e CRLF produzem hashes diferentes — e é por isso que ambos são reportados", () => {
     // Se este teste algum dia falhar, a comparação de checksum virou inútil.
-    const { disco, lf, crlf, difere } = checksumsDe("20250620120000_professional_availability_7_6")
-    assert.equal(disco.length, 64)
+    const { lf, crlf } = checksumsDe("20250620120000_professional_availability_7_6")
     assert.notEqual(lf, crlf, "LF e CRLF do mesmo conteúdo têm de divergir")
-    assert.equal(difere, disco !== lf)
   })
 
   it("é sha256 hex, o formato que o Prisma grava", () => {
     const { lf } = checksumsDe("20260821120000_invite_visit_funnel")
     assert.match(lf, /^[0-9a-f]{64}$/)
   })
+
+  it("worktree é um eixo próprio, calculado a partir dos bytes reais em disco", () => {
+    const { worktree } = checksumsDe("20260821120000_invite_visit_funnel")
+    assert.ok([WORKTREE_LF, WORKTREE_CRLF, WORKTREE_MIXED].includes(worktree))
+  })
 })
 
-describe("classificação de divergência de checksum", () => {
-  const c = { disco: "a".repeat(64), lf: "b".repeat(64), crlf: "c".repeat(64) }
+/**
+ * GATE-18 FIX-004 — o bug que esta suíte trava.
+ *
+ * `classificarChecksum` do FIX-003 aceitava a forma "disco" (bytes reais do
+ * arquivo AGORA) como um dos formatos válidos de MATCH. Depois que o
+ * `.gitattributes` normalizou o worktree para LF em máquinas que fizerem um
+ * checkout novo, `disco === lf` passaria a valer, e o checksum CRLF histórico
+ * gravado em PROD seria classificado como "confere" — escondendo exatamente o
+ * drift que a auditoria existe para mostrar. A causa era estrutural: a função
+ * comparava contra o WORKTREE em vez de comparar contra o CONTEÚDO. Corrigido
+ * removendo `disco` da assinatura de `classificarChecksum` por completo — a
+ * função não pode nem consultar o worktree, só `{ lf, crlf }`.
+ */
+describe("classificação de checksum — canônico (LF) vs histórico (CRLF) vs conteúdo", () => {
+  const formas = { lf: "b".repeat(64), crlf: "c".repeat(64) }
 
-  it("bate com qualquer forma do arquivo → MATCH, e diz qual forma", () => {
-    assert.equal(classificarChecksum(c.lf, c).classe, CHECKSUM_OK)
-    assert.equal(classificarChecksum(c.lf, c).forma, "LF")
-    assert.equal(classificarChecksum(c.crlf, c).forma, "CRLF")
+  it("banco == LF → MATCH_CANONICAL", () => {
+    assert.equal(classificarChecksum(formas.lf, formas).classe, CHECKSUM_MATCH_CANONICAL)
   })
 
-  it("não bate com nenhuma forma → CONTENT drift, não formato", () => {
-    // A distinção que importa: alguém editou o SQL, e isso é histórico
-    // corrompido — não um arquivo que trocou de final de linha.
-    assert.equal(classificarChecksum("f".repeat(64), c).classe, CHECKSUM_CONTEUDO)
+  it("banco == CRLF (mesmo conteúdo, formato antigo) → FORMAT_ONLY_CHECKSUM_DRIFT", () => {
+    const r = classificarChecksum(formas.crlf, formas)
+    assert.equal(r.classe, CHECKSUM_FORMATO)
+    assert.equal(r.finalDeLinha, "CRLF")
   })
 
-  it("sem registro no banco não é drift", () => {
-    assert.equal(classificarChecksum(null, c).classe, "SEM_REGISTRO")
+  it("banco não bate com LF nem CRLF → CONTENT_CHECKSUM_DRIFT", () => {
+    assert.equal(classificarChecksum("f".repeat(64), formas).classe, CHECKSUM_CONTEUDO)
   })
 
-  /**
-   * Deliberadamente NÃO se afirma aqui que `professional_availability_7_6`
-   * está em CRLF.
-   *
-   * Estava, e é por isso que o `.gitattributes` com `eol=lf` foi adicionado.
-   * Mas um teste que exigisse CRLF quebraria exatamente quando o guardrail
-   * fizesse o seu trabalho — congelando como verdade um estado que existe para
-   * ser corrigido. O invariante durável é outro: seja qual for o final de
-   * linha, a divergência dessa migration nunca pode ser de CONTEÚDO.
-   */
-  it("nenhuma migration do repositório tem drift de CONTEÚDO contra si mesma", () => {
+  it("sem registro no banco → SEM_REGISTRO, não é drift de nenhum tipo", () => {
+    assert.equal(classificarChecksum(null, formas).classe, CHECKSUM_SEM_REGISTRO)
+  })
+
+  it("classificarChecksum não aceita nem consulta `disco` — só duas formas", () => {
+    // Trava a correção em si: se alguém reintroduzir `disco` na assinatura e
+    // usá-lo, este teste não pega isso diretamente, mas os dois testes de
+    // fixture real abaixo pegam — são o teste que importa de verdade.
+    const r = classificarChecksum("x".repeat(64), { lf: formas.lf, crlf: formas.crlf })
+    assert.equal(r.classe, CHECKSUM_CONTEUDO)
+  })
+})
+
+/**
+ * FIX-004 item 3 — matriz de hashes REAIS de PROD, fornecida pelo orquestrador
+ * e travada aqui como fixture. Se este teste passar, a auditoria classifica
+ * corretamente a situação real do banco de produção — não uma simulação.
+ */
+describe("fixture real de PROD — professional_availability_7_6", () => {
+  const NOME = "20250620120000_professional_availability_7_6"
+  const HASH_PROD_CRLF = "4d5febaf3940b4e0c9ecc2e4c3511973fde3b50536d6429d6eeb23a8e7461f18"
+  const HASH_LF_CANONICO = "9e24b1c88822b8a63d2e2d31049e3f583a4aff038cf77aec955e818188fef86f"
+
+  it("o LF canônico calculado bate com o valor fornecido pelo orquestrador", () => {
+    assert.equal(checksumsDe(NOME).lf, HASH_LF_CANONICO)
+  })
+
+  it("o checksum gravado em PROD é a forma CRLF calculada, não a LF", () => {
+    assert.equal(checksumsDe(NOME).crlf, HASH_PROD_CRLF)
+    assert.notEqual(checksumsDe(NOME).lf, HASH_PROD_CRLF)
+  })
+
+  it("classificado contra o hash real de PROD → FORMAT_ONLY_CHECKSUM_DRIFT, NUNCA MATCH", () => {
+    const r = classificarChecksum(HASH_PROD_CRLF, checksumsDe(NOME))
+    assert.equal(r.classe, CHECKSUM_FORMATO)
+    assert.notEqual(r.classe, CHECKSUM_MATCH_CANONICAL, "o bug do FIX-003 fazia isto dar MATCH")
+  })
+
+  it("classificado contra o LF canônico → MATCH_CANONICAL", () => {
+    assert.equal(classificarChecksum(HASH_LF_CANONICO, checksumsDe(NOME)).classe, CHECKSUM_MATCH_CANONICAL)
+  })
+})
+
+/**
+ * FIX-004 item 3 — "uma das outras 8 migrations, cujo checksum PROD == LF".
+ *
+ * O hash de PROD desta migration NÃO foi fornecido pelo orquestrador — só o
+ * de `professional_availability_7_6` foi, no gate anterior. Para as outras 8,
+ * a única evidência que tenho é o próprio LF canônico calculado localmente:
+ * o RESULT do FIX-002 já registrava que o blob versionado bate com a forma LF
+ * nas 9. Este teste fixa esse hash como valor conhecido e verifica que ele
+ * classifica como MATCH_CANONICAL — não afirma tê-lo lido de `_prisma_migrations`
+ * em produção, porque não li.
+ */
+describe("fixture — invite_visit_funnel, caso MATCH_CANONICAL", () => {
+  const NOME = "20260821120000_invite_visit_funnel"
+  const HASH_LF_CONHECIDO = "e1478eb6c539d8418a884098e60cf4b1e073481acf87922d26c646b83b842461"
+
+  it("o LF calculado bate com o valor já registrado no FIX-002", () => {
+    assert.equal(checksumsDe(NOME).lf, HASH_LF_CONHECIDO)
+  })
+
+  it("classificado contra esse hash → MATCH_CANONICAL", () => {
+    const c = checksumsDe(NOME)
+    assert.equal(classificarChecksum(HASH_LF_CONHECIDO, c).classe, CHECKSUM_MATCH_CANONICAL)
+  })
+})
+
+describe("invariante: nenhuma migration do repositório diverge de si mesma por CONTEÚDO", () => {
+  it("LF e CRLF do próprio arquivo nunca classificam como CONTENT_CHECKSUM_DRIFT", () => {
     for (const nome of nomesDeMigration()) {
       const c = checksumsDe(nome)
-      for (const forma of [c.disco, c.lf, c.crlf]) {
+      for (const forma of [c.lf, c.crlf]) {
         assert.notEqual(
           classificarChecksum(forma, c).classe,
           CHECKSUM_CONTEUDO,
-          `${nome}: uma forma do próprio arquivo foi classificada como conteúdo alterado`
+          `${nome}: uma forma do próprio conteúdo foi classificada como alterada`
         )
       }
-    }
-  })
-
-  it("quando há drift, ele é de FORMATO e nomeia o final de linha", () => {
-    for (const nome of nomesDeMigration()) {
-      const d = driftDeFormato(nome)
-      if (d === null) continue // já normalizada — o estado desejado
-      assert.equal(d.classe, CHECKSUM_FORMATO)
-      assert.ok(["CRLF", "MISTO"].includes(d.finalDeLinha), `final de linha inesperado: ${d.finalDeLinha}`)
     }
   })
 })

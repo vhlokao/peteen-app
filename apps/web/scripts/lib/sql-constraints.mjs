@@ -47,6 +47,65 @@ const ACAO_PADRAO = "NO ACTION"
 
 const semAspas = (s) => String(s).replace(/"/g, "").trim()
 
+/**
+ * A dupla de parênteses mais externa de `e` é REDUNDANTE — isto é, o primeiro
+ * `(` fecha exatamente no último caractere?
+ *
+ * Isto é uma prova estrutural, não uma suposição: se o primeiro `(` só atinge
+ * profundidade zero no último caractere da string, ele envolve a expressão
+ * INTEIRA, e removê-lo nunca muda o agrupamento — ao contrário de remover um
+ * parêntese qualquer, que pode.
+ */
+function parenExternoRedundante(e) {
+  if (!e.startsWith("(") || !e.endsWith(")")) return false
+  let profundidade = 0
+  for (let i = 0; i < e.length; i++) {
+    if (e[i] === "(") profundidade++
+    else if (e[i] === ")") {
+      profundidade--
+      if (profundidade === 0) return i === e.length - 1
+    }
+  }
+  return false
+}
+
+/**
+ * Normaliza uma expressão de CHECK para comparação — só o que é
+ * COMPROVADAMENTE cosmético:
+ *
+ *   1. aspas de identificador (`"userId"` → `userId`) — Postgres sempre
+ *      devolve identificadores entre aspas em `pg_get_constraintdef()`, a
+ *      migration pode ou não escrever assim; é o MESMO identificador;
+ *   2. espaços em branco colapsados;
+ *   3. parênteses externos redundantes, removidos um nível por vez, e só
+ *      quando a prova acima confirma que são redundantes.
+ *
+ * NÃO normaliza: aspas simples (são literal de string, não identificador —
+ * `'active'` e `active` são coisas DIFERENTES), maiúsculas/minúsculas de
+ * identificador, nem casts que o Postgres injeta (`(x)::integer`). Preferir
+ * um falso `CONTENT_CHECKSUM_DRIFT` — que só pede revisão humana — a um falso
+ * `MATCH` que esconderia uma expressão realmente diferente.
+ */
+export function normalizarExpressao(expr) {
+  let e = expr.replace(/"([A-Za-z_][A-Za-z0-9_]*)"/g, "$1").trim().replace(/\s+/g, " ")
+  while (parenExternoRedundante(e)) e = e.slice(1, -1).trim()
+  return e
+}
+
+/**
+ * Extrai e normaliza a expressão de dentro de `CHECK (...)` — usada tanto no
+ * SQL da migration quanto em `pg_get_constraintdef()`, que devolve
+ * exatamente essa forma (`CHECK (<expressão>)`) para constraints do tipo `c`.
+ * Uma única função dos dois lados garante que repo e banco recebem a MESMA
+ * normalização — comparar com regras diferentes de cada lado seria pior do
+ * que não normalizar.
+ */
+export function expressaoDoCheck(textoComCheck) {
+  const m = String(textoComCheck).trim().match(/^CHECK\s*\(([\s\S]*)\)$/i)
+  if (!m) return null
+  return normalizarExpressao(m[1])
+}
+
 /** `("a", "b")` → `["a","b"]`, preservando a ordem — que importa em FK composta. */
 function listaDeColunas(texto) {
   if (!texto) return []
@@ -177,7 +236,7 @@ function descreverCorpo(corpo) {
   const uq = texto.match(/^UNIQUE\s*\(([^)]*)\)/i)
   if (uq) return { tipo: "UNIQUE", colunas: listaDeColunas(uq[1]) }
 
-  if (/^CHECK\s*\(/i.test(texto)) return { tipo: "CHECK", colunas: [] }
+  if (/^CHECK\s*\(/i.test(texto)) return { tipo: "CHECK", colunas: [], expressao: expressaoDoCheck(texto) }
 
   return null
 }
@@ -227,6 +286,15 @@ export function compararConstraint(esperada, real) {
     }
     if (esperada.onDelete !== real.onDelete) dif.push(`ON DELETE: esperado ${esperada.onDelete}, real ${real.onDelete}`)
     if (esperada.onUpdate !== real.onUpdate) dif.push(`ON UPDATE: esperado ${esperada.onUpdate}, real ${real.onUpdate}`)
+  }
+
+  if (esperada.tipo === "CHECK") {
+    // A expressão JÁ carrega a coluna e a condição — comparar como texto
+    // normalizado cobre "coluna diferente" e "limite diferente" ao mesmo
+    // tempo, sem precisar entender a sintaxe da expressão booleana.
+    if (esperada.expressao !== real.expressao) {
+      dif.push(`expressão CHECK: esperada (${esperada.expressao}), real (${real.expressao})`)
+    }
   }
 
   return dif

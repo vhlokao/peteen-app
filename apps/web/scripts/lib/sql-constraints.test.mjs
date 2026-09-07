@@ -15,7 +15,7 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
-import { constraintsDe, compararConstraint, statementsDe } from "./sql-constraints.mjs"
+import { constraintsDe, compararConstraint, statementsDe, expressaoDoCheck, normalizarExpressao } from "./sql-constraints.mjs"
 
 // Sintaxe real, copiada das migrations deste repositório.
 const FK = `
@@ -172,6 +172,87 @@ describe("comparação semântica — CONTROLE NEGATIVO, cada atributo reprova",
       onDelete: "NO ACTION", onUpdate: "NO ACTION",
     })
     assert.ok(dif.length > 0, "ordem invertida deveria reprovar")
+  })
+})
+
+describe("CHECK — normalização de expressão", () => {
+  it("colapsa espaço em branco", () => {
+    assert.equal(normalizarExpressao('b   >   0'), "b > 0")
+    assert.equal(normalizarExpressao("b\n  >\t0"), "b > 0")
+  })
+
+  it("remove aspas de IDENTIFICADOR, nunca de literal de string", () => {
+    assert.equal(normalizarExpressao('"status" > 0'), "status > 0")
+    // 'active' é literal — trocar aspas mudaria o que a expressão diz.
+    assert.equal(normalizarExpressao("status = 'active'"), "status = 'active'")
+  })
+
+  it("remove parênteses externos redundantes, um nível por vez", () => {
+    assert.equal(normalizarExpressao("((b > 0))"), "b > 0")
+  })
+
+  it("NÃO remove parênteses que não envolvem a expressão inteira", () => {
+    // Aqui o primeiro `(` fecha antes do fim — removê-lo mudaria o agrupamento.
+    assert.equal(normalizarExpressao("(a > 0) AND (b > 0)"), "(a > 0) AND (b > 0)")
+  })
+})
+
+describe("CHECK — extração de dentro de `CHECK (...)`", () => {
+  it("extrai o corpo, removendo só o wrapper CHECK", () => {
+    assert.equal(expressaoDoCheck("CHECK (b > 0)"), "b > 0")
+  })
+
+  it("normaliza a forma típica que pg_get_constraintdef devolve", () => {
+    // Postgres reserializa com aspas de identificador e um parêntese extra.
+    assert.equal(expressaoDoCheck('CHECK ((\"b\" > 0))'), "b > 0")
+  })
+
+  it("texto que não é CHECK(...) devolve null", () => {
+    assert.equal(expressaoDoCheck("UNIQUE (a)"), null)
+  })
+})
+
+describe("CHECK — os 4 testes negativos exigidos pelo FIX-004", () => {
+  const migracao = (expr) =>
+    constraintsDe(`CREATE TABLE "t" ("b" INT, CONSTRAINT "t_chk" CHECK (${expr}));`)[0]
+
+  const bancoCom = (expr) => ({
+    tipo: "CHECK",
+    tabela: "t",
+    colunas: [],
+    expressao: expressaoDoCheck(`CHECK (${expr})`),
+  })
+
+  it("1. mesmo nome/tabela, limite diferente (b > 0 vs b > 100) → REPROVA", () => {
+    const dif = compararConstraint(migracao("b > 0"), bancoCom("b > 100"))
+    assert.ok(dif.length > 0)
+    assert.match(dif.join(" "), /expressão CHECK/)
+  })
+
+  it("2. mesmo nome/tabela, coluna diferente (b vs c) → REPROVA", () => {
+    // A coluna faz parte da expressão — comparar o texto normalizado já cobre
+    // "coluna trocada" sem precisar entender a gramática da expressão.
+    const dif = compararConstraint(migracao("b > 0"), bancoCom("c > 0"))
+    assert.ok(dif.length > 0, "coluna diferente deveria reprovar")
+  })
+
+  it("3. expressão equivalente só por whitespace → PASSA", () => {
+    const dif = compararConstraint(migracao("b > 0"), bancoCom("  b   >   0  "))
+    assert.deepEqual(dif, [])
+  })
+
+  it("4. CHECK ausente no banco → REPROVA, com UMA divergência", () => {
+    const dif = compararConstraint(migracao("b > 0"), null)
+    assert.deepEqual(dif, ["ausente no banco"])
+  })
+})
+
+describe("CHECK — prova de ponta a ponta com forma real do Postgres", () => {
+  it("migration com aspas simples do repo == pg_get_constraintdef reformatado", () => {
+    const doRepo = constraintsDe(`CREATE TABLE "t" ("b" INT, CONSTRAINT "t_chk" CHECK (b > 0));`)[0]
+    // Forma típica de saída do Postgres: identificador entre aspas + parêntese extra.
+    const doBanco = { tipo: "CHECK", tabela: "t", colunas: [], expressao: expressaoDoCheck('CHECK (("b" > 0))') }
+    assert.deepEqual(compararConstraint(doRepo, doBanco), [])
   })
 })
 

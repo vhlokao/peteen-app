@@ -4,8 +4,10 @@ Fonte de verdade sobre **quem é dono de qual parte do schema, o que já foi
 aplicado, e como schema chega em cada ambiente**.
 
 Criado em GATE-18-MIGRATION-DEPLOY-FOUNDATION-001, corrigido em **FIX-002**
-(evidência de PROD, que inverteu as conclusões) e em **FIX-003** (validação semântica
-de constraints, classificação de checksum e guardrail de final de linha).
+(evidência de PROD, que inverteu as conclusões), **FIX-003** (validação
+semântica de FK/PK/UNIQUE e guardrail de final de linha) e **FIX-004** (CHECK
+por expressão, e a classificação de checksum corrigida para não deixar o estado
+do worktree local esconder drift histórico do banco).
 **Nada foi aplicado nem reconciliado** — a fase de escrita depende de aprovação
 humana (ver "Plano de baseline").
 
@@ -100,7 +102,40 @@ tabela dona, colunas locais (**na ordem**), tabela e colunas referenciadas,
 Inclui também as constraints declaradas **inline em `CREATE TABLE`**, que é onde
 vivem todas as 6 primary keys criadas por estas migrations e que a versão
 anterior do auditor não enxergava. Total conferido: **13 constraints — 7 FKs e
-6 PKs.**
+6 PKs.** Nenhuma das 9 migrations Prisma declara CHECK nomeado hoje, mas o
+comparador já cobre esse caso (ver abaixo) para quando alguma vier a declarar.
+
+#### CHECK — comparado pela expressão, não só pelo nome
+
+Mesmo defeito das FKs, outra forma: `CONSTRAINT "t_b" CHECK (b > 0)` e uma
+constraint homônima real `CHECK (b > 100)` são regras DIFERENTES, e comparar só
+nome+tabela+tipo as trataria como iguais.
+
+O lado do banco usa `pg_get_constraintdef(con.oid)`, que devolve a definição
+completa (`CHECK (<expressão>)`) — não existe uma coluna separada para "a
+expressão do CHECK" em `pg_constraint`. O lado do repositório extrai a mesma
+forma a partir do SQL da migration. Os dois passam pela MESMA normalização
+antes de comparar, para que não haja duas regras de "o que é cosmético":
+
+- aspas de **identificador** removidas (`"userId"` → `userId` — é o mesmo
+  identificador; Postgres sempre devolve entre aspas, a migration pode não
+  escrever assim);
+- espaços em branco colapsados;
+- parênteses externos **redundantes** removidos — só quando comprovadamente
+  redundantes (o primeiro `(` fecha exatamente no último caractere; remover
+  nunca muda o agrupamento).
+
+**Não normalizado, de propósito:** aspas simples (são literal de string —
+`'active'` e `active` são coisas diferentes), maiúsculas/minúsculas de
+identificador, e casts que o Postgres injeta (`(x)::integer`). Um falso
+`CONTENT_CHECKSUM_DRIFT`-equivalente para CHECK (que só pede revisão humana) é
+preferível a um falso PASS que esconderia uma expressão realmente diferente.
+
+Testes negativos exigidos e verificados: mesmo nome/tabela com limite diferente
+(`b > 0` vs `b > 100`) reprova; coluna diferente (`b` vs `c`) reprova — a coluna
+faz parte da expressão, então o texto normalizado já captura a troca; diferença
+só de espaço em branco passa; CHECK ausente no banco reprova com uma única
+divergência.
 
 | Migration | Origem | Tracking | Efeito | Veredito |
 |---|---|---|---|---|
@@ -228,44 +263,76 @@ novo, e registrar a saída literal.
 Até lá, o plano trata a divergência como **potencialmente bloqueante** — que é a
 postura conservadora — sem afirmar que é.
 
-| Migration | SHA-256 (LF — forma canônica do git) | Disco == LF? |
-|---|---|---|
-| `20250620120000_professional_availability_7_6` | `9e24b1c88822b8a63d2e2d31049e3f583a4aff038cf77aec955e818188fef86f` | **NÃO — está CRLF** |
-| `20260730180000_agenda_foundation_v0_3` | `77f26c6cdde208f5cd83fc2a4dca4f7d2563ef889426535bcc5de38d9e08ac74` | sim |
-| `20260801120000_service_uniqueness_concurrency_safety` | `97d11961158a537adf16f9a36da8f8f930bdb14f2c74a7e3fcc749e770f436ad` | sim |
-| `20260808120000_push_notifications_foundation_v0` | `7c9b184c5a07211bbc35ce14fbd2d15ef7bffe29ca7a81890a5e2b6c1d5053da` | sim |
-| `20260813120000_care_media_v0` | `cc708c6459190fdec93906ab2f99633544a93f588972f3573421222bf7bfeb9a` | sim |
-| `20260817020000_push_vapid_environment_isolation` | `c986b070de7ac0005d342835c3576fcc6b3dfdda97f2efbf626c989a8799abb9` | sim |
-| `20260817030000_push_subscription_runtime_environment` | `60dd19b454570d603b60c864df213942d9c0ee7ba01ec1604e1370cbf256f947` | sim |
-| `20260820120000_notification_read_state` | `f7e7a73373b7e50424c050fa59eef57ce86a38de4e33240c4f8de51b91b93236` | sim |
-| `20260821120000_invite_visit_funnel` | `e1478eb6c539d8418a884098e60cf4b1e073481acf87922d26c646b83b842461` | sim |
+| Migration | SHA-256 (LF — forma canônica do repositório) |
+|---|---|
+| `20250620120000_professional_availability_7_6` | `9e24b1c88822b8a63d2e2d31049e3f583a4aff038cf77aec955e818188fef86f` |
+| `20260730180000_agenda_foundation_v0_3` | `77f26c6cdde208f5cd83fc2a4dca4f7d2563ef889426535bcc5de38d9e08ac74` |
+| `20260801120000_service_uniqueness_concurrency_safety` | `97d11961158a537adf16f9a36da8f8f930bdb14f2c74a7e3fcc749e770f436ad` |
+| `20260808120000_push_notifications_foundation_v0` | `7c9b184c5a07211bbc35ce14fbd2d15ef7bffe29ca7a81890a5e2b6c1d5053da` |
+| `20260813120000_care_media_v0` | `cc708c6459190fdec93906ab2f99633544a93f588972f3573421222bf7bfeb9a` |
+| `20260817020000_push_vapid_environment_isolation` | `c986b070de7ac0005d342835c3576fcc6b3dfdda97f2efbf626c989a8799abb9` |
+| `20260817030000_push_subscription_runtime_environment` | `60dd19b454570d603b60c864df213942d9c0ee7ba01ec1604e1370cbf256f947` |
+| `20260820120000_notification_read_state` | `f7e7a73373b7e50424c050fa59eef57ce86a38de4e33240c4f8de51b91b93236` |
+| `20260821120000_invite_visit_funnel` | `e1478eb6c539d8418a884098e60cf4b1e073481acf87922d26c646b83b842461` |
 
-Para os 9, o blob versionado no git **bate com a forma LF** — ela é a canônica.
-A única com CRLF na árvore de trabalho é `professional_availability_7_6`; seu
-hash em disco é `4d5febaf3940b4e0c9ecc2e4c3511973fde3b50536d6429d6eeb23a8e7461f18`.
+Para as 9, o blob versionado no git **bate com a forma LF** — ela é a canônica.
 
-### Classificação: `FORMAT_ONLY_CHECKSUM_DRIFT / CRLF`
+### Três eixos, não dois — e um bug real que veio de confundi-los
 
-`20250620120000_professional_availability_7_6` está classificada como
-**`FORMAT_ONLY_CHECKSUM_DRIFT`, final de linha `CRLF`**.
+A classificação de checksum lida com TRÊS coisas distintas, e um bug do FIX-003
+veio exatamente de tratar duas delas como se fossem uma só:
 
-O conteúdo é idêntico ao versionado — caractere a caractere, statement a
-statement. O que difere é só o final de linha da cópia na árvore de trabalho.
-Isso **não** é histórico corrompido.
+1. **Conteúdo canônico do repositório** — a forma LF do `migration.sql` atual,
+   e sua forma CRLF equivalente (mesmo conteúdo, outro final de linha).
+2. **Checksum gravado no banco** — o que `_prisma_migrations.checksum` guarda,
+   congelado no momento em que a migration foi aplicada.
+3. **Estado da árvore de trabalho** — como o arquivo está fisicamente NA
+   MÁQUINA que está rodando a auditoria agora.
 
-A auditoria distingue três casos, e a distinção é a razão de a classificação
-existir:
+**O eixo 3 não pode influenciar a comparação entre 1 e 2.** O FIX-003 aceitava
+a forma "disco" (bytes reais do arquivo `agora`) como uma das formas válidas de
+MATCH. Depois que o `.gitattributes` normalizasse o worktree de alguém para LF,
+`disco === lf` passaria a valer — e o checksum CRLF histórico gravado em PROD
+seria classificado como "confere", escondendo exatamente o drift que a
+auditoria existe para mostrar. Um auditor cujo veredito sobre o BANCO muda
+porque um ARQUIVO DIFERENTE (`.gitattributes`) foi normalizado na máquina de
+quem roda o comando não está medindo o banco.
+
+**A correção:** `classificarChecksum()` agora recebe só `{ lf, crlf }` — as duas
+formas do CONTEÚDO — e nunca consulta o worktree.
+
+### Classificação — 4 classes
 
 | Classe | Significado | Reação correta |
 |---|---|---|
-| `MATCH` | bate com alguma forma do arquivo | nada |
-| `FORMAT_ONLY_CHECKSUM_DRIFT` | só o final de linha difere | normalizar o checkout |
-| `CONTENT_CHECKSUM_DRIFT` | não bate com nenhuma forma | **investigar**: alguém editou SQL já aplicado |
+| `MATCH_CANONICAL` | banco == LF (a forma que o repositório considera certa) | nada |
+| `FORMAT_ONLY_CHECKSUM_DRIFT` | banco == CRLF do MESMO conteúdo, mas != LF | normalizar o checkout que aplicou; **não** mexer no banco nem na migration |
+| `CONTENT_CHECKSUM_DRIFT` | banco não bate com NENHUMA forma do conteúdo atual | **investigar**: alguém editou SQL já aplicado |
+| `SEM_REGISTRO` | nada gravado para esta migration | migration não aplicada, ou tabela ausente |
 
-Tratar os dois últimos como a mesma coisa leva a reações erradas e opostas:
-ignorar um drift real, ou "consertar" um falso alarme **reescrevendo uma
-migration já aplicada** — que é a única ação aqui capaz de corromper o histórico
-de verdade.
+Tratar `FORMAT_ONLY` e `CONTENT` como a mesma coisa leva a reações erradas e
+opostas: ignorar um drift de conteúdo real, ou "consertar" um falso alarme
+**reescrevendo uma migration já aplicada** — a única ação aqui capaz de
+corromper o histórico de verdade.
+
+O estado do worktree é reportado **à parte**, num vocabulário próprio que não
+se mistura com o do banco: `WORKTREE_CANONICAL_LF`, `WORKTREE_CRLF`,
+`WORKTREE_MIXED`.
+
+### Resultado com a matriz real de PROD (fornecida pelo orquestrador)
+
+```
+professional_availability_7_6   FORMAT_ONLY_CHECKSUM_DRIFT (banco=CRLF, canonical=LF) ⚠   worktree=WORKTREE_CRLF   finished
+```
+
+- checksum gravado em PROD: `4d5febaf3940b4e0c9ecc2e4c3511973fde3b50536d6429d6eeb23a8e7461f18` — bate com a forma **CRLF** calculada a partir do conteúdo atual, não com a LF;
+- LF canônico: `9e24b1c88822b8a63d2e2d31049e3f583a4aff038cf77aec955e818188fef86f`;
+- classificação: **`FORMAT_ONLY_CHECKSUM_DRIFT`, nunca `MATCH_CANONICAL`** — travado em teste com estes dois hashes literais, para que uma regressão futura quebre a suíte, não só o relatório.
+
+Note a correção de linguagem: o conteúdo de LF e CRLF é o mesmo conteúdo
+**lógico** normalizado — mesmos statements, mesmos identificadores — não
+"idêntico caractere a caractere" (versões anteriores deste documento usavam essa
+frase; os bytes diferem exatamente no final de linha, que é a coisa toda).
 
 **O que NÃO se faz:** editar `20250620120000_professional_availability_7_6`, e
 não mexer em `_prisma_migrations`. A migration histórica fica como está.

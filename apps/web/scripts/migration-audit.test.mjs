@@ -14,7 +14,7 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
-import { semComentarios, objetosDe, vereditoDe } from "./migration-audit.mjs"
+import { semComentarios, objetosDe, vereditoDe, checksumsDe } from "./migration-audit.mjs"
 
 describe("comentários não são statements", () => {
   it("bloco ROLLBACK comentado não vira DDL", () => {
@@ -83,11 +83,61 @@ describe("idempotência", () => {
   })
 })
 
+describe("constraints e FKs entram no efeito", () => {
+  it("captura o nome de uma FK adicionada", () => {
+    const o = objetosDe(`
+      ALTER TABLE "push_subscriptions"
+        ADD CONSTRAINT "push_subscriptions_userId_fkey"
+        FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE;
+    `)
+    assert.deepEqual(o.constraints, ["push_subscriptions_userId_fkey"])
+  })
+
+  it("DROP CONSTRAINT antes do ADD não vira objeto esperado", () => {
+    // Padrão de idempotência deste repositório: dropa e recria. O efeito
+    // esperado é UM: a constraint existir ao final.
+    const o = objetosDe(`
+      ALTER TABLE "t" DROP CONSTRAINT IF EXISTS "t_fk";
+      ALTER TABLE "t" ADD CONSTRAINT "t_fk" FOREIGN KEY ("a") REFERENCES "u"("id");
+    `)
+    assert.deepEqual(o.constraints, ["t_fk"])
+  })
+
+  it("uma constraint ausente no banco derruba o veredito para PARCIAL", () => {
+    const item = {
+      tabelas: [], colunas: [], indices: [], enums: [], politicas: [], buckets: [],
+      constraints: ["fk_presente", "fk_ausente"],
+    }
+    const v = vereditoDe(item, {
+      tabelas: new Set(), colunas: new Set(), indices: new Set(), enums: new Set(),
+      politicas: new Set(), buckets: new Set(), constraints: new Set(["fk_presente"]),
+    })
+    assert.equal(v.efeito, "PARCIAL")
+    assert.deepEqual(v.faltando, ["constraint fk_ausente"])
+  })
+})
+
+describe("checksums no formato do Prisma", () => {
+  it("LF e CRLF produzem hashes diferentes — e é por isso que ambos são reportados", () => {
+    // Se este teste algum dia falhar, a comparação de checksum virou inútil.
+    const { disco, lf, difere } = checksumsDe("20250620120000_professional_availability_7_6")
+    assert.equal(disco.length, 64)
+    assert.equal(lf.length, 64)
+    assert.equal(typeof difere, "boolean")
+    assert.equal(difere, disco !== lf)
+  })
+
+  it("é sha256 hex, o formato que o Prisma grava", () => {
+    const { lf } = checksumsDe("20260821120000_invite_visit_funnel")
+    assert.match(lf, /^[0-9a-f]{64}$/)
+  })
+})
+
 describe("veredito por efeito", () => {
-  const item = { tabelas: ["a"], colunas: [], indices: ["i1", "i2"], enums: [], politicas: [], buckets: [] }
+  const item = { tabelas: ["a"], colunas: [], indices: ["i1", "i2"], enums: [], politicas: [], buckets: [], constraints: [] }
   const estado = (t, i) => ({
     tabelas: new Set(t), colunas: new Set(), indices: new Set(i),
-    enums: new Set(), politicas: new Set(), buckets: new Set(),
+    enums: new Set(), politicas: new Set(), buckets: new Set(), constraints: new Set(),
   })
 
   it("tudo presente → PRESENTE", () => {

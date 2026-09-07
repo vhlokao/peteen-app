@@ -12,7 +12,7 @@
 import { describe, it } from "node:test"
 import assert from "node:assert/strict"
 
-import { avaliarComando, argsParaPrisma, ehLocal } from "./prisma-guard.mjs"
+import { avaliarComando, argsParaPrisma, ehLocal, ehProducao, REFS_DE_PRODUCAO } from "./prisma-guard.mjs"
 
 /** Monta URLs em runtime: literal de connection string vira achado do scanner. */
 const url = (host, usuario = "postgres") =>
@@ -77,6 +77,62 @@ describe("banco remoto exige confirmação explícita", () => {
   it("a mensagem de bloqueio avisa que migrate dev pode resetar", () => {
     const r = avaliarComando({ databaseUrl: url(REMOTO), argv: [], comando: "migrate dev" })
     assert.match(r.motivo, /RESETAR/)
+  })
+})
+
+describe("produção é bloqueio incondicional", () => {
+  const REF_PROD = [...REFS_DE_PRODUCAO][0]
+  const HOST_PROD = `db.${REF_PROD}.supabase.co`
+
+  for (const comando of ["db push", "migrate dev"]) {
+    it(`${comando} contra produção → BLOQUEADO mesmo SEM --target`, () => {
+      const r = avaliarComando({ databaseUrl: url(HOST_PROD), argv: [], comando })
+      assert.equal(r.permitido, false)
+      assert.equal(r.producao, true)
+      assert.match(r.motivo, /NUNCA roda contra PRODUÇÃO/)
+    })
+
+    it(`${comando} contra produção → BLOQUEADO mesmo COM --target CORRETO`, () => {
+      // O ponto do gate: confirmar o destino não é permissão suficiente aqui.
+      const r = avaliarComando({
+        databaseUrl: url(HOST_PROD),
+        argv: [`--target=${REF_PROD}`],
+        comando,
+      })
+      assert.equal(r.permitido, false, "--target correto NÃO pode liberar produção")
+      assert.equal(r.producao, true)
+    })
+  }
+
+  it("bloqueia também na forma de pooler, com a ref dentro do usuário", () => {
+    // `postgres.<ref>` é como o pooler do Supabase identifica o projeto.
+    const r = avaliarComando({
+      databaseUrl: url("aws-0-sa-east-1.pooler.supabase.com", `postgres.${REF_PROD}`),
+      argv: [`--target=${REF_PROD}`],
+      comando: "db push",
+    })
+    assert.equal(r.permitido, false)
+    assert.equal(r.producao, true)
+  })
+
+  it("ehProducao pega a ref na string crua mesmo sem alvo decomposto", () => {
+    assert.equal(ehProducao(`algo-${REF_PROD}-qualquer`, null), true)
+    assert.equal(ehProducao("postgresql://x@db.outroprojeto.supabase.co:5432/d", null), false)
+  })
+
+  it("a mensagem aponta o caminho legítimo, em vez de só recusar", () => {
+    const r = avaliarComando({ databaseUrl: url(HOST_PROD), argv: [], comando: "db push" })
+    assert.match(r.motivo, /migrate deploy/)
+    assert.match(r.motivo, /MIGRATION_DEPLOY_RUNBOOK/)
+  })
+
+  it("DEMO continua liberável com --target — o bloqueio é só de produção", () => {
+    const r = avaliarComando({
+      databaseUrl: url(REMOTO),
+      argv: [`--target=${REF_REMOTA}`],
+      comando: "db push",
+    })
+    assert.equal(r.permitido, true, "bloquear tudo faria o guard ser contornado")
   })
 })
 

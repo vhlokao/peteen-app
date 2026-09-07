@@ -25,6 +25,7 @@
  * uso: node scripts/migration-audit.mjs [--env=<arquivo>]
  */
 import { readFileSync, readdirSync, existsSync } from "node:fs"
+import { createHash } from "node:crypto"
 import { join, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 import pg from "pg"
@@ -80,16 +81,54 @@ export function objetosDe(sqlBruto) {
     ...sql.matchAll(/CREATE(?:\s+UNIQUE)?\s+INDEX(\s+IF NOT EXISTS)?/gi),
   ]
 
+  /**
+   * Constraints nomeadas: FK, UNIQUE, CHECK, PK.
+   *
+   * Só entram as que a migration ADICIONA. Um `DROP CONSTRAINT IF EXISTS`
+   * seguido de `ADD CONSTRAINT` — padrão de idempotência neste repositório —
+   * conta uma vez, pelo ADD, que é o que deixa efeito no schema.
+   *
+   * Verificar constraint importa por um motivo concreto: no Postgres, uma
+   * UNIQUE CONSTRAINT e um UNIQUE INDEX enforçam a mesma regra mas ocupam
+   * catálogos diferentes (`pg_constraint` × só `pg_indexes`). Auditar apenas
+   * índices deixaria essa diferença invisível — e ela é justamente onde
+   * DEMO e PROD divergem.
+   */
+  const constraints = capturar(
+    sql,
+    /ADD CONSTRAINT\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi
+  )
+
   return {
     tabelas: capturar(sql, /CREATE TABLE(?:\s+IF NOT EXISTS)?\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
     colunas,
     indices: capturar(sql, /CREATE(?:\s+UNIQUE)?\s+INDEX(?:\s+IF NOT EXISTS)?\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
+    constraints,
     enums: capturar(sql, /CREATE TYPE\s+"?([A-Za-z_][A-Za-z0-9_]*)"?/gi),
     politicas: capturar(sql, /CREATE POLICY\s+"([^"]+)"/gi),
     buckets: capturar(sql, /storage\.buckets[\s\S]{0,300}?VALUES\s*\(\s*'([^']+)'/gi),
     /** Re-executável sem erro? `CREATE` sem `IF NOT EXISTS` falha na segunda vez. */
     idempotente: criacoes.every((m) => m[1]),
   }
+}
+
+/**
+ * Checksums no formato que o Prisma grava: SHA-256 hex do conteúdo de
+ * `migration.sql`, byte a byte.
+ *
+ * Devolve as DUAS formas porque final de linha muda o hash, e este repositório
+ * é editado no Windows: o git avisa "LF will be replaced by CRLF" a cada `add`.
+ * Se a migration foi aplicada a partir de um checkout LF e o arquivo local está
+ * com CRLF, o checksum não bate — e o Prisma trata divergência de checksum como
+ * migration MODIFICADA, recusando `migrate deploy`. Sem as duas formas, um
+ * falso alarme de drift é indistinguível de um real.
+ */
+export function checksumsDe(nomeMigration) {
+  const f = join(PRISMA_DIR, nomeMigration, "migration.sql")
+  const bytes = readFileSync(f)
+  const lf = Buffer.from(bytes.toString("utf8").replace(/\r\n/g, "\n"), "utf8")
+  const sha = (b) => createHash("sha256").update(b).digest("hex")
+  return { disco: sha(bytes), lf: sha(lf), difere: sha(bytes) !== sha(lf) }
 }
 
 export function inventario() {
@@ -119,6 +158,7 @@ export function vereditoDe(item, estado) {
     ...item.tabelas.map((t) => [`table ${t}`, estado.tabelas.has(t)]),
     ...item.colunas.map(({ tabela, coluna }) => [`col ${tabela}.${coluna}`, estado.colunas.has(`${tabela}.${coluna}`)]),
     ...item.indices.map((i) => [`idx ${i}`, estado.indices.has(i)]),
+    ...(item.constraints ?? []).map((k) => [`constraint ${k}`, estado.constraints.has(k)]),
     ...item.enums.map((e) => [`enum ${e}`, estado.enums.has(e)]),
     ...item.politicas.map((p) => [`policy ${p}`, estado.politicas.has(p)]),
     ...item.buckets.map((b) => [`bucket ${b}`, estado.buckets.has(b)]),
@@ -192,13 +232,41 @@ if (executadoDiretamente) {
     tabelas: await conjunto(`select table_name from information_schema.tables where table_schema='public'`),
     colunas: await conjunto(`select table_name||'.'||column_name from information_schema.columns where table_schema='public'`),
     indices: await conjunto(`select indexname from pg_indexes where schemaname='public'`),
+    constraints: await conjunto(`
+      select con.conname
+        from pg_constraint con
+        join pg_class cl on cl.oid = con.conrelid
+        join pg_namespace n on n.oid = cl.relnamespace
+       where n.nspname = 'public'
+    `),
     enums: await conjunto(`select typname from pg_type where typtype='e'`),
     politicas: await seguro(`select policyname from pg_policies where schemaname='storage' and tablename='objects'`),
     buckets: await seguro(`select id from storage.buckets`),
   }
 
+  /**
+   * Forma dos objetos de unicidade — onde DEMO e PROD divergem.
+   *
+   * `ALTER TABLE ... ADD CONSTRAINT ... UNIQUE` grava em `pg_constraint` E cria
+   * um índice de apoio com o mesmo nome. `CREATE UNIQUE INDEX` cria só o
+   * índice. As duas formas enforçam a mesma regra e são indistinguíveis pelo
+   * `schema.prisma` (ambas viram `@@unique`), então a divergência sobrevive
+   * sem ninguém notar — até uma ferramenta que compara catálogo, como
+   * `migrate diff`, propor DDL para "consertar".
+   */
+  const formaUnicidade = await tentar(
+    `select i.indexname, i.tablename, coalesce(con.contype::text, 'indice') as forma
+       from pg_indexes i
+       left join pg_constraint con
+         on con.conname = i.indexname and con.contype in ('u','p')
+      where i.schemaname = 'public' and i.indexdef ilike 'CREATE UNIQUE INDEX%'
+      order by forma, i.tablename`,
+    []
+  )
+
   const linhasPrisma = await tentar(
-    `select migration_name from _prisma_migrations order by started_at`,
+    `select migration_name, checksum, finished_at, rolled_back_at
+       from _prisma_migrations order by started_at`,
     null
   )
   const trackingPrisma = linhasPrisma === null ? null : linhasPrisma.map((r) => r.migration_name)
@@ -251,6 +319,39 @@ if (executadoDiretamente) {
    */
   const versoesNoRepo = new Set(itens.map((i) => i.nome.match(/^(\d+)/)?.[1]).filter(Boolean))
   const semFonte = (trackingSupabase ?? []).filter((r) => !versoesNoRepo.has(String(r.version)))
+
+  // ── forma de unicidade ────────────────────────────────────────────────────
+  const comConstraint = formaUnicidade.filter((r) => r.forma === "u")
+  const primarias = formaUnicidade.filter((r) => r.forma === "p")
+  const soIndice = formaUnicidade.filter((r) => r.forma === "indice")
+  console.info(`\n═══ FORMA DAS UNIQUE (${formaUnicidade.length} índices únicos) ═══`)
+  console.info(`  UNIQUE CONSTRAINT (pg_constraint) : ${comConstraint.length}`)
+  console.info(`  PRIMARY KEY                       : ${primarias.length}`)
+  console.info(`  apenas UNIQUE INDEX               : ${soIndice.length}`)
+  for (const r of comConstraint) console.info(`    constraint → ${r.tablename}.${r.indexname}`)
+
+  // ── checksums ─────────────────────────────────────────────────────────────
+  if (linhasPrisma?.length) {
+    console.info("\n═══ CHECKSUM: banco × arquivo do repositório ═══")
+    const porNome = new Map(linhasPrisma.map((r) => [r.migration_name, r]))
+    for (const item of itens.filter((i) => i.origem === "prisma")) {
+      const reg = porNome.get(item.nome)
+      if (!reg) {
+        console.info(`  ${item.nome.padEnd(52)} sem registro no banco`)
+        continue
+      }
+      const { disco, lf } = checksumsDe(item.nome)
+      const bate = reg.checksum === lf ? "confere (LF)" : reg.checksum === disco ? "confere (CRLF)" : "DIVERGE ⚠"
+      const estadoReg =
+        reg.rolled_back_at ? "ROLLED BACK ⚠" : reg.finished_at ? "finished" : "NÃO finalizada ⚠"
+      console.info(`  ${item.nome.padEnd(52)} ${bate.padEnd(16)} ${estadoReg}`)
+      if (bate.startsWith("DIVERGE")) {
+        console.info(`      banco : ${reg.checksum}`)
+        console.info(`      LF    : ${lf}`)
+        console.info(`      disco : ${disco}`)
+      }
+    }
+  }
   if (semFonte.length) {
     console.info(`\n═══ REGISTRADAS NO BANCO SEM FONTE NO REPOSITÓRIO (${semFonte.length}) ═══`)
     for (const r of semFonte) console.info(`  ${r.version}  ${r.name}`)

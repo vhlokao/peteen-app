@@ -51,6 +51,32 @@ import { identificarAlvo } from "./lib/target-db-guard.mjs"
 const LOCAIS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0"])
 
 /**
+ * Referências de projeto que são PRODUÇÃO. Bloqueio incondicional.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE ISTO ESTÁ NO REPOSITÓRIO, revertendo uma decisão anterior
+ *
+ * `scripts/lib/target-db-guard.mjs` evitou de propósito ter uma allowlist, para
+ * que o repositório não precisasse saber qual projeto é produção. Aquele guard
+ * protege scripts de dados, onde confirmar o destino é resposta suficiente.
+ *
+ * Aqui não é. `db push` e `migrate dev` alteram SCHEMA, e `migrate dev` se
+ * oferece para RESETAR o banco ao detectar drift. Para essas duas operações não
+ * existe `--target` que torne produção um destino aceitável — então o guard
+ * precisa reconhecer produção, e reconhecer exige saber o nome dela.
+ *
+ * A referência não é segredo: ela é servida no bundle público de
+ * www.peteen.com.br via `NEXT_PUBLIC_SUPABASE_URL`, por construção. Escrevê-la
+ * aqui não expõe nada que já não esteja público, e é o que permite a recusa ser
+ * incondicional em vez de depender de o operador digitar a flag certa.
+ *
+ * Uma variável de ambiente seria pior: quem pode definir uma env pode
+ * esvaziá-la, e o guard voltaria a não existir exatamente na máquina onde
+ * alguém está com pressa.
+ */
+export const REFS_DE_PRODUCAO = new Set(["aufnokufvhhtbrmtlclw"])
+
+/**
  * Comparação EXATA (`localhost.evil.com` não é local), depois de remover os
  * colchetes que `new URL()` mantém em endereços IPv6: numa URL, o loopback v6
  * é escrito entre colchetes, e `hostname` devolve `[::1]` — com eles. Sem esta
@@ -66,6 +92,21 @@ export function ehLocal(host) {
  * Devolve `{ permitido: true, alvo, local }` ou `{ permitido: false, motivo }`.
  * Função pura — é o que torna o guard testável sem tocar em banco nenhum.
  */
+/**
+ * A connection string aponta para produção?
+ *
+ * Checa a `ref` extraída E a string crua. A segunda verificação existe porque
+ * o formato de pooler do Supabase carrega a ref dentro do usuário, e uma forma
+ * de URL que o parser não decomponha por completo não pode virar liberação:
+ * o custo de um falso positivo é o operador reclamar; o de um falso negativo é
+ * `migrate dev` oferecendo resetar produção.
+ */
+export function ehProducao(databaseUrl, alvo) {
+  if (alvo && REFS_DE_PRODUCAO.has(alvo.ref)) return true
+  const cru = String(databaseUrl ?? "")
+  return [...REFS_DE_PRODUCAO].some((ref) => cru.includes(ref))
+}
+
 export function avaliarComando({ databaseUrl, argv, comando }) {
   const alvo = identificarAlvo(databaseUrl)
 
@@ -75,6 +116,26 @@ export function avaliarComando({ databaseUrl, argv, comando }) {
       motivo:
         `Não foi possível identificar o banco de destino de \`prisma ${comando}\`.\n` +
         "DIRECT_URL/DATABASE_URL ausente ou irreconhecível. Recusando por segurança.",
+    }
+  }
+
+  // PRODUÇÃO: antes de tudo, e sem porta de saída. Nem `--target` correto abre.
+  if (ehProducao(databaseUrl, alvo)) {
+    return {
+      permitido: false,
+      producao: true,
+      motivo: [
+        `BLOQUEADO: \`prisma ${comando}\` NUNCA roda contra PRODUÇÃO.`,
+        "",
+        `  destino identificado como produção: ${alvo.host}`,
+        "",
+        "Não existe --target que libere isto, de propósito:",
+        "  • `migrate dev` cria shadow database e se oferece para RESETAR o banco;",
+        "  • `db push` altera schema sem gerar migration, sem histórico e sem revisão.",
+        "",
+        "Schema de produção entra por `prisma migrate deploy`, depois de validado",
+        "em DEMO e com snapshot recente — ver docs/MIGRATION_DEPLOY_RUNBOOK.md.",
+      ].join("\n"),
     }
   }
 

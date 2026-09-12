@@ -14,7 +14,6 @@ import { getAuthContext } from "@/modules/identity/application/get-session"
 import {
   createFlag,
   resolveFlagRecord,
-  createDispute,
   updateDisputeStatus,
   createAdminAudit,
   hideReview,
@@ -22,7 +21,6 @@ import {
 } from "../infrastructure/repository"
 import type {
   CreateFlagInput,
-  CreateDisputeInput,
   FlagStatus,
   DisputeStatus,
 } from "../domain/types"
@@ -82,19 +80,12 @@ export async function resolveFlagAction(
 
 // ── Disputas ──────────────────────────────────────────────────────────────────
 
-export async function createDisputeAction(
-  input: CreateDisputeInput
-): Promise<{ success: boolean; error?: string }> {
-  try {
-    const ctx = await getAuthContext()
-    if (!ctx.authenticated) throw new Error("UNAUTHENTICATED")
-    await createDispute({ ...input, openedBy: ctx.user.id })
-    revalidatePath("/admin/disputes")
-    return { success: true }
-  } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : String(err) }
-  }
-}
+// Criar disputa NÃO é uma action deste arquivo. O único caminho é
+// `createDisputeForRequestAction` (modules/disputes/application/actions.ts),
+// que confere tutor dono da request, status e disputa ativa antes de gravar.
+// Este arquivo tinha uma `createDisputeAction` só com checagem de sessão —
+// sem ownership nem papel — e sem nenhum consumidor; foi removida no
+// SEAL-P2-02. Não recriar: todo export de arquivo "use server" é endpoint.
 
 export async function updateDisputeAction(
   disputeId: string,

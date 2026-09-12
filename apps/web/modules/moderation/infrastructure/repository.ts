@@ -79,11 +79,13 @@ export async function countTodayFlags(targetId: string): Promise<number> {
  * consistente, na MESMA transação.
  *
  * ── Por que a lógica vive AQUI e não na action ─────────────────────────────
- * Existem DOIS caminhos de criação de disputa: `createDisputeForRequestAction`
- * (fluxo do tutor, com guard de disputa ativa) e `createDisputeAction`
- * (moderação, sem guard nenhum). Colocar o contador só numa das actions
- * deixaria a outra furando o invariante. Esta função é o único ponto por onde
- * as duas passam.
+ * O único caminho de criação de disputa é `createDisputeForRequestAction`
+ * (modules/disputes/application/actions.ts), que confere papel de tutor,
+ * posse da request, status e disputa ativa ANTES de chamar esta função. Um
+ * segundo caminho (`createDisputeAction`, em moderation, só com checagem de
+ * sessão) foi removido no SEAL-P2-02. O contador continua aqui para que
+ * nenhum caminho futuro possa gravar disputa sem manter o invariante — mas
+ * esta função NÃO autoriza nada: quem a chama responde por papel e ownership.
  *
  * ── Contrato do contador ──────────────────────────────────────────────────
  * `disputedServices` = número de ServiceRequest DISTINTAS do par que têm ao

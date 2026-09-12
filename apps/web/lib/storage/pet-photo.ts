@@ -8,6 +8,7 @@ import {
   SIGNATURE_READ_LENGTH,
   validatePetPhotoSignature,
 } from "./pet-photo-signature"
+import { reencodeWithoutMetadata } from "./image-metadata-strip"
 
 /**
  * Upload/remoção de foto de pet — bucket "pets" (Supabase Storage).
@@ -69,7 +70,11 @@ export async function uploadPetPhoto(file: File, authId: string): Promise<string
   // `contentType: detectedType` presente — e o bucket rejeitaria. Por isso
   // reconstruímos um Blob com o tipo REAL (detectado pelos magic bytes)
   // antes de fazer upload; `contentType` continua explícito como reforço.
-  const bytes = await file.arrayBuffer()
+  //
+  // Os bytes enviados NÃO são os originais: o bucket é público, e o original
+  // carrega EXIF (incluindo GPS quando a câmera registra). Ver
+  // image-metadata-strip.ts (SEAL-P2-01).
+  const bytes = await reencodeWithoutMetadata(new Uint8Array(await file.arrayBuffer()), detectedType)
   const uploadBody = new Blob([bytes], { type: detectedType })
 
   const supabase = await createSupabaseServerClient()

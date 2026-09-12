@@ -101,9 +101,9 @@ const UNSUPPORTED_FORMAT_MESSAGE =
   "Formato não suportado. Envie uma imagem JPEG, PNG ou WEBP."
 const HEIC_MESSAGE =
   "Este formato de foto ainda não é compatível. Tente salvar ou compartilhar a imagem como JPEG."
-const TOO_LARGE_MESSAGE =
+export const TOO_LARGE_MESSAGE =
   "Esta foto é muito grande. Escolha outra imagem ou tente reduzir o tamanho."
-const INVALID_CONTENT_MESSAGE =
+export const INVALID_CONTENT_MESSAGE =
   "Este arquivo não parece ser uma imagem JPEG, PNG ou WebP válida."
 
 /**

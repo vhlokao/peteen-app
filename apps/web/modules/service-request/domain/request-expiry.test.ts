@@ -25,6 +25,18 @@ function hoursAfterCreation(hours: number): Date {
   return new Date(CREATED_AT.getTime() + hours * HOUR_MS)
 }
 
+const MINUTE_MS = 60 * 1000
+
+function minutesAfterCreation(minutes: number): Date {
+  return new Date(CREATED_AT.getTime() + minutes * MINUTE_MS)
+}
+
+/** Janela de aceite em minutos: distância entre createdAt e o prazo efetivo. */
+function janelaEmMinutos(scheduledAt: Date): number {
+  const expiry = calculateEffectiveExpiry(CREATED_AT, scheduledAt)
+  return (expiry.getTime() - CREATED_AT.getTime()) / MINUTE_MS
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // calculateEffectiveExpiry
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,12 +59,17 @@ describe("calculateEffectiveExpiry", () => {
     assert.equal(expiry.getTime(), hoursAfterCreation(5).getTime())
   })
 
-  it("scheduledAt exatamente 1h após createdAt → ainda usa a margem (não é 'menos de 1h')", () => {
+  it("scheduledAt exatamente 1h após createdAt → janela = gap inteiro = margem (SA-013)", () => {
+    // Fronteira das duas primeiras faixas de margemEfetivaMs: gap == margem.
+    // Antes da correção SA-013, isto caía no "ramo normal" e devolvia
+    // expiry = createdAt (janela = 0min) — o próprio penhasco que a
+    // Superaudit encontrou executando a função real. Agora a margem
+    // efetiva satura em 0 exatamente neste ponto (clamp(0,0,margem)=0),
+    // então a janela continua sendo o gap inteiro, igual à faixa anterior.
     const scheduledAt = hoursAfterCreation(1)
     const expiry = calculateEffectiveExpiry(CREATED_AT, scheduledAt)
-    // gapMs === margem exata: cai no ramo normal (min), não na exceção.
-    // min(createdAt+24h, scheduledAt-1h=createdAt) = createdAt.
-    assert.equal(expiry.getTime(), CREATED_AT.getTime())
+    assert.equal(expiry.getTime(), scheduledAt.getTime())
+    assert.equal(janelaEmMinutos(scheduledAt), 60)
   })
 
   it("scheduledAt a menos de 1h da criação (30min) → usa o próprio scheduledAt", () => {
@@ -75,6 +92,78 @@ describe("calculateEffectiveExpiry", () => {
 
   it("margem de segurança configurada é 1h", () => {
     assert.equal(SCHEDULED_SAFETY_MARGIN_HOURS, 1)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SA-013 — MATRIZ DE FRONTEIRA (penhasco de ~60min corrigido)
+//
+// Executa a função REAL numa varredura de antecedências ao redor da margem
+// (1h = 60min), a mesma técnica usada pela Superaudit para provar o defeito.
+// A janela (minutos entre createdAt e o prazo efetivo) precisa ser:
+//   - contínua e não-decrescente em toda a varredura;
+//   - nunca <= 0 para nenhum gap >= antecedência mínima de criação (15min);
+//   - um platô constante de 60min (a margem cheia) para gap em [60min, 120min]
+//     — é exatamente a faixa onde a fórmula antiga produzia o penhasco.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("SA-013 — janela de aceite ao redor da margem de 1h", () => {
+  const CASOS: Array<{ gapMin: number; janelaEsperadaMin: number }> = [
+    { gapMin: 15, janelaEsperadaMin: 15 }, // antecedência mínima de criação
+    { gapMin: 45, janelaEsperadaMin: 45 },
+    { gapMin: 59, janelaEsperadaMin: 59 },
+    { gapMin: 60, janelaEsperadaMin: 60 }, // fronteira: penhasco antigo (era 0)
+    { gapMin: 61, janelaEsperadaMin: 60 }, // platô: antigo era 1
+    { gapMin: 65, janelaEsperadaMin: 60 }, // platô: antigo era 5
+    { gapMin: 75, janelaEsperadaMin: 60 }, // platô: antigo era 15
+    { gapMin: 90, janelaEsperadaMin: 60 }, // platô: antigo era 30
+    { gapMin: 120, janelaEsperadaMin: 60 }, // fim do platô: antigo já era 60 aqui
+  ]
+
+  for (const { gapMin, janelaEsperadaMin } of CASOS) {
+    it(`gap=+${gapMin}min → janela=${janelaEsperadaMin}min`, () => {
+      const scheduledAt = minutesAfterCreation(gapMin)
+      assert.equal(janelaEmMinutos(scheduledAt), janelaEsperadaMin)
+    })
+  }
+
+  it("nenhum gap permitido pelo produto (>= antecedência mínima de 15min) produz janela <= 0", () => {
+    // Varre em passos de 1min de 15min (antecedência mínima real de
+    // criação — request-lead-time.ts, inalterada nesta missão) até 4h,
+    // cobrindo toda a região que antes tinha o penhasco e a que vem depois.
+    for (let min = 15; min <= 240; min++) {
+      const janela = janelaEmMinutos(minutesAfterCreation(min))
+      assert.ok(janela > 0, `gap=+${min}min produziu janela=${janela}min (<=0)`)
+    }
+  })
+
+  it("a janela é monotônica não-decrescente em toda a varredura de 0 a 4h — sem cliff", () => {
+    let anterior = janelaEmMinutos(minutesAfterCreation(0))
+    for (let min = 1; min <= 240; min++) {
+      const atual = janelaEmMinutos(minutesAfterCreation(min))
+      assert.ok(
+        atual >= anterior,
+        `janela caiu de ${anterior}min (gap=+${min - 1}min) para ${atual}min (gap=+${min}min)`
+      )
+      anterior = atual
+    }
+  })
+
+  it("o platô de 60min termina em +120min — depois disso a janela volta a crescer (gap - margem)", () => {
+    assert.equal(janelaEmMinutos(minutesAfterCreation(120)), 60)
+    assert.equal(janelaEmMinutos(minutesAfterCreation(150)), 90) // gap=150 → 150-60=90
+    assert.equal(janelaEmMinutos(minutesAfterCreation(180)), 120) // gap=180 → 180-60=120
+  })
+
+  it("expiry nunca ultrapassa scheduledAt, em toda a varredura (defesa em profundidade)", () => {
+    for (let min = 0; min <= 240; min += 5) {
+      const scheduledAt = minutesAfterCreation(min)
+      const expiry = calculateEffectiveExpiry(CREATED_AT, scheduledAt)
+      assert.ok(
+        expiry.getTime() <= scheduledAt.getTime(),
+        `expiry ultrapassou scheduledAt em gap=+${min}min`
+      )
+    }
   })
 })
 

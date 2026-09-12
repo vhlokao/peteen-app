@@ -355,6 +355,20 @@ export function documentoVigente(doc: LegalDocument): boolean {
   return doc.secoes.every((s) => s.pendente !== true)
 }
 
+/**
+ * Termos de Uso já valem como texto vigente?
+ *
+ * Computado uma vez, no carregamento do módulo — os documentos são dados
+ * estáticos, não há I/O nem estado por requisição a considerar. Consumido
+ * por qualquer superfície que precise decidir se pode declarar aceite de
+ * Termos (ver `login-form.tsx`): sem isto, o pedido de consentimento no
+ * login apontava para um documento 100% `pendente`, afirmando a aceitação
+ * de um texto que ainda não existe. Quando as seções de `TERMOS_DE_USO`
+ * saírem de `pendente: true`, esta constante passa a `true` sozinha, sem
+ * precisar lembrar de tocar em nenhuma outra superfície.
+ */
+export const TERMOS_VIGENTE = documentoVigente(TERMOS_DE_USO)
+
 /** Rótulos usados em links, para não divergirem entre login, footer e conta. */
 export const LEGAL_LINK_LABELS = {
   termos: "Termos de uso",

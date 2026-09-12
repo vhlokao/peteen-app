@@ -22,7 +22,7 @@ import {
 } from "@/modules/identity/infrastructure/auth-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { legalHref } from "@/modules/legal/domain/legal-documents";
+import { legalHref, TERMOS_VIGENTE } from "@/modules/legal/domain/legal-documents";
 import { cn } from "@/lib/utils";
 
 const loginSchema = z.object({
@@ -361,23 +361,47 @@ export function LoginForm({ errorCode, next }: LoginFormProps) {
                   links apontavam para rotas que não existiam (404) no ponto
                   exato em que a pessoa declara concordar com elas. Com a rota
                   derivada do módulo legal, um rename futuro quebra o build em
-                  vez de quebrar em silêncio na cara do usuário. */}
+                  vez de quebrar em silêncio na cara do usuário.
+
+                  SA-002 (Superaudit pré-piloto): esta frase declarava aceite
+                  dos Termos de Uso enquanto TODAS as seções de /termos ainda
+                  estavam `pendente` — um consentimento sem objeto. Enquanto
+                  `TERMOS_VIGENTE` for false, o texto menciona só a Política
+                  de Privacidade, que já está publicada. No dia em que os
+                  Termos saírem de pendente, `TERMOS_VIGENTE` vira true
+                  sozinho e a frase volta a mencionar os dois — sem precisar
+                  lembrar de tocar aqui. */}
               <p className="mt-5 text-center text-[12.5px] text-[#8A897F]">
-                Ao continuar, você concorda com os{" "}
-                <a
-                  href={legalHref("termos")}
-                  className="font-semibold text-[#2C4893] hover:text-[#1D2F6F]"
-                >
-                  termos de uso
-                </a>{" "}
-                e{" "}
-                <a
-                  href={legalHref("privacidade")}
-                  className="font-semibold text-[#2C4893] hover:text-[#1D2F6F]"
-                >
-                  privacidade
-                </a>
-                .
+                {TERMOS_VIGENTE ? (
+                  <>
+                    Ao continuar, você concorda com os{" "}
+                    <a
+                      href={legalHref("termos")}
+                      className="font-semibold text-[#2C4893] hover:text-[#1D2F6F]"
+                    >
+                      termos de uso
+                    </a>{" "}
+                    e{" "}
+                    <a
+                      href={legalHref("privacidade")}
+                      className="font-semibold text-[#2C4893] hover:text-[#1D2F6F]"
+                    >
+                      privacidade
+                    </a>
+                    .
+                  </>
+                ) : (
+                  <>
+                    Ao continuar, você concorda com nossa{" "}
+                    <a
+                      href={legalHref("privacidade")}
+                      className="font-semibold text-[#2C4893] hover:text-[#1D2F6F]"
+                    >
+                      política de privacidade
+                    </a>
+                    . Os termos de uso ainda estão em preparação.
+                  </>
+                )}
               </p>
 
               {/* Toggle senha — discreto, no rodapé */}

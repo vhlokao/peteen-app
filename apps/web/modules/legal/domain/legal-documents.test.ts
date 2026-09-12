@@ -20,6 +20,7 @@ import {
   legalHref,
   POLITICA_DE_PRIVACIDADE,
   TERMOS_DE_USO,
+  TERMOS_VIGENTE,
 } from "./legal-documents.ts"
 
 describe("trava de publicação", () => {
@@ -48,6 +49,14 @@ describe("trava de publicação", () => {
     // Trava do próprio teste: garante que `documentoVigente` não está
     // simplesmente retornando `false` sempre.
     assert.equal(documentoVigente({ ...TERMOS_DE_USO, secoes: [] }), true)
+  })
+
+  it("TERMOS_VIGENTE reflete o estado atual de TERMOS_DE_USO (SA-002)", () => {
+    // Constante exportada para superfícies como o login declararem aceite
+    // só quando há texto de verdade por trás. Se algum dia isto divergir de
+    // documentoVigente(TERMOS_DE_USO), a constante ficou obsoleta/hardcoded.
+    assert.equal(TERMOS_VIGENTE, documentoVigente(TERMOS_DE_USO))
+    assert.equal(TERMOS_VIGENTE, false, "termos ainda pendente — a constante deveria ser false hoje")
   })
 })
 
@@ -173,6 +182,43 @@ describe("nenhum link legal aponta para string solta", () => {
         `${arquivo} ainda tem rota legal hardcoded`
       )
     }
+  })
+})
+
+describe("SA-002 — login não declara aceite de Termos inexistentes", () => {
+  it("login-form usa TERMOS_VIGENTE para decidir se menciona os Termos de Uso", () => {
+    const fonte = lerCodigo("modules/identity/components/login-form.tsx")
+    assert.ok(
+      fonte.includes("TERMOS_VIGENTE"),
+      "login-form não consulta TERMOS_VIGENTE — pode voltar a declarar aceite hardcoded"
+    )
+  })
+
+  it("enquanto TERMOS_VIGENTE for false, a frase de consentimento não menciona 'termos de uso'", () => {
+    // Não inspeciona só a presença da constante: prova que o RAMO que o
+    // usuário efetivamente vê hoje (TERMOS_VIGENTE === false) não contém a
+    // frase problemática. Se alguém reordenar o condicional (ramo `true`
+    // primeiro) ou remover o `else`, este teste falha.
+    assert.equal(TERMOS_VIGENTE, false, "pré-condição do teste: termos deveria seguir pendente")
+
+    const fonte = lerCodigo("modules/identity/components/login-form.tsx")
+    const match = fonte.match(/\{TERMOS_VIGENTE \? \(([\s\S]*?)\) : \(([\s\S]*?)\)\}/)
+    assert.ok(match, "condicional TERMOS_VIGENTE não encontrado na forma esperada")
+    const ramoVigente = match?.[1] ?? ""
+    const ramoPendente = match?.[2] ?? ""
+
+    // Ramo vigente é o texto ANTIGO (preservado para quando os Termos forem
+    // publicados) — ele DEVE mencionar termos de uso; não é o que reprova.
+    assert.ok(ramoVigente.includes("termos de uso"))
+
+    // Ramo pendente (o que renderiza HOJE) não pode afirmar concordância com
+    // Termos de Uso, mas segue mencionando a Privacidade, que é real.
+    // `[\s\S]` no lugar do flag `s` (dotAll indisponível no target ES2017 do projeto).
+    assert.ok(
+      !/concorda com os[\s\S]*termos de uso/i.test(ramoPendente),
+      "ramo pendente ainda declara aceite de termos de uso"
+    )
+    assert.ok(ramoPendente.includes("privacidade"), "ramo pendente parou de mencionar privacidade")
   })
 })
 

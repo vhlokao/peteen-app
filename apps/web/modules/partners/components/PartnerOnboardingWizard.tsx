@@ -839,8 +839,27 @@ export function PartnerOnboardingWizard() {
               Você agora faz parte da rede Peteen!
             </h1>
             <p className="text-sm text-muted-foreground">
-              {result.partner.businessName} está ativo e pronto para recomendar
-              profissionais confiáveis.
+              {/* SA-001 (Superaudit pré-piloto): concluir o onboarding não
+                  ativa mais o parceiro automaticamente (ver
+                  completePartnerOnboarding em partners/infrastructure/
+                  repository.ts) — afirmar "está ativo" aqui seria declarar
+                  um estado que ainda depende de revisão do admin, o mesmo
+                  tipo de consentimento sem objeto que o SA-002 corrigiu no
+                  login. `result.partner.isActive` reflete o estado real:
+                  normalmente false neste ponto (a menos que um admin já
+                  tenha ativado manualmente durante o onboarding). */}
+              {result.partner.isActive ? (
+                <>
+                  {result.partner.businessName} está ativo e pronto para
+                  recomendar profissionais confiáveis.
+                </>
+              ) : (
+                <>
+                  Cadastro de {result.partner.businessName} recebido. Assim
+                  que a equipe Peteen concluir a revisão, o parceiro fica
+                  ativo e as recomendações passam a valer.
+                </>
+              )}
             </p>
           </div>
 

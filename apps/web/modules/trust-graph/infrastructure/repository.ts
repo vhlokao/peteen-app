@@ -17,6 +17,25 @@ import type {
   TrustSourceType,
 } from "../domain/types"
 import { TRUST_CONNECTION_WEIGHTS } from "../domain/constants"
+import { ONLY_ELIGIBLE_PARTNER_SOURCED_CONNECTIONS } from "../domain/partner-eligibility-filter"
+
+/**
+ * SA-001 (Superaudit pré-piloto) — `ONLY_ELIGIBLE_PARTNER_SOURCED_CONNECTIONS`
+ * (trust-graph/domain/partner-eligibility-filter.ts) é aplicado às DUAS
+ * leituras abaixo (`getActiveConnectionsForProfessional` e
+ * `getActiveConnectionsBatch`), que são o único ponto de leitura consumido
+ * por `calculateTrustScore` (Trust Score), `getEndorsementSummaryBatch`
+ * (bônus de Recommendation) e `get-professional-badges.ts` (badge
+ * `PARTNER_ENDORSED`) — corrigir aqui fecha os três efeitos de uma vez, sem
+ * tocar em nenhum dos três módulos.
+ *
+ * Isto é o que faz uma conexão de um parceiro que concluiu o onboarding
+ * público mas ainda não foi verificado/ativado pelo admin ficar INERTE
+ * (não soma Trust, não soma Recommendation, não gera badge), sem precisar
+ * apagar ou migrar a linha: o filtro é no lado da LEITURA, então também
+ * neutraliza qualquer conexão histórica já existente de parceiro não
+ * elegível, sem migration.
+ */
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LEITURA
@@ -28,7 +47,7 @@ export async function getActiveConnectionsForProfessional(
 ): Promise<ActiveConnection[]> {
   try {
     const rows = await prisma.trustConnection.findMany({
-      where: { targetId, isActive: true },
+      where: { targetId, isActive: true, ...ONLY_ELIGIBLE_PARTNER_SOURCED_CONNECTIONS },
       select: { id: true, connectionType: true, weight: true, sourceType: true, sourceName: true },
       orderBy: { weight: "desc" },
     })
@@ -51,7 +70,7 @@ export async function getActiveConnectionsBatch(
 
   try {
     const rows = await prisma.trustConnection.findMany({
-      where: { targetId: { in: targetIds }, isActive: true },
+      where: { targetId: { in: targetIds }, isActive: true, ...ONLY_ELIGIBLE_PARTNER_SOURCED_CONNECTIONS },
       select: { id: true, targetId: true, connectionType: true, weight: true, sourceType: true, sourceName: true },
     })
 

@@ -9,8 +9,12 @@
 
 import { revalidatePath } from "next/cache"
 
-import { createTrustConnection } from "@/modules/trust-graph/infrastructure/repository"
+import {
+  createTrustConnection,
+  countActiveConnectionsBySource,
+} from "@/modules/trust-graph/infrastructure/repository"
 import { TRUST_CONNECTION_WEIGHTS } from "@/modules/trust-graph/domain/constants"
+import { ANTIFRAUD_GUARDRAILS } from "@/modules/antifraude/domain/constants"
 import { BUSCA_PROFISSIONAIS_INDISPONIVEL } from "../domain/constants"
 import { recordPartnerAudit } from "./partner-audit"
 import {
@@ -192,10 +196,36 @@ export async function savePartnerOnboardingRecommendationsAction(
       return { ok: true, data: { connectionsCreated: 0 } }
     }
 
+    // SA-001 (Superaudit pré-piloto): o caminho público (sem login, sem
+    // revisão prévia) não pode ficar MAIS permissivo que o portal
+    // autenticado do parceiro — ver o mesmo teto em
+    // partner-portal/application/recommendation-actions.ts. Sem isto, um
+    // parceiro recém-cadastrado (ainda não verificado/ativo) podia acumular
+    // dezenas de `TrustConnection` inertes que "explodiriam" juntas no dia
+    // em que um admin o verificasse. A leitura em trust-graph já torna
+    // qualquer conexão de parceiro não elegível inerte (ver
+    // trust-eligibility.ts), mas o teto de criação evita esse acúmulo
+    // independentemente de quando a verificação acontecer.
+    //
+    // Comportamento no lote: cria até o restante do teto e PARA — não é
+    // erro parcial, é a mesma regra "no máximo N endossos ativos por
+    // parceiro" aplicada a uma seleção múltipla em vez de uma de cada vez.
+    // `connectionsCreated` no retorno reflete exatamente quantas entraram.
+    const jaAtivos = await countActiveConnectionsBySource(
+      partner.id,
+      "PARTNER_RECOMMENDS_PROFESSIONAL"
+    )
+    let restanteAteOTeto = Math.max(
+      ANTIFRAUD_GUARDRAILS.MAX_ACTIVE_PARTNER_ENDORSEMENTS_MVP - jaAtivos,
+      0
+    )
+
     let connectionsCreated = 0
     let firstRecommendation = false
 
     for (const targetId of uniqueIds) {
+      if (restanteAteOTeto <= 0) break
+
       try {
         await createTrustConnection({
           sourceType:      "PARTNER",
@@ -207,6 +237,7 @@ export async function savePartnerOnboardingRecommendationsAction(
           weight:          TRUST_CONNECTION_WEIGHTS.PARTNER_RECOMMENDS_PROFESSIONAL,
         })
         connectionsCreated++
+        restanteAteOTeto--
         if (!firstRecommendation) {
           firstRecommendation = true
           await recordPartnerAudit("partner.first_recommendation", partner.id, {

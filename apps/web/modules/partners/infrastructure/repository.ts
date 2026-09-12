@@ -538,12 +538,23 @@ export async function updatePartnerOnboardingTrust(
   return mapPartner(row)
 }
 
+/**
+ * SA-001 (Superaudit pré-piloto): concluir o onboarding público NÃO ativa
+ * mais o parceiro automaticamente. `isActive` permanece o que já era desde
+ * a criação (`false`, gravado em `createPartnerOnboarding`) até um admin
+ * decidir ativar — pelo mesmo `setPartnerActiveAction` que `/admin/partners`
+ * já usa, sem mecanismo novo. `isVerified`/`verificationStatus` seguem a
+ * mesma regra: só mudam pela fila de verificação já existente
+ * (`requestVerification` → `approveVerificationAction`), nunca por
+ * completar o formulário. Sem os dois — ver
+ * `modules/partners/domain/trust-eligibility.ts` — a leitura já trata
+ * qualquer conexão de confiança deste parceiro como inerte.
+ */
 export async function completePartnerOnboarding(partnerId: string): Promise<Partner> {
   const partner = getPartnerDelegate()
   const row = await partner.update({
     where: { id: partnerId },
     data: {
-      isActive: true,
       onboardingStatus: "COMPLETED",
       onboardingCompletedAt: new Date(),
     },

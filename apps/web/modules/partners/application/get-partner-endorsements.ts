@@ -5,6 +5,7 @@
 
 import { prisma } from "@/lib/prisma/client"
 import { isPartnerVerificationActive } from "@/modules/verification/domain/verification-state"
+import { PARTNER_TRUST_ELIGIBLE_WHERE } from "../domain/trust-eligibility"
 import type { PartnerEndorsement, PartnerCategory } from "../domain/types"
 
 /** Busca endossos de parceiros para um profissional, enriquecidos com dados da entidade Partner */
@@ -17,6 +18,11 @@ export async function getPartnerEndorsementsForProfessional(
         targetId: professionalId,
         connectionType: "PARTNER_RECOMMENDS_PROFESSIONAL",
         isActive: true,
+        // SA-001: um parceiro não verificado/inativo não pode aparecer como
+        // "Recomendado por" — mesmo guard aplicado em
+        // trust-graph/infrastructure/repository.ts, para a mesma família de
+        // conexão, aqui na consulta separada que alimenta o perfil público.
+        sourcePartner: PARTNER_TRUST_ELIGIBLE_WHERE,
       },
       include: {
         sourcePartner: true,
@@ -59,6 +65,8 @@ export async function getPartnerEndorsementsBatch(
         targetId: { in: professionalIds },
         connectionType: "PARTNER_RECOMMENDS_PROFESSIONAL",
         isActive: true,
+        // SA-001 — ver comentário gêmeo em getPartnerEndorsementsForProfessional.
+        sourcePartner: PARTNER_TRUST_ELIGIBLE_WHERE,
       },
       include: { sourcePartner: true },
       orderBy: { weight: "desc" },

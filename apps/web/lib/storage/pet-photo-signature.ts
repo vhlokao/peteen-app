@@ -1,40 +1,22 @@
 /**
- * Validação pura de assinatura de imagem (magic bytes) — sem rede, sem
- * Storage, sem Next.js. Existe separada de pet-photo.ts para ser testável
- * isoladamente (node:test não resolve o alias "@/..." usado pelo restante
- * do módulo, que depende de next/headers via createSupabaseServerClient).
+ * Detecção pura de assinatura de imagem (magic bytes) — sem rede, sem
+ * Storage, sem Next.js.
+ *
+ * PETEEN-IMAGE-UPLOAD-OPTIMIZATION-IMPLEMENTATION-001: a VALIDAÇÃO de upload
+ * (tamanho, tipo declarado × conteúdo, HEIC, mensagens) saiu daqui e vive na
+ * política única `lib/image/image-policy.ts` + `lib/image/process-image.server.ts`.
+ * Este arquivo ficou só com o que é detecção de formato, usado pela política,
+ * pela validação de mídia do Diário e pelo detector de vídeo.
  */
 
+/** Formatos de imagem reconhecidos pelos magic bytes. */
 export const PET_PHOTO_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"] as const
-export const PET_PHOTO_MAX_BYTES = 5 * 1024 * 1024 // 5MB — igual ao file_size_limit do bucket
 
-export const EXTENSION_BY_TYPE: Record<(typeof PET_PHOTO_ALLOWED_TYPES)[number], string> = {
-  "image/jpeg": "jpg",
-  "image/png": "png",
-  "image/webp": "webp",
-}
-
+/** Erro de validação com mensagem já humanizada (vinda da política única). */
 export class PetPhotoValidationError extends Error {}
 
-// Bytes suficientes para reconhecer as 3 assinaturas aceitas (WebP precisa
-// dos 12 primeiros: "RIFF" + 4 bytes de tamanho + "WEBP") e também a
-// assinatura HEIC/HEIF (caixa ISOBMFF "ftyp" nos bytes 4–11), reconhecida
-// só para dar uma mensagem específica — nunca para aceitar o arquivo.
-export const SIGNATURE_READ_LENGTH = 12
-
 /**
- * "file.type" que não carrega nenhuma informação real do conteúdo —
- * observado em fotos vindas de certos apps de galeria/content provider no
- * Android, que devolvem o MIME vazio ou o genérico "binário desconhecido"
- * para uma foto JPEG/PNG/WEBP perfeitamente válida. Nestes casos (só
- * nestes), a decisão final é 100% dos magic bytes — nunca do file.type.
- * Qualquer outro valor declarado (ex.: "image/gif", "image/heic") continua
- * rejeitado antes mesmo de olhar os bytes, como sempre foi.
- */
-const UNINFORMATIVE_DECLARED_TYPES = new Set(["", "application/octet-stream"])
-
-/**
- * Brands ISOBMFF que identificam HEIC/HEIF — aqui, só para mensagem específica.
+ * Brands ISOBMFF que identificam HEIC/HEIF.
  *
  * EXPORTADO porque o detector de VÍDEO (care-video-signature.ts) precisa da
  * MESMA lista para o efeito oposto: HEIC e MP4/MOV compartilham a estrutura de
@@ -81,84 +63,4 @@ export function detectImageTypeFromBytes(
     return "image/webp"
   }
   return null
-}
-
-/**
- * true quando os bytes são de um container HEIC/HEIF — nunca usado para
- * aceitar o arquivo, só para trocar a mensagem genérica de "não parece ser
- * uma imagem válida" por uma que explica o motivo real (formato ainda não
- * suportado, não arquivo corrompido).
- */
-function isHeicHeifByBytes(bytes: Uint8Array): boolean {
-  if (bytes.length < 12) return false
-  const isFtyp = bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70
-  if (!isFtyp) return false
-  const brand = new TextDecoder().decode(bytes.slice(8, 12))
-  return HEIC_HEIF_BRANDS.has(brand)
-}
-
-const UNSUPPORTED_FORMAT_MESSAGE =
-  "Formato não suportado. Envie uma imagem JPEG, PNG ou WEBP."
-const HEIC_MESSAGE =
-  "Este formato de foto ainda não é compatível. Tente salvar ou compartilhar a imagem como JPEG."
-export const TOO_LARGE_MESSAGE =
-  "Esta foto é muito grande. Escolha outra imagem ou tente reduzir o tamanho."
-export const INVALID_CONTENT_MESSAGE =
-  "Este arquivo não parece ser uma imagem JPEG, PNG ou WebP válida."
-
-/**
- * Mensagem para qualquer falha de upload após a validação passar (rede,
- * Storage, etc.) — nunca expõe detalhe de Supabase, bucket, policy, MIME ou
- * stack. Única fonte para esta string (server e cliente importam daqui, ou
- * replicam literalmente) — nunca a mensagem antiga "Tente novamente." sem
- * explicar que pode ser conexão.
- */
-export const PET_PHOTO_UPLOAD_FAILURE_MESSAGE =
-  "Não foi possível enviar a foto. Verifique sua conexão e tente novamente."
-
-/**
- * Valida tipo declarado, tamanho e conteúdo real (magic bytes). Retorna o
- * tipo detectado — é ele (não o nome do arquivo, nem o file.type isolado)
- * que decide a extensão final do path no Storage.
- */
-export function validatePetPhotoSignature(
-  declaredType: string,
-  size: number,
-  header: Uint8Array
-): (typeof PET_PHOTO_ALLOWED_TYPES)[number] {
-  const declaredIsUninformative = UNINFORMATIVE_DECLARED_TYPES.has(declaredType)
-
-  // Um tipo declarado específico e errado (ex.: "image/gif", "image/heic")
-  // continua rejeitado sem nem olhar os bytes — comportamento inalterado.
-  // Só o caso "sem informação real" (vazio ou genérico) passa adiante para
-  // deixar os magic bytes decidirem.
-  if (
-    !declaredIsUninformative &&
-    !PET_PHOTO_ALLOWED_TYPES.includes(declaredType as (typeof PET_PHOTO_ALLOWED_TYPES)[number])
-  ) {
-    if (declaredType === "image/heic" || declaredType === "image/heif") {
-      throw new PetPhotoValidationError(HEIC_MESSAGE)
-    }
-    throw new PetPhotoValidationError(UNSUPPORTED_FORMAT_MESSAGE)
-  }
-
-  if (size > PET_PHOTO_MAX_BYTES) {
-    throw new PetPhotoValidationError(TOO_LARGE_MESSAGE)
-  }
-
-  const detectedType = detectImageTypeFromBytes(header)
-  if (!detectedType) {
-    if (isHeicHeifByBytes(header)) {
-      throw new PetPhotoValidationError(HEIC_MESSAGE)
-    }
-    throw new PetPhotoValidationError(INVALID_CONTENT_MESSAGE)
-  }
-
-  // Quando o declarado é específico (não vazio/genérico), ele precisa bater
-  // com o conteúdo real — mesma defesa contra MIME adulterado de sempre.
-  if (!declaredIsUninformative && detectedType !== declaredType) {
-    throw new PetPhotoValidationError(INVALID_CONTENT_MESSAGE)
-  }
-
-  return detectedType
 }

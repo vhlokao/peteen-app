@@ -57,47 +57,50 @@ describe("item F — GIF é recusado", () => {
   })
 })
 
-describe("item G — HEIC tem mensagem própria", () => {
-  it("HEIC recebe orientação acionável, não 'imagem inválida'", () => {
-    const r = validatePhotoCandidate({ type: "image/heic", size: 1 * MB })
-    assert.equal(r.ok, false)
-    assert.equal(r.ok === false && r.message, PHOTO_COPY.heic)
+describe("item G — HEIC é TENTADO (PETEEN-IMAGE-UPLOAD-OPTIMIZATION-IMPLEMENTATION-001)", () => {
+  // Decisão do orquestrador: HEIC/HEIF é tentado quando o navegador consegue
+  // decodificar. A seleção não recusa mais; quem recusa com a mensagem de HEIC
+  // é o preparo (prepare-image.client.ts) — e, por garantia, o servidor.
+  it("HEIC e HEIF passam na seleção", () => {
+    for (const type of ["image/heic", "image/heif", "IMAGE/HEIC"]) {
+      assert.deepEqual(validatePhotoCandidate({ type, size: 8 * MB }), { ok: true }, type)
+    }
   })
 
-  it("HEIF também", () => {
-    const r = validatePhotoCandidate({ type: "image/heif", size: 1 * MB })
-    assert.equal(r.ok === false && r.message, PHOTO_COPY.heic)
-  })
-
-  it("HEIC grande fala de FORMATO, não de tamanho — a ordem da checagem importa", () => {
-    // Dizer "muito grande" mandaria a pessoa comprimir um arquivo que seria
-    // recusado de qualquer forma.
-    const r = validatePhotoCandidate({ type: "image/heic", size: 20 * MB })
-    assert.equal(r.ok === false && r.message, PHOTO_COPY.heic)
-  })
-
-  it("maiúsculas não escapam da detecção", () => {
-    const r = validatePhotoCandidate({ type: "IMAGE/HEIC", size: 1 * MB })
-    assert.equal(r.ok === false && r.message, PHOTO_COPY.heic)
+  it("a copy de HEIC continua acionável e é a da política única", () => {
+    assert.match(PHOTO_COPY.heic, /HEIC/)
+    assert.match(PHOTO_COPY.heic, /JPEG/)
   })
 })
 
-describe("item E — tamanho acima de 5 MB", () => {
-  it("acima do teto é recusado", () => {
-    const r = validatePhotoCandidate({ type: "image/jpeg", size: CARE_MEDIA_MAX_BYTES + 1 })
+describe("item E — limite de ENTRADA de 25 MB; 5 MB passa a ser o teto do arquivo PREPARADO", () => {
+  it("foto de celular grande (acima de 5 MB) entra na seleção — é reduzida antes do upload", () => {
+    assert.deepEqual(validatePhotoCandidate({ type: "image/jpeg", size: 12 * MB }), { ok: true })
+  })
+
+  it("acima de 25 MB é recusado com a mensagem de tamanho", () => {
+    const r = validatePhotoCandidate({ type: "image/jpeg", size: 25 * MB + 1 })
     assert.equal(r.ok, false)
     assert.equal(r.ok === false && r.message, PHOTO_COPY.muitoGrande)
   })
 
-  it("exatamente no teto é aceito", () => {
-    assert.deepEqual(
-      validatePhotoCandidate({ type: "image/jpeg", size: CARE_MEDIA_MAX_BYTES }),
-      { ok: true }
-    )
+  it("exatamente 25 MB é aceito", () => {
+    assert.deepEqual(validatePhotoCandidate({ type: "image/jpeg", size: 25 * MB }), { ok: true })
   })
 
-  it("o teto do cliente é o MESMO do bucket — divergir criaria recusa tardia", () => {
+  it("o teto do bucket continua 5 MB (vale para o arquivo já preparado)", () => {
     assert.equal(CARE_MEDIA_MAX_BYTES, 5 * MB)
+  })
+
+  it("MIME vazio/genérico (galeria Android) passa: o conteúdo decide no preparo", () => {
+    for (const type of ["", "application/octet-stream"]) {
+      assert.deepEqual(validatePhotoCandidate({ type, size: 2 * MB }), { ok: true }, JSON.stringify(type))
+    }
+  })
+
+  it("tipo específico fora da lista continua recusado ANTES do tamanho", () => {
+    const r = validatePhotoCandidate({ type: "image/gif", size: 30 * MB })
+    assert.equal(r.ok === false && r.message, PHOTO_COPY.tipoInvalido)
   })
 })
 

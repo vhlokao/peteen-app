@@ -6,27 +6,13 @@ import { Camera, ImageOff, Loader2, X } from "lucide-react"
 import { uploadPetPhotoAction } from "@/modules/pets/application/actions"
 import { buildOptimizedImageUrl } from "@/lib/storage/optimized-image-url"
 import { cn } from "@/lib/utils"
+import { IMAGE_ACCEPT_ATTRIBUTE, IMAGE_MESSAGES } from "@/lib/image/image-policy"
+import { prepareImageForUpload } from "@/lib/image/prepare-image.client"
 
-const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/webp"]
-const ACCEPTED_ATTR = "image/jpeg,image/png,image/webp"
-const MAX_BYTES = 5 * 1024 * 1024
-
-/**
- * "file.type" que não carrega informação real do conteúdo — comum em fotos
- * escolhidas de certos apps de galeria/content provider no Android, que
- * devolvem o MIME vazio ou o genérico "binário desconhecido" mesmo para uma
- * foto JPEG/PNG/WEBP válida. Nestes casos deixamos passar para o servidor
- * decidir pelos magic bytes — nunca aceitamos aqui no cliente, só evitamos
- * bloquear sem necessidade uma foto que na verdade é válida.
+/*
+ * Tipos, limites e mensagens vêm da política única (lib/image/image-policy.ts).
+ * Nenhuma regra de imagem é declarada neste componente.
  */
-const UNINFORMATIVE_TYPES = new Set(["", "application/octet-stream"])
-const HEIC_HEIF_TYPES = new Set(["image/heic", "image/heif"])
-
-const UNSUPPORTED_FORMAT_MESSAGE = "Formato não suportado. Envie uma imagem JPEG, PNG ou WEBP."
-const HEIC_MESSAGE =
-  "Este formato de foto ainda não é compatível. Tente salvar ou compartilhar a imagem como JPEG."
-const TOO_LARGE_MESSAGE = "Esta foto é muito grande. Escolha outra imagem ou tente reduzir o tamanho."
-const NETWORK_ERROR_MESSAGE = "Não foi possível enviar a foto. Verifique sua conexão e tente novamente."
 
 type Props = {
   /** Id do pet, quando em edição — usado só para checagem de posse no upload. */
@@ -70,25 +56,27 @@ export function PetPhotoField({ petId, value, onChange, disabled, className }: P
 
     setError(null)
     setStatusMessage("")
-
-    if (!ACCEPTED_TYPES.includes(file.type) && !UNINFORMATIVE_TYPES.has(file.type)) {
-      setError(HEIC_HEIF_TYPES.has(file.type) ? HEIC_MESSAGE : UNSUPPORTED_FORMAT_MESSAGE)
-      return
-    }
-    if (file.size > MAX_BYTES) {
-      setError(TOO_LARGE_MESSAGE)
-      return
-    }
-
-    resetPreview()
-    const objectUrl = URL.createObjectURL(file)
-    setPreview(objectUrl)
     setUploading(true)
-    setStatusMessage("Enviando foto…")
+    setStatusMessage("Preparando foto…")
 
     try {
+      // Reduz para JPEG no navegador (validação de entrada, orientação, sem
+      // metadados) ANTES de atravessar a Server Action. Recusas daqui já vêm
+      // com a mensagem certa — formato, tamanho, HEIC ou falha de preparo —
+      // em vez de caírem como "erro de conexão".
+      const preparada = await prepareImageForUpload(file, "PET")
+      if (!preparada.ok) {
+        setStatusMessage("")
+        setError(preparada.message)
+        return
+      }
+
+      resetPreview()
+      setPreview(URL.createObjectURL(preparada.file))
+      setStatusMessage("Enviando foto…")
+
       const formData = new FormData()
-      formData.append("file", file)
+      formData.append("file", preparada.file)
       if (petId) formData.append("petId", petId)
 
       const result = await uploadPetPhotoAction(formData)
@@ -103,8 +91,9 @@ export function PetPhotoField({ petId, value, onChange, disabled, className }: P
       setStatusMessage("Foto enviada.")
       onChange(result.data.url)
     } catch {
+      // Só chega aqui exceção de rede/plataforma na chamada da action.
       setStatusMessage("")
-      setError(NETWORK_ERROR_MESSAGE)
+      setError(IMAGE_MESSAGES.UPLOAD_FAILED)
       resetPreview()
     } finally {
       setUploading(false)
@@ -167,7 +156,7 @@ export function PetPhotoField({ petId, value, onChange, disabled, className }: P
               </button>
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground">JPEG, PNG ou WEBP — até 5MB.</p>
+          <p className="text-xs text-muted-foreground">JPEG, PNG ou WebP — até 25 MB. A foto é otimizada antes do envio.</p>
         </div>
       </div>
 
@@ -180,7 +169,7 @@ export function PetPhotoField({ petId, value, onChange, disabled, className }: P
       <input
         ref={inputRef}
         type="file"
-        accept={ACCEPTED_ATTR}
+        accept={IMAGE_ACCEPT_ATTRIBUTE}
         onChange={handleFileChange}
         disabled={disabled || uploading}
         className="sr-only"

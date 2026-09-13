@@ -36,6 +36,8 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { IMAGE_ACCEPT_ATTRIBUTE } from "@/lib/image/image-policy"
+import { prepareImageForUpload } from "@/lib/image/prepare-image.client"
 import { requestCareMediaUploadTicketAction } from "../application/actions"
 import { uploadCareMediaToTicket } from "../infrastructure/upload-care-media-client"
 import {
@@ -159,7 +161,7 @@ type Props = {
  * MIME/aceite do input — a MESMA lista para câmera e galeria. `validatePhotoCandidate`
  * (domain) é quem decide de verdade; isto é só o filtro nativo do picker.
  */
-const ACCEPT_IMAGENS = "image/jpeg,image/png,image/webp"
+const ACCEPT_IMAGENS = IMAGE_ACCEPT_ATTRIBUTE
 
 /**
  * Aceite do input de vídeo.
@@ -281,10 +283,30 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
 
       marcar({ status: "enviando", errorMessage: null })
 
-      const ticketResult = await requestCareMediaUploadTicketAction({
-        requestId,
-        mimeType: file.type,
-      })
+      // FOTO: reduz para JPEG no navegador (≤ 2560 px, sem metadados,
+      // orientação aplicada) antes de pedir o ticket — o ticket e o upload usam
+      // o arquivo PREPARADO. O servidor reprocessa de qualquer forma na
+      // publicação. VÍDEO segue como antes.
+      let arquivo = file
+      if (kind === "PHOTO") {
+        const preparada = await prepareImageForUpload(file, "CARE_PHOTO").catch(() => null)
+        if (!preparada || !preparada.ok) {
+          marcar({ status: "erro", errorMessage: preparada?.message ?? PHOTO_COPY.falhaUpload })
+          return
+        }
+        arquivo = preparada.file
+      }
+
+      let ticketResult: Awaited<ReturnType<typeof requestCareMediaUploadTicketAction>>
+      try {
+        ticketResult = await requestCareMediaUploadTicketAction({
+          requestId,
+          mimeType: arquivo.type,
+        })
+      } catch {
+        marcar({ status: "erro", errorMessage: copyDeFalhaUpload(kind) })
+        return
+      }
 
       if (!ticketResult.ok) {
         // A mensagem vem do servidor já humanizada (care-media-authorization
@@ -298,9 +320,9 @@ export function CarePhotoPicker({ requestId, itens, onChange, disabled }: Props)
       // profissional leu "não foi possível enviar esta foto" depois de gravar
       // um vídeo. A copy de vídeo já existia — só não era escolhida.
       const upload = await uploadCareMediaToTicket({
-        file,
+        file: arquivo,
         ticket: ticketResult.ticket,
-        mimeTypeAutorizado: file.type,
+        mimeTypeAutorizado: arquivo.type,
         mensagemDeFalha: copyDeFalhaUpload(kind),
         kind,
       })

@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation"
 import { Camera, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
+import { IMAGE_ACCEPT_ATTRIBUTE, IMAGE_MESSAGES } from "@/lib/image/image-policy"
+import { prepareImageForUpload } from "@/lib/image/prepare-image.client"
+
 const CORAL = "#E07A5F"
 
 type UploadState = "idle" | "uploading" | "success" | "error"
@@ -59,21 +62,38 @@ export function AvatarUploadButton({
     setState("uploading")
     setError(null)
 
-    const formData = new FormData()
-    formData.set("file", file)
+    // O estado de carregamento SEMPRE termina: sucesso, recusa, exceção da
+    // action (ex.: corpo acima do limite da plataforma) ou falha de rede.
+    // Antes, uma exceção deixava o spinner girando para sempre, sem mensagem.
+    try {
+      // Reduz para JPEG no navegador antes de atravessar a Server Action
+      // (lib/image/prepare-image.client.ts). O servidor reprocessa de qualquer forma.
+      const preparada = await prepareImageForUpload(file, "AVATAR")
+      if (!preparada.ok) {
+        setState("error")
+        setError(preparada.message)
+        return
+      }
 
-    const result = await uploadAction(profileId, formData)
+      const formData = new FormData()
+      formData.set("file", preparada.file)
 
-    if (!result.success) {
+      const result = await uploadAction(profileId, formData)
+
+      if (!result.success) {
+        setState("error")
+        setError(result.error || IMAGE_MESSAGES.UPLOAD_FAILED)
+        return
+      }
+
+      setState("success")
+      onUploadComplete?.(result.data.avatarUrl)
+      toast.success("Foto atualizada com sucesso.")
+      router.refresh()
+    } catch {
       setState("error")
-      setError(result.error || "Não foi possível enviar a foto. Tente novamente.")
-      return
+      setError(IMAGE_MESSAGES.UPLOAD_FAILED)
     }
-
-    setState("success")
-    onUploadComplete?.(result.data.avatarUrl)
-    toast.success("Foto atualizada com sucesso.")
-    router.refresh()
   }
 
   return (
@@ -81,7 +101,7 @@ export function AvatarUploadButton({
       <input
         ref={inputRef}
         type="file"
-        accept="image/*"
+        accept={IMAGE_ACCEPT_ATTRIBUTE}
         // O <input> continua tecnicamente no DOM (sr-only, não display:none)
         // para que rótulo/foco/erro de validação nativa não fiquem invisíveis
         // a tecnologia assistiva — só o botão de câmera é o gatilho visual.

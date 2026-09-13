@@ -44,6 +44,7 @@ import {
   editCareUpdate,
   softDeleteCareUpdate,
   findCareUpdateById,
+  findCareUpdateByIdempotencyKey,
   getCareTimeline,
   recordCareUpdateAudit,
 } from "../infrastructure/repository"
@@ -62,14 +63,21 @@ import {
   createCareMediaReadUrl,
   createCareMediaThumbnailUrl,
   deleteCareMediaObject,
+  downloadCareMediaPhoto,
   readCareMediaForValidation,
   readCareMediaHeadBytes,
+  uploadCareMediaFinalPhoto,
 } from "@/lib/storage/care-media"
 import {
   careMediaRejectionMessage,
   validateCareAnyMediaContent,
-  CARE_MEDIA_SIGNATURE_READ_LENGTH,
 } from "@/lib/storage/care-media-validation"
+import { processImageForStorage } from "@/lib/image/process-image.server"
+import {
+  discardCarePhotoObjects,
+  finalizeCarePhotos,
+  type CarePhotoDeps,
+} from "./finalize-care-photos"
 import { CARE_VIDEO_SIGNATURE_READ_LENGTH } from "@/lib/storage/care-video-signature"
 
 const DISPUTE_FROZEN_MESSAGE =
@@ -141,40 +149,56 @@ export async function requestCareMediaUploadTicketAction(input: {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type MediaValidationOutcome =
-  | { ok: true; media: ValidatedCareMedia[] }
+  | {
+      ok: true
+      media: ValidatedCareMedia[]
+      /** Objetos FINAIS de foto criados nesta tentativa — descartar se não publicar. */
+      finalPhotoPaths: string[]
+      /** Originais de foto enviados pelo cliente — descartar depois de publicar. */
+      originalPhotoPaths: string[]
+    }
   | { ok: false; error: string }
+
+/** I/O real das fotos do Diário, injetado no orquestrador puro. */
+function careFotoDeps(requestId: string): CarePhotoDeps {
+  return {
+    download: (path) => downloadCareMediaPhoto({ path, requestId }),
+    process: (bytes, declaredType) =>
+      processImageForStorage({ bytes, declaredType, category: "CARE_PHOTO" }),
+    uploadFinal: (bytes) => uploadCareMediaFinalPhoto({ requestId, bytes }),
+    remove: (path) => deleteCareMediaObject({ path, requestId, kind: "PHOTO" }),
+    declaredTypeOf: (path) => declaredMimeTypeFromCareMediaPath(path),
+  }
+}
 
 /**
  * Transforma paths recebidos do cliente em mídia CONFIÁVEL — ou recusa.
  *
- * Roda INTEIRAMENTE FORA da transação: é I/O de rede (baixa cada objeto do
- * Storage) e não pode acontecer com o lock da request na mão.
+ * Roda INTEIRAMENTE FORA da transação: é I/O de rede e não pode acontecer com
+ * o lock da request na mão.
  *
- * Cada path atravessa quatro portas, nesta ordem:
- *   1. pertence a ESTA request? (`careMediaPathBelongsToRequest` — comparação
- *      exata, cobre traversal e path de outro atendimento);
- *   2. o objeto EXISTE no bucket? (se o cliente inventou um path, não existe);
- *   3. os BYTES são JPEG/PNG/WebP de verdade? (magic bytes — o bucket aceitou
- *      Content-Type declarado, isso não vale nada);
- *   4. o tipo real bate com o declarado e o tamanho respeita o teto?
+ * Para todo path: pertence a ESTA request? (`careMediaPathBelongsToRequest` —
+ * comparação exata, cobre traversal e path de outro atendimento) e o tipo
+ * decorre do path gerado no servidor.
  *
- * Reprovou em (3) ou (4) → o objeto é APAGADO na hora. Deixá-lo no bucket
- * transformaria uma tentativa maliciosa em armazenamento gratuito e
- * permanente. Falhas em (1) e (2) não apagam nada: em (1) o objeto pode ser de
- * outra request (apagar seria destruir evidência alheia) e em (2) não há
- * objeto.
+ * FOTO (PETEEN-IMAGE-UPLOAD-OPTIMIZATION-IMPLEMENTATION-001): o objeto enviado
+ * nunca é publicado. `finalizeCarePhotos` baixa, reprocessa com a política
+ * única (conteúdo real, ≤ 100 MP, orientação aplicada, sem EXIF/GPS, ≤ 2560 px,
+ * JPEG) e grava numa CHAVE NOVA. Recusou ou falhou → os finais já criados são
+ * removidos e nada é publicado; conteúdo reprovado também apaga o original.
  *
- * `mimeType` e `sizeBytes` persistidos saem SEMPRE da inspeção do servidor,
- * nunca de campo informado pelo cliente.
+ * VÍDEO: inalterado — cabeçalho por `Range` (fallback download), magic bytes,
+ * tipo × declarado e teto; reprovado é apagado.
+ *
+ * `mimeType` e `sizeBytes` persistidos saem SEMPRE do servidor, nunca do cliente.
  */
 async function validateMediaPaths(params: {
   requestId: string
   paths: string[]
   /**
    * Hints visuais por path. NÃO cria mídia e NÃO confere posse: o laço abaixo
-   * itera sobre `paths` — que passou por posse e magic bytes — e apenas
-   * CONSULTA este mapa. Um path presente só aqui nunca é alcançado, então
-   * inventar entradas não produz `CareMedia` nem toca em autorização.
+   * itera sobre `paths` — que passou por posse — e apenas CONSULTA este mapa.
+   * Um path presente só aqui nunca é alcançado.
    */
   dimensions?: Array<{ path: string; width: number; height: number }>
 }): Promise<MediaValidationOutcome> {
@@ -197,66 +221,75 @@ async function validateMediaPaths(params: {
     return { ok: false, error: "Há fotos repetidas nesta atualização." }
   }
 
-  const validadas: ValidatedCareMedia[] = []
-
+  // ── 1. Posse e tipo de TODOS os paths, antes de qualquer I/O ──────────────
+  const fotos: string[] = []
   for (const path of paths) {
     if (!careMediaPathBelongsToRequest(path, requestId)) {
       return { ok: false, error: "Um dos arquivos não pertence a este atendimento." }
     }
-
-    // O TIPO vem do PATH, que o servidor gerou — é ele que decide em qual
-    // bucket procurar e qual teto aplicar. O cliente não informa nada disso.
+    // O TIPO vem do PATH, que o servidor gerou. O cliente não informa nada disso.
     const kind = careMediaKindFromPath(path)
     if (!kind) {
       return { ok: false, error: "Um dos arquivos não pôde ser verificado." }
     }
+    if (kind === "PHOTO") fotos.push(path)
+  }
 
-    // ── Leitura do cabeçalho ────────────────────────────────────────────────
-    // VÍDEO usa `Range` (64 bytes) em vez de baixar até 50 MB só para ler a
-    // assinatura. FOTO mantém `download` — 5 MB, caminho já em produção e
-    // testado, sem motivo para mexer.
-    //
-    // FAIL CLOSED: se o Range falhar (servidor ignorou, Content-Range ausente,
-    // rede), caímos para o download completo — que é lento, mas continua
-    // PROVANDO o conteúdo. Em nenhum caminho a falha de leitura vira aceitação;
-    // `objeto` nulo recusa a publicação logo abaixo.
-    let objeto: { header: Uint8Array; sizeBytes: number } | null = null
+  // ── 2. Fotos: reprocessadas e gravadas em chave nova ─────────────────────
+  const deps = careFotoDeps(requestId)
+  const finalizadas = await finalizeCarePhotos({ paths: fotos, deps })
+  if (!finalizadas.ok) {
+    return { ok: false, error: finalizadas.error }
+  }
+  const finalPorOriginal = new Map(finalizadas.photos.map((f) => [f.originalPath, f]))
+  const finalPhotoPaths = finalizadas.photos.map((f) => f.finalPath)
+  const descartarFinais = () => discardCarePhotoObjects(finalPhotoPaths, deps.remove)
 
-    if (kind === "VIDEO") {
-      objeto = await readCareMediaHeadBytes({
-        path,
-        requestId,
-        kind,
-        bytes: CARE_VIDEO_SIGNATURE_READ_LENGTH,
+  // ── 3. Monta a mídia na ORDEM enviada; vídeo validado como antes ──────────
+  const validadas: ValidatedCareMedia[] = []
+
+  for (const path of paths) {
+    const foto = finalPorOriginal.get(path)
+    if (foto) {
+      // PHOTO não usa dimensões: a grade e a miniatura já resolvem o layout.
+      validadas.push({
+        storagePath: foto.finalPath,
+        type: "PHOTO",
+        mimeType: foto.mimeType,
+        sizeBytes: foto.sizeBytes,
+        displayWidth: null,
+        displayHeight: null,
       })
-      if (!objeto) {
-        // Observável: distingue "Range indisponível" de falha de conteúdo.
-        console.warn("[care-media] range_fallback_download", { requestId })
-        objeto = await readCareMediaForValidation({
-          path,
-          requestId,
-          kind,
-          bytes: CARE_VIDEO_SIGNATURE_READ_LENGTH,
-        })
-      }
-    } else {
+      continue
+    }
+
+    // VÍDEO usa `Range` (64 bytes) em vez de baixar até 50 MB só para ler a
+    // assinatura. FAIL CLOSED: se o Range falhar, cai para o download completo.
+    let objeto = await readCareMediaHeadBytes({
+      path,
+      requestId,
+      kind: "VIDEO",
+      bytes: CARE_VIDEO_SIGNATURE_READ_LENGTH,
+    })
+    if (!objeto) {
+      // Observável: distingue "Range indisponível" de falha de conteúdo.
+      console.warn("[care-media] range_fallback_download", { requestId })
       objeto = await readCareMediaForValidation({
         path,
         requestId,
-        kind,
-        bytes: CARE_MEDIA_SIGNATURE_READ_LENGTH,
+        kind: "VIDEO",
+        bytes: CARE_VIDEO_SIGNATURE_READ_LENGTH,
       })
     }
 
     if (!objeto) {
+      await descartarFinais()
       return { ok: false, error: "Não foi possível confirmar o envio de um dos arquivos." }
     }
 
-    // O tipo declarado é recuperado da EXTENSÃO do path — que o servidor
-    // gerou a partir do mimeType informado na emissão do ticket. Não há
-    // segunda fonte para essa declaração, e o cliente não controla nenhuma.
     const declarado = declaredMimeTypeFromCareMediaPath(path)
     if (!declarado) {
+      await descartarFinais()
       return { ok: false, error: "Um dos arquivos não pôde ser verificado." }
     }
 
@@ -268,13 +301,12 @@ async function validateMediaPaths(params: {
 
     if (!veredito.ok) {
       // Conteúdo reprovado não pode sobreviver no bucket — no bucket CERTO.
-      await deleteCareMediaObject({ path, requestId, kind })
+      await deleteCareMediaObject({ path, requestId, kind: "VIDEO" })
+      await descartarFinais()
       return { ok: false, error: careMediaRejectionMessage(veredito.reason) }
     }
 
-    // Hint visual: só para VIDEO, e só se passar a sanidade. FOTO fica null
-    // por decisão — já tem miniatura e grade próprias, e preencher aqui seria
-    // plumbing sem benefício.
+    // Hint visual: só para VIDEO, e só se passar a sanidade.
     const hint = dimensoesPorPath.get(path)
     const dims =
       veredito.kind === "VIDEO" && hint
@@ -293,18 +325,17 @@ async function validateMediaPaths(params: {
   }
 
   // ── Cota de VÍDEO: no máximo 1 por atualização ──────────────────────────
-  // Verificada aqui, sobre o resultado JÁ VALIDADO — não sobre o que o cliente
-  // disse ter enviado. O teto de 3 fotos continua sendo o de `CARE_UPDATE_MAX_MEDIA`
-  // acima; este é um limite adicional e independente.
+  // Verificada sobre o resultado JÁ VALIDADO — não sobre o que o cliente disse.
   const videos = validadas.filter((m) => m.type === "VIDEO").length
   if (videos > CARE_VIDEO_MAX_PER_UPDATE) {
+    await descartarFinais()
     return {
       ok: false,
       error: `No máximo ${CARE_VIDEO_MAX_PER_UPDATE} vídeo por atualização.`,
     }
   }
 
-  return { ok: true, media: validadas }
+  return { ok: true, media: validadas, finalPhotoPaths, originalPhotoPaths: fotos }
 }
 
 /**
@@ -464,9 +495,24 @@ export async function publishCareUpdateAction(
     // e devolvido ao client.
     const occurredAt = resolved.occurredAt
 
+    // REPLAY ANTECIPADO: a mesma intenção já publicada volta como sucesso
+    // ANTES de tocar no Storage. Necessário porque, depois de publicar, os
+    // originais enviados são descartados — um retry que chegasse até
+    // `validateMediaPaths` não os encontraria e falharia. O unique
+    // (requestId, idempotencyKey) dentro de `createCareUpdateAtomic` continua
+    // sendo o árbitro das chamadas simultâneas.
+    const jaPublicada = await findCareUpdateByIdempotencyKey(
+      parsed.data.requestId,
+      parsed.data.idempotencyKey
+    )
+    if (jaPublicada) {
+      return { success: true, data: await toCareUpdateDTO(jaPublicada) }
+    }
+
     // ── FRONTEIRA DE CONFIANÇA ────────────────────────────────────────────
-    // Todo I/O de Storage acontece AQUI, antes da transação. A transação só
-    // recebe mídia já baixada, verificada por magic bytes e medida.
+    // Todo I/O de Storage acontece AQUI, antes da transação. Fotos são
+    // reprocessadas e gravadas em chave nova; a transação só recebe mídia
+    // FINAL, verificada e medida no servidor.
     const validacao = await validateMediaPaths({
       requestId: parsed.data.requestId,
       paths: parsed.data.mediaPaths,
@@ -476,18 +522,35 @@ export async function publishCareUpdateAction(
       return { success: false, error: validacao.error }
     }
 
+    const removerFoto = (path: string) =>
+      deleteCareMediaObject({ path, requestId: parsed.data.requestId, kind: "PHOTO" })
+
     // Criação atômica: re-verifica status/disputa/startedAt/cota sob lock da
     // request no instante da escrita. petId e professionalId são derivados da
     // request travada — nunca do client.
-    const resultado = await createCareUpdateAtomic({
-      requestId: parsed.data.requestId,
-      authorId: session.id,
-      category: parsed.data.category,
-      content: parsed.data.content,
-      occurredAt,
-      idempotencyKey: parsed.data.idempotencyKey,
-      media: validacao.media,
-    })
+    let resultado: Awaited<ReturnType<typeof createCareUpdateAtomic>>
+    try {
+      resultado = await createCareUpdateAtomic({
+        requestId: parsed.data.requestId,
+        authorId: session.id,
+        category: parsed.data.category,
+        content: parsed.data.content,
+        occurredAt,
+        idempotencyKey: parsed.data.idempotencyKey,
+        media: validacao.media,
+      })
+    } catch (err) {
+      // Transação falhou: nenhum registro — os finais desta tentativa saem.
+      await discardCarePhotoObjects(validacao.finalPhotoPaths, removerFoto)
+      throw err
+    }
+
+    // Não publicou por ESTA tentativa (estado mudou, conflito ou replay
+    // simultâneo): os objetos finais criados agora não pertencem a nenhuma
+    // CareMedia e são removidos. Os originais ficam para um novo envio.
+    if (resultado.kind !== "created") {
+      await discardCarePhotoObjects(validacao.finalPhotoPaths, removerFoto)
+    }
 
     if (resultado.kind === "state_changed") {
       return { success: false, error: CONCURRENT_CHANGE_MESSAGE }
@@ -509,6 +572,10 @@ export async function publishCareUpdateAction(
     if (resultado.kind === "replayed") {
       return { success: true, data: await toCareUpdateDTO(created) }
     }
+
+    // Publicado: os originais enviados pelo cliente (possivelmente com EXIF/GPS)
+    // não servem a mais nada e são descartados — best-effort, fora da resposta.
+    after(() => discardCarePhotoObjects(validacao.originalPhotoPaths, removerFoto))
 
     // Auditoria: só metadata segura. Nunca URL assinada, token, bytes ou
     // qualquer coisa que reconstrua acesso ao arquivo — um AuditLog é lido por

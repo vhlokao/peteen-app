@@ -506,6 +506,72 @@ export async function readCareMediaHeadBytes(params: {
 }
 
 /**
+ * Baixa o objeto INTEIRO de uma foto enviada, para reprocessamento na
+ * publicação (PETEEN-IMAGE-UPLOAD-OPTIMIZATION-IMPLEMENTATION-001).
+ *
+ * Só foto: o teto do bucket de foto é 5 MB. Vídeo continua lido por `Range`.
+ * `null` em qualquer falha — path fora da request, objeto inexistente,
+ * Storage indisponível ou ambiente sem configuração.
+ */
+export async function downloadCareMediaPhoto(params: {
+  path: string
+  requestId: string
+}): Promise<Uint8Array | null> {
+  const partes = parseCareMediaPath(params.path)
+  if (!partes || partes.requestId !== params.requestId) return null
+
+  try {
+    const supabase = createCareMediaStorageClient()
+    const { data, error } = await supabase.storage
+      .from(bucketForCareMediaKind("PHOTO"))
+      .download(params.path)
+    if (error || !data) return null
+    return new Uint8Array(await data.arrayBuffer())
+  } catch (err) {
+    console.error("[care-media] download_photo_failed", { erro: String(err).slice(0, 120) })
+    return null
+  }
+}
+
+/**
+ * Grava o JPEG FINAL de uma foto do Diário numa chave NOVA e devolve o path.
+ *
+ * O path é gerado aqui (UUID novo, extensão `.jpg`), nunca derivado do cliente,
+ * e sem `upsert`: nunca sobrescreve objeto existente. Chave nova em vez de
+ * sobrescrever o original evita a CDN servir conteúdo desatualizado para uma
+ * URL já emitida. `null` em qualquer falha.
+ *
+ * PRÉ-REQUISITO: quem chama já autorizou a publicação nesta request.
+ */
+export async function uploadCareMediaFinalPhoto(params: {
+  requestId: string
+  bytes: Uint8Array
+}): Promise<string | null> {
+  try {
+    const path = buildCareMediaPath({
+      requestId: params.requestId,
+      fileId: crypto.randomUUID(),
+      mimeType: "image/jpeg",
+    })
+    const supabase = createCareMediaStorageClient()
+    const corpo = new Blob([params.bytes as Uint8Array<ArrayBuffer>], { type: "image/jpeg" })
+    const { error } = await supabase.storage
+      .from(bucketForCareMediaKind("PHOTO"))
+      .upload(path, corpo, { contentType: "image/jpeg", upsert: false })
+    if (error) {
+      console.error("[care-media] upload_final_failed", {
+        erro: String(error.message ?? error).slice(0, 120),
+      })
+      return null
+    }
+    return path
+  } catch (err) {
+    console.error("[care-media] upload_final_threw", { erro: String(err).slice(0, 120) })
+    return null
+  }
+}
+
+/**
  * Remove um objeto do bucket. Best-effort — nunca lança.
  *
  * Usos previstos (R2): descartar arquivo reprovado na validação de magic bytes

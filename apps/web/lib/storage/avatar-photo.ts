@@ -1,13 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server"
-import {
-  PET_PHOTO_ALLOWED_TYPES,
-  PET_PHOTO_MAX_BYTES,
-  EXTENSION_BY_TYPE,
-  PetPhotoValidationError,
-  SIGNATURE_READ_LENGTH,
-  validatePetPhotoSignature,
-} from "./pet-photo-signature"
-import { reencodeWithoutMetadata } from "./image-metadata-strip"
+import { IMAGE_MESSAGES } from "@/lib/image/image-policy"
+import { PetPhotoValidationError } from "./pet-photo-signature"
+import { processPublicPhotoFile } from "./public-photo"
 
 /**
  * Upload/remoção de avatar de perfil — bucket "avatars" (Supabase Storage).
@@ -34,41 +28,22 @@ import { reencodeWithoutMetadata } from "./image-metadata-strip"
  *      payload que envia. Por isso o upload deixou de ser client-side.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- * REUSO DE lib/storage/pet-photo-signature.ts
+ * IMAGEM (PETEEN-IMAGE-UPLOAD-OPTIMIZATION-IMPLEMENTATION-001)
  *
- * A validação por magic bytes (`detectImageTypeFromBytes`,
- * `validatePetPhotoSignature`) é genérica — nenhuma das mensagens ou da
- * lógica menciona pet. O nome do arquivo tem prefixo "pet" porque foi
- * escrito primeiro para aquele fluxo, não porque a lógica é específica dele.
- * Reexportar os mesmos símbolos aqui evita reimplementar detecção de
- * assinatura (JPEG/PNG/WEBP) pela segunda vez no projeto — se um dia isso
- * incomodar, o certo é RENOMEAR o módulo de origem para algo neutro
- * (ex.: image-signature.ts), não duplicá-lo.
+ * O arquivo passa por `processPublicPhotoFile` (política única de imagens):
+ * conteúdo real validado, ≤ 100 MP, orientação aplicada, sem metadados,
+ * maior lado 1024 px e SEMPRE JPEG — extensão `.jpg` e `contentType`
+ * `image/jpeg` coerentes com os bytes gravados.
  */
 
 export const AVATAR_BUCKET = "avatars"
-export { PET_PHOTO_ALLOWED_TYPES as AVATAR_ALLOWED_TYPES }
-export { PET_PHOTO_MAX_BYTES as AVATAR_MAX_BYTES }
 export { PetPhotoValidationError as AvatarValidationError }
 
 /**
  * Mensagem para qualquer falha de upload após a validação passar (rede,
  * Storage, etc.) — nunca expõe detalhe de Supabase, bucket, policy ou stack.
  */
-export const AVATAR_UPLOAD_FAILURE_MESSAGE =
-  "Não foi possível enviar a foto. Verifique sua conexão e tente novamente."
-
-/**
- * Valida tipo declarado, tamanho e conteúdo real (magic bytes) — nunca
- * confia isoladamente em `file.type`. Retorna o tipo detectado, que decide
- * a extensão final do path.
- */
-export async function validateAvatarFile(
-  file: File
-): Promise<(typeof PET_PHOTO_ALLOWED_TYPES)[number]> {
-  const header = new Uint8Array(await file.slice(0, SIGNATURE_READ_LENGTH).arrayBuffer())
-  return validatePetPhotoSignature(file.type, file.size, header)
-}
+export const AVATAR_UPLOAD_FAILURE_MESSAGE = IMAGE_MESSAGES.UPLOAD_FAILED
 
 /** Prefixo público do bucket "avatars" — usado para reconhecer/validar URLs. */
 function avatarPublicPrefix(): string {
@@ -87,7 +62,7 @@ function pathFromAvatarUrl(url: string): string {
 }
 
 /**
- * Envia o avatar para `${authId}/${uuid}.${ext}` dentro do bucket "avatars".
+ * Envia o avatar para `${authId}/${uuid}.jpg` dentro do bucket "avatars".
  *
  * `authId` precisa vir de `session.authId`, resolvido pela Server Action
  * chamadora via `requireAuth()` — nunca de um parâmetro controlável pelo
@@ -105,27 +80,15 @@ function pathFromAvatarUrl(url: string): string {
  * o registro no banco aponta para o novo, nunca antes.
  */
 export async function uploadAvatarPhoto(file: File, authId: string): Promise<string> {
-  const detectedType = await validateAvatarFile(file)
+  const foto = await processPublicPhotoFile(file, "AVATAR")
 
-  const extension = EXTENSION_BY_TYPE[detectedType]
+  const extension = foto.extension
   const path = `${authId}/${crypto.randomUUID()}.${extension}`
 
-  // Mesmo motivo documentado em pet-photo.ts: o SDK do Storage serializa
-  // File/Blob como multipart, e o Content-Type de cada parte vem do MIME do
-  // próprio Blob — reconstruir com o tipo REAL (detectado pelos magic bytes)
-  // evita que um `file.type` vazio/genérico (comum em mobile) declare
-  // "application/octet-stream" e seja rejeitado pelo bucket.
-  //
-  // Os bytes enviados NÃO são os originais: o bucket é público, e o original
-  // carrega EXIF (incluindo GPS quando a câmera registra). Ver
-  // image-metadata-strip.ts (SEAL-P2-01).
-  const bytes = await reencodeWithoutMetadata(new Uint8Array(await file.arrayBuffer()), detectedType)
-  const uploadBody = new Blob([bytes], { type: detectedType })
-
   const supabase = await createSupabaseServerClient()
-  const { error } = await supabase.storage.from(AVATAR_BUCKET).upload(path, uploadBody, {
+  const { error } = await supabase.storage.from(AVATAR_BUCKET).upload(path, foto.body, {
     upsert: false,
-    contentType: detectedType,
+    contentType: foto.contentType,
   })
 
   if (error) {

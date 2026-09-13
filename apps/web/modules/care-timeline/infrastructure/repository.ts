@@ -163,6 +163,28 @@ export async function getCareTimeline(
 }
 
 /**
+ * Atualização já publicada com esta intenção (requestId + idempotencyKey).
+ *
+ * PETEEN-IMAGE-UPLOAD-OPTIMIZATION-IMPLEMENTATION-001: a publicação agora
+ * reprocessa as fotos e descarta os originais enviados depois do commit. Um
+ * retry da MESMA intenção (resposta perdida, duplo clique) chegaria sem os
+ * originais e falharia na leitura — por isso a action consulta isto ANTES de
+ * mexer no Storage e devolve a atualização existente. O unique
+ * (requestId, idempotencyKey) continua sendo o árbitro final dentro de
+ * `createCareUpdateAtomic` para chamadas simultâneas.
+ */
+export async function findCareUpdateByIdempotencyKey(
+  requestId: string,
+  idempotencyKey: string
+): Promise<CareUpdateWithInternalMedia | null> {
+  const row = await prisma.careUpdate.findFirst({
+    where: { requestId, idempotencyKey },
+    select: PUBLIC_SELECT,
+  })
+  return row ? toPublic(row) : null
+}
+
+/**
  * Timeline completa para o Admin — inclui atualizações removidas (soft delete),
  * para adjudicação de disputa. `deletedAt` acompanha cada item.
  */

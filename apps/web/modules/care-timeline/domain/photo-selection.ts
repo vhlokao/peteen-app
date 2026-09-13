@@ -37,6 +37,11 @@ import {
   CARE_VIDEO_MAX_PER_UPDATE,
   type CareMediaMimeType,
 } from "../../../lib/storage/care-media-path.ts"
+import {
+  IMAGE_INPUT_MAX_BYTES,
+  IMAGE_MESSAGES,
+  isUninformativeDeclaredType,
+} from "../../../lib/image/image-policy.ts"
 
 export {
   CARE_MEDIA_MAX_PER_UPDATE,
@@ -83,10 +88,11 @@ export type PhotoSelectionItem = {
 export const CARE_VIDEO_MAX_MB = Math.round(CARE_VIDEO_MAX_BYTES / (1024 * 1024))
 
 export const PHOTO_COPY = {
-  tipoInvalido: "Esta foto não parece ser uma imagem válida.",
+  // Mensagens de imagem vêm da política única (lib/image/image-policy.ts).
+  tipoInvalido: IMAGE_MESSAGES.UNSUPPORTED_FORMAT,
   /** HEIC/HEIF merece frase própria: é o padrão do iPhone e a pessoa não tem culpa. */
-  heic: "Este formato ainda não é compatível. Escolha JPEG, PNG ou WebP.",
-  muitoGrande: "Esta foto é muito grande.",
+  heic: IMAGE_MESSAGES.HEIC_UNSUPPORTED,
+  muitoGrande: IMAGE_MESSAGES.TOO_LARGE,
   falhaUpload: "Não foi possível enviar esta foto. Tente novamente.",
   publicacaoFalhou:
     "As fotos foram enviadas, mas a atualização não foi publicada. Tente novamente.",
@@ -189,24 +195,32 @@ export type PhotoValidation = PhotoAcceptance | PhotoRejection
 /**
  * Uma foto candidata pode entrar na seleção?
  *
- * Ordem deliberada: TIPO antes de TAMANHO. Um HEIC de 8 MB deve ouvir "este
- * formato não é compatível" (acionável: reexportar) e não "muito grande"
- * (levaria a pessoa a comprimir um arquivo que seria recusado do mesmo jeito).
+ * PETEEN-IMAGE-UPLOAD-OPTIMIZATION-IMPLEMENTATION-001 — esta é a porta de
+ * SELEÇÃO, antes de qualquer processamento:
  *
- * `type` vazio é comum em mobile — alguns navegadores não preenchem o MIME.
- * Tratamos como inválido aqui porque o ticket exige um MIME declarado; a
- * pessoa recebe a frase genérica de imagem inválida, que é verdadeira.
+ * - O limite é o de ENTRADA (25 MB). A foto é reduzida no navegador
+ *   (lib/image/prepare-image.client.ts) antes do upload; o teto do bucket
+ *   (5 MB) vale para o arquivo JÁ preparado, e o servidor reprocessa na
+ *   publicação.
+ * - Tipo declarado específico e fora de JPEG/PNG/WebP/HEIC é recusado aqui.
+ *   Ordem deliberada: TIPO antes de TAMANHO.
+ * - HEIC/HEIF NÃO é recusado aqui: o navegador que souber decodificar converte
+ *   para JPEG; o que não souber recebe a mensagem de HEIC no preparo.
+ * - `type` vazio/genérico (comum em galerias Android) passa: o conteúdo real
+ *   decide no preparo, e o ticket recebe o MIME do arquivo preparado.
  */
 export function validatePhotoCandidate(file: { type: string; size: number }): PhotoValidation {
-  if (TIPOS_HEIC.includes(file.type.toLowerCase())) {
-    return { ok: false, message: PHOTO_COPY.heic }
-  }
+  const tipo = file.type.toLowerCase()
 
-  if (!(CARE_MEDIA_ALLOWED_TYPES as string[]).includes(file.type)) {
+  if (
+    !isUninformativeDeclaredType(tipo) &&
+    !TIPOS_HEIC.includes(tipo) &&
+    !(CARE_MEDIA_ALLOWED_TYPES as string[]).includes(tipo)
+  ) {
     return { ok: false, message: PHOTO_COPY.tipoInvalido }
   }
 
-  if (file.size > CARE_MEDIA_MAX_BYTES) {
+  if (file.size > IMAGE_INPUT_MAX_BYTES) {
     return { ok: false, message: PHOTO_COPY.muitoGrande }
   }
 

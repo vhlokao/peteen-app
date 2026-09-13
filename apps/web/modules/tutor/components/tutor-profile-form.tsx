@@ -12,6 +12,7 @@ import {
   type CreateTutorProfileInput,
 } from "@/modules/tutor/domain/types";
 import { KNOWN_LOCATIONS, findKnownCityState } from "@/modules/location";
+import { formatBrazilianPhone } from "@/lib/phone/brazilian-phone";
 
 const NAVY = "#1D2F6F";
 
@@ -165,9 +166,16 @@ export function TutorProfileForm({
 
         <Field label="WhatsApp (opcional)" error={errors.phone?.message}>
           <input
-            {...register("phone")}
+            {...register("phone", {
+              // Máscara BR da fonte única (lib/phone/brazilian-phone.ts), a
+              // cada evento — digitar, colar, autofill, apagar.
+              onChange: (e) => {
+                e.target.value = formatBrazilianPhone(e.target.value);
+              },
+            })}
             type="tel"
-            placeholder="+55 11 9 9999-9999"
+            inputMode="tel"
+            placeholder="(11) 99999-9999"
             autoComplete="tel"
             disabled={isSubmitting}
             className="w-full rounded-[14px] border-[1.5px] border-black/10 bg-background px-4 py-3.5 text-[14.5px] font-medium outline-none transition focus:border-[#2C4893] focus:shadow-[0_0_0_4px_rgba(44,72,147,.10)] disabled:opacity-60"

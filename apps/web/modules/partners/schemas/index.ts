@@ -41,7 +41,7 @@ import { z } from "zod"
 
 import { PARTNER_CATEGORIES } from "../domain/constants"
 import type { PartnerCategory } from "../domain/types"
-import { hasValidPartnerPhoneDigitCount } from "../domain/phone-format"
+import { brazilianPhoneRequired } from "@/lib/phone/brazilian-phone"
 
 /** URL opcional — vazio é ausência, não erro. */
 const urlOpcional = (rotulo: string) =>
@@ -69,36 +69,12 @@ export const PartnerOnboardingBusinessSchema = z.object({
     .trim()
     .length(2, "Use a sigla do estado (ex: SP)"),
 
-  // GATE-8-PARTNER-INPUT-MASKS-001: Partner agora tem máscara própria
-  // (ver modules/partners/domain/phone-format.ts) — decisão específica deste
-  // gate, que substitui a diretriz anterior de "telefone é texto livre em
-  // todo o produto" só para Partner (Professional/Tutor não foram tocados).
-  //
-  // BUG CONFIRMADO que o `.refine` de mínimo corrige: a regex sozinha só
-  // limitava a CONTAGEM DE CARACTERES da string (8-20), não a quantidade de
-  // dígitos — um valor como "12345678" (8 caracteres, mas só 8 dígitos, sem
-  // DDD) já passava como "válido com DDD", que é exatamente o que a mensagem
-  // de erro promete verificar e a regex sozinha não garante. O piso de 10
-  // alinha Partner com a mesma contagem mínima que
-  // `professional-profile-form.tsx` já aplica.
-  //
-  // GATE-8-PARTNER-INPUT-MASKS-FIX-002: o teto de 11 foi adicionado junto —
-  // `formatBrazilianPhone` agora recusa a esconder dígitos excedentes de uma
-  // entrada inválida/longa (não trunca mais silenciosamente para "parecer"
-  // um número válido); este teto é o que faz essa entrada ser REJEITADA em
-  // vez de aceita. Um telefone BR com DDD nunca passa de 11 dígitos.
-  //
-  // GATE-8-PARTNER-INPUT-MASKS-FIX-003: a contagem de dígitos (piso 10, teto
-  // 11) saiu do corpo do `.refine` e virou `hasValidPartnerPhoneDigitCount`
-  // (modules/partners/domain/phone-format.ts) — a MESMA regra agora também
-  // protege o Admin (createPartnerAction/updatePartnerAction), que não passa
-  // por este schema. Uma função só, três consumidores, em vez da regra
-  // reimplementada em cada um.
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+?[\d\s\-()]{8,20}$/, "Informe um telefone válido com DDD")
-    .refine(hasValidPartnerPhoneDigitCount, { message: "Informe um telefone válido com DDD" }),
+  // Obrigatório no onboarding. Regra única de telefone BR (10/11 dígitos, DDD,
+  // celular com 9, DDI 55 e zero de tronco inequívocos) e saída canônica em
+  // lib/phone/brazilian-phone.ts — a mesma usada por Tutor, Profissional,
+  // portal e Admin (PETEEN-PHONE-WHATSAPP-INPUT-FIX-001). O servidor do
+  // onboarding público valida com este MESMO schema antes de persistir.
+  phone: brazilianPhoneRequired({ invalidMessage: "Informe um telefone válido com DDD" }),
 
   instagram: z.string().trim().max(100, "Usuário muito longo"),
 

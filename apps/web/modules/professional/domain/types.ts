@@ -13,6 +13,8 @@
  */
 
 import { z } from "zod"
+
+import { brazilianPhoneOptional } from "@/lib/phone/brazilian-phone"
 import type { ActionResult } from "@/modules/tutor/domain/types"
 
 // Re-exporta ActionResult para que o módulo não dependa do tutor
@@ -115,11 +117,10 @@ export const CreateProfessionalProfileSchema = z.object({
     .string()
     .min(50, "A apresentação deve ter ao menos 50 caracteres")
     .max(1000, "Bio pode ter no máximo 1000 caracteres"),
-  phone: z
-    .string()
-    .regex(/^\+?[\d\s\-()]{8,20}$/, "Telefone inválido")
-    .optional()
-    .or(z.literal("")),
+  // Opcional NO SERVIDOR, de propósito: o obrigatório do Profissional vive na
+  // UI (formulários de onboarding e edição). Endurecer aqui é decisão do
+  // fundador, fora de PETEEN-PHONE-WHATSAPP-INPUT-FIX-001.
+  phone: brazilianPhoneOptional({ invalidMessage: "Telefone inválido — informe com DDD" }),
   neighborhood: z.string().max(100).optional(),
   city: z.string().min(2, "Cidade é obrigatória").max(100),
   state: z

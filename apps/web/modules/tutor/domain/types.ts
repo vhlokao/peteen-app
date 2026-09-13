@@ -14,6 +14,8 @@
 
 import { z } from "zod"
 
+import { brazilianPhoneOptional } from "@/lib/phone/brazilian-phone"
+
 
 
 // Reexportações pets — compatibilidade com imports existentes
@@ -78,15 +80,8 @@ export const CreateTutorProfileSchema = z.object({
 
   bio: z.string().max(500, "Bio pode ter no máximo 500 caracteres").optional(),
 
-  phone: z
-
-    .string()
-
-    .regex(/^\+?[\d\s\-()]{8,20}$/, "Telefone inválido")
-
-    .optional()
-
-    .or(z.literal("")),
+  // Opcional. Regra e forma canônica (10/11 dígitos) na fonte única.
+  phone: brazilianPhoneOptional({ invalidMessage: "Telefone inválido — informe com DDD" }),
 
   neighborhood: z.string().max(100).optional(),
 

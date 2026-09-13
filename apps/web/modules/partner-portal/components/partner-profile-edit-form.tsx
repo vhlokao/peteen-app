@@ -15,7 +15,7 @@ import {
   PARTNER_CATEGORIES,
   PARTNER_CATEGORY_LABELS,
 } from "@/modules/partners/domain/constants"
-import { formatBrazilianPhone } from "@/modules/partners/domain/phone-format"
+import { formatBrazilianPhone, phoneInputInitialValue } from "@/modules/partners/domain/phone-format"
 import type { PartnerCategory } from "@/modules/partners/domain/types"
 import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
@@ -48,7 +48,9 @@ export function PartnerProfileEditForm({ partner }: PartnerProfileEditFormProps)
       // o formulário — dados existentes no banco não são todos formatados
       // (telefone era texto livre antes deste gate), então sem isto a edição
       // abriria mostrando o valor bruto até o parceiro digitar de novo.
-      phone: formatBrazilianPhone(partner.phone ?? ""),
+      // PETEEN-PHONE-WHATSAPP-INPUT-FIX-001: legado inválido fica bruto e
+      // intacto para correção, em vez de reinterpretado pela máscara.
+      phone: phoneInputInitialValue(partner.phone),
       category: partner.category,
       website: partner.website ?? "",
       logoUrl: partner.logoUrl ?? "",
@@ -181,6 +183,7 @@ export function PartnerProfileEditForm({ partner }: PartnerProfileEditFormProps)
             })}
             type="tel"
             inputMode="tel"
+            autoComplete="tel"
             placeholder="(11) 99999-9999"
             aria-invalid={field["aria-invalid"]}
           />

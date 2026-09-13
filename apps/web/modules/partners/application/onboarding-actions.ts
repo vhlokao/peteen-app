@@ -9,6 +9,8 @@
 
 import { revalidatePath } from "next/cache"
 
+import { brazilianPhoneRequired } from "@/lib/phone/brazilian-phone"
+
 import {
   createTrustConnection,
   countActiveConnectionsBySource,
@@ -47,6 +49,25 @@ type ActionResult<T> =
   | { ok: false; error: string }
 
 /**
+ * Telefone do onboarding PÚBLICO validado no servidor, com a MESMA regra do
+ * formulário (lib/phone/brazilian-phone.ts), e devolvido na forma canônica.
+ *
+ * Antes, o servidor só exigia "não vazio" no create e nada no update: uma
+ * chamada direta à action gravava qualquer texto, depois exibido na página
+ * pública do parceiro. PETEEN-PHONE-WHATSAPP-INPUT-FIX-001.
+ */
+const TELEFONE_ONBOARDING = brazilianPhoneRequired({ invalidMessage: "Informe um telefone válido com DDD" })
+
+function telefoneDoOnboarding(
+  phone: unknown
+): { ok: true; phone: string } | { ok: false; error: string } {
+  const r = TELEFONE_ONBOARDING.safeParse(phone)
+  return r.success
+    ? { ok: true, phone: r.data }
+    : { ok: false, error: r.error.issues[0]?.message ?? "Informe um telefone válido com DDD" }
+}
+
+/**
  * Profissionais para a etapa Recomendações.
  *
  * Devolve `ActionResult` e não um array cru porque array não sabe dizer
@@ -79,7 +100,10 @@ export async function savePartnerOnboardingBusinessAction(
       return { ok: false, error: "Preencha nome, cidade, estado e telefone." }
     }
 
-    const partner = await createPartnerOnboarding(input)
+    const telefone = telefoneDoOnboarding(input.phone)
+    if (!telefone.ok) return { ok: false, error: telefone.error }
+
+    const partner = await createPartnerOnboarding({ ...input, phone: telefone.phone })
 
     // A capability nasce AQUI e só aqui: este é o único ponto em que o servidor
     // acabou de criar o Partner e portanto sabe, sem depender do cliente, de
@@ -118,7 +142,10 @@ export async function updatePartnerOnboardingBusinessAction(
     const sessao = await lerSessaoOnboarding()
     if (!sessao.ok) return { ok: false, error: ONBOARDING_SESSAO_INVALIDA }
 
-    const partner = await updatePartnerOnboardingBusiness(sessao.partnerId, input)
+    const telefone = telefoneDoOnboarding(input.phone)
+    if (!telefone.ok) return { ok: false, error: telefone.error }
+
+    const partner = await updatePartnerOnboardingBusiness(sessao.partnerId, { ...input, phone: telefone.phone })
     return { ok: true, data: { partnerId: partner.id } }
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Erro ao atualizar" }

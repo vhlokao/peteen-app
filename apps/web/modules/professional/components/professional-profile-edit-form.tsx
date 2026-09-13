@@ -27,6 +27,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AvatarUploadButton } from "@/components/shared/avatar/AvatarUploadButton"
 import { cn } from "@/lib/utils"
+import {
+  brazilianPhoneRequired,
+  formatBrazilianPhone,
+  formatStoredBrazilianPhone,
+  isValidBrazilianPhone,
+  phoneInputInitialValue,
+} from "@/lib/phone/brazilian-phone"
 
 const NAVY = "#1D2F6F"
 
@@ -40,12 +47,12 @@ const professionalProfileEditSchema = z.object({
     .min(2, "Nome deve ter ao menos 2 caracteres")
     .max(100, "Nome muito longo"),
   bio: z.string().max(1000, "Bio pode ter no máximo 1000 caracteres").optional(),
-  phone: z
-    .string()
-    .regex(/^\+?[\d\s\-()]+$/, "Informe seu WhatsApp para receber solicitações")
-    .refine((val) => val.replace(/\D/g, "").length >= 10, {
-      message: "Informe seu WhatsApp para receber solicitações",
-    }),
+  // Obrigatório na UI (o servidor mantém opcional). Regra única e saída
+  // canônica em lib/phone/brazilian-phone.ts.
+  phone: brazilianPhoneRequired({
+    requiredMessage: "Informe seu WhatsApp para receber solicitações",
+    invalidMessage: "Informe um WhatsApp válido com DDD",
+  }),
   neighborhood: z.string().max(100).optional(),
   city: z.string().min(2, "Cidade é obrigatória").max(100),
   state: z.string().length(2, "Use a sigla do estado (ex: SP)"),
@@ -78,7 +85,8 @@ export function ProfessionalProfileEditForm({
     defaultValues: {
       displayName: profile.displayName,
       bio: profile.bio ?? "",
-      phone: profile.phone ?? "",
+      // Válido → formatado; legado inválido → bruto, intacto, para corrigir.
+      phone: phoneInputInitialValue(profile.phone),
       neighborhood: profile.neighborhood ?? "",
       city: profile.city,
       state: profile.state,
@@ -123,8 +131,9 @@ export function ProfessionalProfileEditForm({
   }
 
   const bioLength = (watch("bio") ?? "").length
-  // Gate do botão Salvar — mesma regra de validade do schema Zod (>= 10 dígitos).
-  const isPhoneValid = (watch("phone") ?? "").replace(/\D/g, "").length >= 10
+  // Gate do botão Salvar — a MESMA regra do schema (fonte única).
+  const isPhoneValid = isValidBrazilianPhone(watch("phone"))
+  const storedPhoneDisplay = formatStoredBrazilianPhone(profile.phone)
 
   const initials = profile.displayName
     .split(" ")
@@ -143,7 +152,15 @@ export function ProfessionalProfileEditForm({
           </p>
           <p>
             <span className="text-muted-foreground">Telefone: </span>
-            <span className="font-medium text-foreground">{profile.phone || "—"}</span>
+            {storedPhoneDisplay ? (
+              <span className="font-medium text-foreground">{storedPhoneDisplay}</span>
+            ) : profile.phone ? (
+              // Legado não normalizável: não é contato utilizável (sem link de
+              // WhatsApp) — o dono vê que precisa corrigir.
+              <span className="font-medium text-destructive">Número inválido — edite para corrigir</span>
+            ) : (
+              <span className="font-medium text-foreground">—</span>
+            )}
           </p>
           <p>
             <span className="text-muted-foreground">Local: </span>
@@ -253,9 +270,17 @@ export function ProfessionalProfileEditForm({
         {(field) => (
           <Input
             {...field}
-            {...register("phone")}
+            {...register("phone", {
+              // Máscara a cada evento (digitar, colar, autofill, apagar),
+              // antes do react-hook-form ler o valor.
+              onChange: (e) => {
+                e.target.value = formatBrazilianPhone(e.target.value)
+              },
+            })}
             type="tel"
-            placeholder="+55 11 9 9999-9999"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="(11) 99999-9999"
             disabled={isSubmitting}
           />
         )}

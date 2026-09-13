@@ -21,6 +21,7 @@ import {
 } from "../infrastructure/repository"
 import type { CreatePartnerInput, UpdatePartnerInput, PartnerAdminRow, PartnerPublicProfile, PartnerDashboardMetrics } from "../domain/types"
 import { isValidOptionalPartnerPhone } from "../domain/phone-format"
+import { normalizeBrazilianPhone } from "@/lib/phone/brazilian-phone"
 
 type ActionResult<T> =
   | { ok: true; data: T }
@@ -48,6 +49,16 @@ function validatePartnerPhoneOrError(phone: string | undefined): string | null {
   return isValidOptionalPartnerPhone(phone) ? null : INVALID_PHONE_ERROR
 }
 
+/**
+ * Depois de validado, o telefone segue para o repository na forma CANÔNICA
+ * (10/11 dígitos, sem máscara) — PETEEN-PHONE-WHATSAPP-INPUT-FIX-001.
+ * `undefined` (não mexer) e vazio (limpar) passam intactos.
+ */
+function withCanonicalPhone<T extends { phone?: string }>(input: T): T {
+  if (input.phone === undefined || input.phone.trim() === "") return input
+  return { ...input, phone: normalizeBrazilianPhone(input.phone) ?? input.phone }
+}
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export async function getAdminPartnersAction(filters?: {
@@ -72,7 +83,7 @@ export async function createPartnerAction(
     const phoneError = validatePartnerPhoneOrError(input.phone)
     if (phoneError) return { ok: false, error: phoneError }
 
-    const partner = await createPartner(input)
+    const partner = await createPartner(withCanonicalPhone(input))
 
     await createAdminAudit({
       adminId:    user.id,
@@ -104,7 +115,7 @@ export async function updatePartnerAction(
     const phoneError = validatePartnerPhoneOrError(input.phone)
     if (phoneError) return { ok: false, error: phoneError }
 
-    const partner = await updatePartner(id, input)
+    const partner = await updatePartner(id, withCanonicalPhone(input))
 
     await createAdminAudit({
       adminId:    user.id,

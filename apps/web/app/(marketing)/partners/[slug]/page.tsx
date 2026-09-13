@@ -9,6 +9,7 @@ import { MapPin, Phone, Globe, ShieldCheck, Users, Link2, Sparkles } from "lucid
 import { getPartnerPublicProfileAction } from "@/modules/partners/application/actions"
 import { PublicPageBackLink } from "@/modules/partner-portal/components/public-page-back-link"
 import { resolvePublicLocation } from "@/modules/location"
+import { formatStoredBrazilianPhone } from "@/lib/phone/brazilian-phone"
 import {
   buildDiscoverUrl,
   normalizeReturnPath,
@@ -84,6 +85,8 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
   }
 
 
+
+  const publicPhone = formatStoredBrazilianPhone(partner.phone)
 
   const initials = partner.businessName
 
@@ -197,11 +200,13 @@ export default async function PartnerPublicPage({ params, searchParams }: Props)
 
           <div className="flex flex-wrap gap-4 text-sm">
 
-            {partner.phone && (
+            {/* Só telefone BR válido, formatado pela fonte única. Legado não
+                normalizável não aparece como contato em página pública. */}
+            {publicPhone && (
 
               <span className="inline-flex items-center gap-1.5 text-muted-foreground">
 
-                <Phone className="size-3.5" /> {partner.phone}
+                <Phone className="size-3.5" /> {publicPhone}
 
               </span>
 

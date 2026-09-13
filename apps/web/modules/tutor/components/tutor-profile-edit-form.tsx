@@ -17,6 +17,7 @@ import {
   type UpdateTutorProfileInput,
 } from "@/modules/tutor/domain/types"
 import { KNOWN_LOCATIONS, findKnownCityState } from "@/modules/location"
+import { formatBrazilianPhone, phoneInputInitialValue } from "@/lib/phone/brazilian-phone"
 import { FormField } from "@/components/forms/form-field"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,7 +55,8 @@ export function TutorProfileEditForm({ profile }: TutorProfileEditFormProps) {
       city: profile.city,
       state: profile.state,
       neighborhood: profile.neighborhood ?? "",
-      phone: profile.phone ?? "",
+      // Válido → formatado; legado inválido → bruto, intacto, para corrigir.
+      phone: phoneInputInitialValue(profile.phone),
       bio: profile.bio ?? "",
     },
   })
@@ -132,9 +134,17 @@ export function TutorProfileEditForm({ profile }: TutorProfileEditFormProps) {
         {(field) => (
           <Input
             {...field}
-            {...register("phone")}
+            {...register("phone", {
+              // Máscara BR da fonte única (lib/phone/brazilian-phone.ts), a
+              // cada evento — digitar, colar, autofill, apagar.
+              onChange: (e) => {
+                e.target.value = formatBrazilianPhone(e.target.value)
+              },
+            })}
             type="tel"
-            placeholder="+55 11 9 9999-9999"
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="(11) 99999-9999"
             disabled={isSubmitting}
           />
         )}

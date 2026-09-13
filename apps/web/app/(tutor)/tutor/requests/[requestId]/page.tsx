@@ -29,6 +29,7 @@ import { DisputeStatusCard } from "@/modules/disputes/components/dispute-status-
 import { CareTimelineSummary, getCareTimelineAction } from "@/modules/care-timeline"
 import { ActiveRequestAutoRefresh } from "@/modules/service-request/components/ActiveRequestAutoRefresh"
 import { ErrorState } from "@/components/shared/feedback/ErrorState"
+import { toWhatsAppUrl } from "@/lib/phone/brazilian-phone"
 import {
   buildRequestSyncToken,
   REQUEST_OPERATIONAL_POLL_INTERVAL_MS,
@@ -101,21 +102,6 @@ function formatDateShort(date: Date): string {
     month: "short",
     year: "numeric",
   })
-}
-
-/**
- * Monta a URL do WhatsApp a partir do telefone cadastrado.
- *
- * O DDI 55 só é prefixado quando o número ainda não o tem. O onboarding
- * sugere o formato "+55 11 9 9999-9999", então boa parte dos telefones já
- * chega com o DDI — prefixar cegamente geraria "5555..." e link quebrado.
- * A checagem é por comprimento (nacional com DDD = 10-11 dígitos; com DDI
- * = 12-13), e não por "começa com 55", porque 55 também é o DDD do RS.
- */
-function buildWhatsAppUrl(phone: string): string {
-  const digits = phone.replace(/\D/g, "")
-  const withCountryCode = digits.length >= 12 ? digits : `55${digits}`
-  return `https://wa.me/${withCountryCode}`
 }
 
 function SubmittedReview({
@@ -276,6 +262,11 @@ export default async function TutorRequestDetailPage({ params, searchParams }: P
   const initialSyncToken = syncSnapshot ? buildRequestSyncToken(syncSnapshot) : null
   const careUpdates = careTimelineResult?.success ? careTimelineResult.data : []
 
+  // Link só existe para telefone BR válido (lib/phone/brazilian-phone.ts).
+  // Número ausente ou não normalizável → nenhum CTA, só o estado neutro:
+  // nunca um wa.me para um número que não é o do profissional.
+  const whatsAppUrl = isAccepted ? toWhatsAppUrl(professionalPhone) : null
+
   const pro = request.professional
 
   return (
@@ -425,9 +416,9 @@ export default async function TutorRequestDetailPage({ params, searchParams }: P
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             Contato
           </h2>
-          {isAccepted && professionalPhone ? (
+          {whatsAppUrl ? (
             <a
-              href={buildWhatsAppUrl(professionalPhone)}
+              href={whatsAppUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"

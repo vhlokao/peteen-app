@@ -20,6 +20,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import {
+  brazilianPhoneRequired,
+  formatBrazilianPhone,
+  isValidBrazilianPhone,
+} from "@/lib/phone/brazilian-phone";
 
 /**
  * Schema do formulário — separado do CreateProfessionalProfileSchema do domínio.
@@ -38,12 +43,12 @@ const professionalFormSchema = z.object({
     .string()
     .min(50, "A apresentação deve ter ao menos 50 caracteres")
     .max(1000, "Bio pode ter no máximo 1000 caracteres"),
-  phone: z
-    .string()
-    .regex(/^\+?[\d\s\-()]+$/, "Informe seu WhatsApp para receber solicitações")
-    .refine((val) => val.replace(/\D/g, "").length >= 10, {
-      message: "Informe seu WhatsApp para receber solicitações",
-    }),
+  // Obrigatório na UI (o servidor mantém opcional). Regra única e saída
+  // canônica em lib/phone/brazilian-phone.ts.
+  phone: brazilianPhoneRequired({
+    requiredMessage: "Informe seu WhatsApp para receber solicitações",
+    invalidMessage: "Informe um WhatsApp válido com DDD",
+  }),
   neighborhood: z.string().max(100).optional(),
   city: z.string().min(2, "Cidade é obrigatória").max(100),
   state: z.string().length(2, "Use a sigla do estado (ex: SP)"),
@@ -87,8 +92,8 @@ export function ProfessionalProfileForm({
     },
   });
 
-  // Gate do botão de submit — mesma regra de validade do schema Zod (>= 10 dígitos).
-  const isPhoneValid = (watch("phone") ?? "").replace(/\D/g, "").length >= 10;
+  // Gate do botão de submit — a MESMA regra do schema (fonte única).
+  const isPhoneValid = isValidBrazilianPhone(watch("phone"));
 
   async function onSubmit(values: ProfessionalFormValues) {
     setServerError(null);
@@ -160,9 +165,16 @@ export function ProfessionalProfileForm({
         {(field) => (
           <Input
             {...field}
-            {...register("phone")}
+            {...register("phone", {
+              // Máscara a cada evento (digitar, colar, autofill, apagar),
+              // antes do react-hook-form ler o valor.
+              onChange: (e) => {
+                e.target.value = formatBrazilianPhone(e.target.value);
+              },
+            })}
             type="tel"
-            placeholder="+55 11 9 9999-9999"
+            inputMode="tel"
+            placeholder="(11) 99999-9999"
             autoComplete="tel"
             disabled={isSubmitting}
           />
